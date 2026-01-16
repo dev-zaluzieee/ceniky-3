@@ -159,6 +159,53 @@ export default function Home() {
               </svg>
             </div>
           </Link>
+
+          {/* Window/Door Screens Form Card */}
+          <Link
+            href="/forms/site"
+            className="group rounded-lg border-2 border-zinc-200 bg-white p-8 shadow-sm transition-all hover:border-blue-500 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-blue-500"
+          >
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                  />
+                </svg>
+              </div>
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+                Okenní sítě / Dveřní sítě
+              </h2>
+            </div>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Formulář pro okenní a dveřní sítě. Vhodný pro produkty ISSO OE,
+              OE, OV, DE, PS, PSR a plisé sítě STELLAR, LUX, MINI.
+            </p>
+            <div className="mt-4 flex items-center text-sm font-medium text-blue-600 dark:text-blue-400">
+              Otevřít formulář
+              <svg
+                className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </div>
+          </Link>
         </div>
       </div>
     </div>
