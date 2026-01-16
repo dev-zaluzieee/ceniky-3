@@ -18,7 +18,7 @@ export default function Home() {
         </div>
 
         {/* Form Selection Cards */}
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {/* Universal Form Card */}
           <Link
             href="/forms/universal"
@@ -94,6 +94,53 @@ export default function Home() {
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Formulář pro textilní rolety a den/noc (D/N) rolety. Vhodný pro
               produkty JAZZ, COLLETE, OPUS, SONATA a další.
+            </p>
+            <div className="mt-4 flex items-center text-sm font-medium text-blue-600 dark:text-blue-400">
+              Otevřít formulář
+              <svg
+                className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </div>
+          </Link>
+
+          {/* Plisé Blinds Form Card */}
+          <Link
+            href="/forms/plise-zaluzie"
+            className="group rounded-lg border-2 border-zinc-200 bg-white p-8 shadow-sm transition-all hover:border-blue-500 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-blue-500"
+          >
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                </svg>
+              </div>
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+                Plisé žaluzie
+              </h2>
+            </div>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Formulář pro plisé žaluzie. Vhodný pro produkty OPAVA a KASKO s
+              různými typy plisé (STD, COMBI, PM1, PM3, PM5, PS3).
             </p>
             <div className="mt-4 flex items-center text-sm font-medium text-blue-600 dark:text-blue-400">
               Otevřít formulář
