@@ -1,4 +1,5 @@
 import LoginClient from "./LoginClient";
+import { validateCallbackUrl, getBaseUrl } from "@/lib/auth-utils";
 
 /**
  * Login page - handles authentication for the portal
@@ -10,5 +11,7 @@ export default async function LoginPage({
   searchParams: Promise<{ callbackUrl?: string; error?: string }>;
 }) {
   const params = await searchParams;
-  return <LoginClient callbackUrl={params?.callbackUrl} />;
+  // Validate callbackUrl to prevent open redirect attacks
+  const validatedCallbackUrl = validateCallbackUrl(params?.callbackUrl, getBaseUrl());
+  return <LoginClient callbackUrl={validatedCallbackUrl || undefined} />;
 }

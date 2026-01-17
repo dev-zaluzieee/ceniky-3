@@ -1,6 +1,7 @@
 "use client";
 import { signIn } from "next-auth/react";
 import { useState, FormEvent } from "react";
+import { validateCallbackUrl } from "@/lib/auth-utils";
 
 /**
  * Client component for login page
@@ -15,7 +16,11 @@ export default function LoginClient({ callbackUrl }: { callbackUrl?: string }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const onGoogleSignIn = () => signIn("google", { callbackUrl: callbackUrl || "/" });
+  // Validate callbackUrl client-side as well (defense in depth)
+  // The server already validated it, but we validate again for extra security
+  const safeCallbackUrl = validateCallbackUrl(callbackUrl) || "/";
+
+  const onGoogleSignIn = () => signIn("google", { callbackUrl: safeCallbackUrl });
 
   const onTokenSignIn = async (e: FormEvent) => {
     e.preventDefault();
@@ -27,14 +32,15 @@ export default function LoginClient({ callbackUrl }: { callbackUrl?: string }) {
         email: email.trim(),
         token: token.trim(),
         redirect: false,
-        callbackUrl: callbackUrl || "/",
+        callbackUrl: safeCallbackUrl,
       });
 
       if (result?.error) {
         setError("Neplatný e‑mail nebo token");
       } else if (result?.ok) {
-        // Redirect will happen automatically via NextAuth
-        window.location.href = callbackUrl || "/";
+        // Use NextAuth's redirect mechanism instead of direct window.location
+        // This ensures the redirect callback validates the URL
+        window.location.href = safeCallbackUrl;
       }
     } catch (err) {
       setError("Chyba při přihlášení. Zkuste to znovu.");

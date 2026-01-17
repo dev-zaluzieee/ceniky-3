@@ -4,6 +4,56 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { NextRequest } from "next/server";
 
 /**
+ * Validates that a redirect URL is safe (relative or same-origin only)
+ * Prevents open redirect attacks
+ * @param url - The URL to validate (can be absolute or relative)
+ * @param baseUrl - The base URL of the application
+ * @returns A safe relative path (starts with /) or null if invalid
+ */
+function validateRedirectUrl(url: string | null | undefined, baseUrl: string): string | null {
+  if (!url) {
+    return null;
+  }
+
+  const trimmed = url.trim();
+
+  // Empty string is invalid
+  if (trimmed === "") {
+    return null;
+  }
+
+  // Relative paths starting with / are safe
+  if (trimmed.startsWith("/")) {
+    // Reject protocol-relative URLs (//example.com)
+    if (trimmed.startsWith("//")) {
+      return null;
+    }
+    // Reject URLs that look like they contain a protocol
+    if (trimmed.match(/^\/[a-zA-Z][a-zA-Z0-9+.-]*:/)) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  // Try to parse as absolute URL
+  try {
+    const parsedUrl = new URL(trimmed, baseUrl);
+    const baseOrigin = new URL(baseUrl).origin;
+
+    // Only allow same-origin URLs
+    if (parsedUrl.origin === baseOrigin) {
+      return parsedUrl.pathname + parsedUrl.search + parsedUrl.hash;
+    }
+
+    // External URLs are not allowed
+    return null;
+  } catch {
+    // Invalid URL format
+    return null;
+  }
+}
+
+/**
  * NextAuth configuration with Google OAuth and Email/Token authentication
  * Uses REPORTING_BACKEND_API_URL for authentication checks
  */
@@ -68,6 +118,25 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   callbacks: {
+    /**
+     * Redirect callback - validates all redirect destinations
+     * This is critical for preventing open redirect attacks
+     * All redirects go through this callback, ensuring no external redirects are allowed
+     */
+    async redirect({ url, baseUrl }) {
+      // Validate the redirect URL
+      const validatedPath = validateRedirectUrl(url, baseUrl);
+      
+      // If validation succeeded, return the full URL
+      if (validatedPath) {
+        // Ensure the path starts with /
+        const safePath = validatedPath.startsWith("/") ? validatedPath : `/${validatedPath}`;
+        return `${baseUrl}${safePath}`;
+      }
+      
+      // If validation failed (external URL or invalid), default to home page
+      return baseUrl;
+    },
     async signIn({ user, account }) {
       const email = (user?.email || "").trim();
       if (!email) return false;
