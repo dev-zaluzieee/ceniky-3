@@ -231,13 +231,31 @@ export default function TextileRoletyForm() {
     const row = room.rows.find((r) => r.id === rowId);
     if (!row) return;
 
-    handleRowChange(roomId, rowId, dimension, value);
+    // Calculate new dimensions using current row values (not stale)
     const newWidth = dimension === "width" ? value : row.width;
     const newHeight = dimension === "height" ? value : row.height;
     const calculatedArea = calculateArea(newWidth, newHeight);
-    if (calculatedArea) {
-      handleRowChange(roomId, rowId, "area", calculatedArea);
-    }
+
+    // Update both dimension and area in a single state update
+    setFormData((prev) => ({
+      ...prev,
+      rooms: prev.rooms.map((r) =>
+        r.id === roomId
+          ? {
+              ...r,
+              rows: r.rows.map((rw) =>
+                rw.id === rowId
+                  ? {
+                      ...rw,
+                      [dimension]: value,
+                      area: calculatedArea || rw.area,
+                    }
+                  : rw
+              ),
+            }
+          : r
+      ),
+    }));
   };
 
   return (
