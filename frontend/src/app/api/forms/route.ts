@@ -5,9 +5,6 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]/route";
-import jwt from "jsonwebtoken";
 
 /**
  * Get backend API URL from environment variables
@@ -17,39 +14,11 @@ function getBackendUrl(): string {
 }
 
 /**
- * Generate bearer token from NextAuth session
- * Uses the same secret as NextAuth to sign JWT
- */
-function generateBearerToken(email: string): string {
-  const secret = process.env.NEXTAUTH_SECRET;
-
-  if (!secret) {
-    throw new Error("NEXTAUTH_SECRET is not configured");
-  }
-
-  // Create JWT token with user email
-  return jwt.sign({ email }, secret, { expiresIn: "1h" });
-}
-
-/**
  * GET /api/forms
- * List forms for the authenticated user
+ * List forms
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get session from NextAuth
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    // Generate bearer token
-    const bearerToken = generateBearerToken(session.user.email);
-
     // Get query parameters
     const searchParams = request.nextUrl.searchParams;
     const queryString = searchParams.toString();
@@ -59,7 +28,6 @@ export async function GET(request: NextRequest) {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${bearerToken}`,
         "Content-Type": "application/json",
       },
     });
@@ -86,16 +54,6 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get session from NextAuth
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     // Get request body
     const body = await request.json();
 
@@ -107,14 +65,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate bearer token
-    const bearerToken = generateBearerToken(session.user.email);
-
     // Forward request to Express backend
     const response = await fetch(`${getBackendUrl()}/api/forms`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${bearerToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
