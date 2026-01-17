@@ -204,6 +204,7 @@ export default function UniversalForm() {
 
   /**
    * Auto-calculate area when width or height changes
+   * Uses functional update to avoid stale closure issues with rapid changes
    */
   const handleDimensionChange = (
     roomId: string,
@@ -211,37 +212,40 @@ export default function UniversalForm() {
     dimension: "width" | "height",
     value: string
   ) => {
-    const room = formData.rooms.find((r) => r.id === roomId);
-    if (!room) return;
+    // Use functional update to read from current state, not stale closure
+    setFormData((prev) => {
+      const room = prev.rooms.find((r) => r.id === roomId);
+      if (!room) return prev;
 
-    const row = room.rows.find((r) => r.id === rowId);
-    if (!row) return;
+      const row = room.rows.find((r) => r.id === rowId);
+      if (!row) return prev;
 
-    // Calculate new dimensions using current row values (not stale)
-    const newWidth = dimension === "width" ? value : row.width;
-    const newHeight = dimension === "height" ? value : row.height;
-    const calculatedArea = calculateArea(newWidth, newHeight);
+      // Calculate new dimensions using current row values from prev state
+      const newWidth = dimension === "width" ? value : row.width;
+      const newHeight = dimension === "height" ? value : row.height;
+      const calculatedArea = calculateArea(newWidth, newHeight);
 
-    // Update both dimension and area in a single state update
-    setFormData((prev) => ({
-      ...prev,
-      rooms: prev.rooms.map((r) =>
-        r.id === roomId
-          ? {
-              ...r,
-              rows: r.rows.map((rw) =>
-                rw.id === rowId
-                  ? {
-                      ...rw,
-                      [dimension]: value,
-                      area: calculatedArea || rw.area,
-                    }
-                  : rw
-              ),
-            }
-          : r
-      ),
-    }));
+      // Update both dimension and area in a single state update
+      return {
+        ...prev,
+        rooms: prev.rooms.map((r) =>
+          r.id === roomId
+            ? {
+                ...r,
+                rows: r.rows.map((rw) =>
+                  rw.id === rowId
+                    ? {
+                        ...rw,
+                        [dimension]: value,
+                        area: calculatedArea || rw.area,
+                      }
+                    : rw
+                ),
+              }
+            : r
+        ),
+      };
+    });
   };
 
   return (
