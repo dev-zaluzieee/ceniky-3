@@ -206,6 +206,53 @@ export default function Home() {
               </svg>
             </div>
           </Link>
+
+          {/* Horizontal Blinds Form Card */}
+          <Link
+            href="/forms/horizontalni-zaluzie"
+            className="group rounded-lg border-2 border-zinc-200 bg-white p-8 shadow-sm transition-all hover:border-blue-500 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-blue-500"
+          >
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400">
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                  />
+                </svg>
+              </div>
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+                Horizontální žaluzie
+              </h2>
+            </div>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Formulář pro horizontální žaluzie. Vhodný pro produkty PRIM,
+              ISOLINE, LOCO, ATYP, ECO, ISOTRA 25 a interiérové typy.
+            </p>
+            <div className="mt-4 flex items-center text-sm font-medium text-blue-600 dark:text-blue-400">
+              Otevřít formulář
+              <svg
+                className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </div>
+          </Link>
         </div>
       </div>
     </div>
