@@ -51,11 +51,15 @@ function formatDate(dateString: string): string {
  * Returns null if edit is not yet implemented for this form type
  */
 function getEditUrl(formType: FormType, formId: number): string | null {
-  // Only universal form has edit functionality implemented
-  if (formType === "universal") {
-    return `/forms/universal/${formId}`;
+  // Forms with edit functionality implemented
+  switch (formType) {
+    case "universal":
+      return `/forms/universal/${formId}`;
+    case "horizontalni-zaluzie":
+      return `/forms/horizontalni-zaluzie/${formId}`;
+    default:
+      return null;
   }
-  return null;
 }
 
 /**

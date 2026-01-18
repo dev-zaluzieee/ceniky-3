@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { submitForm } from "@/lib/forms-api";
+import { submitForm, updateForm } from "@/lib/forms-api";
 import {
   HorizontalniZaluzieFormData,
   HorizontalniZaluzieRoom,
@@ -13,34 +13,76 @@ import {
  * Props for HorizontalniZaluzieFormClient
  */
 interface HorizontalniZaluzieFormClientProps {
-  // No initial data needed for creation - form starts empty
+  /**
+   * Initial form data for edit mode
+   * If provided, form will be initialized with this data
+   */
+  initialData?: HorizontalniZaluzieFormData;
+  /**
+   * Form ID for edit mode
+   * If provided, form will update existing form instead of creating new one
+   */
+  formId?: number;
 }
+
+/**
+ * Default empty form data
+ */
+const getDefaultFormData = (): HorizontalniZaluzieFormData => ({
+  phone: "",
+  address: "",
+  city: "",
+  product: "HORIZONTÁLNÍ ŽALUZIE",
+  supplier: "KASKO / JACKO / ISOTRA",
+  productType: "",
+  slatType: "",
+  status: "",
+  installationType: "",
+  glazingStripDepth: "",
+  rooms: [],
+  ladder: "",
+  ladderHeight: "",
+  totalArea: "",
+  totalCount: "",
+  slatVerified: "",
+});
 
 /**
  * Client component for horizontal blinds form
  * Handles all form interactivity and state management
+ * Supports both create and edit modes
  */
-export default function HorizontalniZaluzieFormClient(
-  {}: HorizontalniZaluzieFormClientProps
-) {
-  // Initialize form state with empty values
-  const [formData, setFormData] = useState<HorizontalniZaluzieFormData>({
-    phone: "",
-    address: "",
-    city: "",
-    product: "HORIZONTÁLNÍ ŽALUZIE",
-    supplier: "KASKO / JACKO / ISOTRA",
-    productType: "",
-    slatType: "",
-    status: "",
-    installationType: "",
-    glazingStripDepth: "",
-    rooms: [],
-    ladder: "",
-    ladderHeight: "",
-    totalArea: "",
-    totalCount: "",
-    slatVerified: "",
+export default function HorizontalniZaluzieFormClient({
+  initialData,
+  formId,
+}: HorizontalniZaluzieFormClientProps) {
+  /**
+   * Generate unique ID for rooms and rows
+   */
+  const generateId = (): string => {
+    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  // Determine if we're in edit mode
+  const isEditMode = !!formId && !!initialData;
+
+  // Initialize form state - use initialData if provided, otherwise use defaults
+  const [formData, setFormData] = useState<HorizontalniZaluzieFormData>(() => {
+    if (initialData) {
+      // Ensure rooms and rows have IDs (regenerate if missing for safety)
+      return {
+        ...initialData,
+        rooms: initialData.rooms.map((room) => ({
+          ...room,
+          id: room.id || generateId(),
+          rows: room.rows.map((row) => ({
+            ...row,
+            id: row.id || generateId(),
+          })),
+        })),
+      };
+    }
+    return getDefaultFormData();
   });
 
   // Submission state
@@ -48,12 +90,22 @@ export default function HorizontalniZaluzieFormClient(
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  /**
-   * Generate unique ID for rooms and rows
-   */
-  const generateId = (): string => {
-    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  };
+  // Update form data when initialData changes (e.g., after fetching)
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        ...initialData,
+        rooms: initialData.rooms.map((room) => ({
+          ...room,
+          id: room.id || generateId(),
+          rows: room.rows.map((row) => ({
+            ...row,
+            id: row.id || generateId(),
+          })),
+        })),
+      });
+    }
+  }, [initialData]);
 
   /**
    * Create a new empty entry row
@@ -237,6 +289,7 @@ export default function HorizontalniZaluzieFormClient(
 
   /**
    * Handle form submission
+   * Uses updateForm if formId is provided, otherwise uses submitForm
    */
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -244,14 +297,29 @@ export default function HorizontalniZaluzieFormClient(
     setSubmitSuccess(false);
 
     try {
-      const result = await submitForm("horizontalni-zaluzie", formData);
+      let result;
+      if (isEditMode && formId) {
+        // Update existing form
+        result = await updateForm(formId, formData);
+      } else {
+        // Create new form
+        result = await submitForm("horizontalni-zaluzie", formData);
+      }
 
       if (result.success) {
         setSubmitSuccess(true);
-        // Reset form after successful submission (optional)
-        // setFormData({ ...initialFormData });
+        // In edit mode, we don't reset the form - user can continue editing
+        // In create mode, optionally reset form after successful submission
+        // if (!isEditMode) {
+        //   setFormData(getDefaultFormData());
+        // }
       } else {
-        setSubmitError(result.error || "Nepodařilo se uložit formulář");
+        setSubmitError(
+          result.error ||
+            (isEditMode
+              ? "Nepodařilo se aktualizovat formulář"
+              : "Nepodařilo se uložit formulář")
+        );
       }
     } catch (error: any) {
       console.error("Error submitting form:", error);
@@ -290,6 +358,11 @@ export default function HorizontalniZaluzieFormClient(
         {/* Form Title */}
         <h1 className="mb-8 text-3xl font-bold text-zinc-900 dark:text-zinc-50">
           VÝROBNÍ DOKUMENTACE - Horizontální žaluzie
+          {isEditMode && (
+            <span className="ml-3 text-lg font-normal text-zinc-500 dark:text-zinc-400">
+              (Úprava)
+            </span>
+          )}
         </h1>
 
         {/* Header Section */}
@@ -957,7 +1030,11 @@ export default function HorizontalniZaluzieFormClient(
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  <span>Formulář byl úspěšně uložen!</span>
+                  <span>
+                    {isEditMode
+                      ? "Formulář byl úspěšně aktualizován!"
+                      : "Formulář byl úspěšně uložen!"}
+                  </span>
                 </div>
               </div>
             )}
@@ -1028,7 +1105,7 @@ export default function HorizontalniZaluzieFormClient(
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  Uložit formulář
+                  {isEditMode ? "Aktualizovat formulář" : "Uložit formulář"}
                 </>
               )}
             </button>
