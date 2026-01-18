@@ -47,6 +47,18 @@ function formatDate(dateString: string): string {
 }
 
 /**
+ * Get edit URL for a form based on its type
+ * Returns null if edit is not yet implemented for this form type
+ */
+function getEditUrl(formType: FormType, formId: number): string | null {
+  // Only universal form has edit functionality implemented
+  if (formType === "universal") {
+    return `/forms/universal/${formId}`;
+  }
+  return null;
+}
+
+/**
  * Props for FormsListClient component
  */
 interface FormsListClientProps {
@@ -249,14 +261,38 @@ export default function FormsListClient({
                       </div>
                     </div>
 
-                    {/* Right side - Date */}
-                    <div className="text-right">
-                      <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                        Vytvořeno
+                    {/* Right side - Date and Actions */}
+                    <div className="flex flex-col items-end gap-3">
+                      <div className="text-right">
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                          Vytvořeno
+                        </div>
+                        <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                          {formatDate(form.created_at)}
+                        </div>
                       </div>
-                      <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                        {formatDate(form.created_at)}
-                      </div>
+                      {/* Edit button - only show if edit is available for this form type */}
+                      {getEditUrl(form.form_type, form.id) && (
+                        <Link
+                          href={getEditUrl(form.form_type, form.id)!}
+                          className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
+                        >
+                          <svg
+                            className="h-3.5 w-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                            />
+                          </svg>
+                          Upravit
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </div>
