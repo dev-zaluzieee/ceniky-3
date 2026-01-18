@@ -51,7 +51,7 @@ function formatDate(dateString: string): string {
  * Returns null if edit is not yet implemented for this form type
  */
 function getEditUrl(formType: FormType, formId: number): string | null {
-  // Forms with edit functionality implemented
+  // All forms now have edit functionality implemented
   switch (formType) {
     case "universal":
       return `/forms/universal/${formId}`;
@@ -61,6 +61,8 @@ function getEditUrl(formType: FormType, formId: number): string | null {
       return `/forms/plise-zaluzie/${formId}`;
     case "site":
       return `/forms/site/${formId}`;
+    case "textile-rolety":
+      return `/forms/textile-rolety/${formId}`;
     default:
       return null;
   }
