@@ -118,3 +118,101 @@ export async function updateForm(
     };
   }
 }
+
+/**
+ * Form record structure from API
+ */
+export interface FormRecord {
+  id: number;
+  user_id: string;
+  form_type: FormType;
+  form_json: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+/**
+ * Pagination information
+ */
+export interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+/**
+ * Response for listing forms
+ */
+export interface ListFormsResponse {
+  success: boolean;
+  data?: FormRecord[];
+  pagination?: PaginationInfo;
+  error?: string;
+  message?: string;
+}
+
+/**
+ * Query parameters for listing forms
+ */
+export interface ListFormsQuery {
+  form_type?: FormType;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Get list of forms for the authenticated user
+ * @param query - Optional query parameters (form_type, page, limit)
+ * @returns Promise with list of forms and pagination info
+ */
+export async function getForms(
+  query: ListFormsQuery = {}
+): Promise<ListFormsResponse> {
+  try {
+    // Build query string
+    const params = new URLSearchParams();
+    if (query.form_type) {
+      params.append("form_type", query.form_type);
+    }
+    if (query.page) {
+      params.append("page", query.page.toString());
+    }
+    if (query.limit) {
+      params.append("limit", query.limit.toString());
+    }
+
+    const queryString = params.toString();
+    const url = `/api/forms${queryString ? `?${queryString}` : ""}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || "Failed to fetch forms",
+        message: data.message,
+      };
+    }
+
+    return {
+      success: true,
+      data: data.data,
+      pagination: data.pagination,
+    };
+  } catch (error: any) {
+    console.error("Error fetching forms:", error);
+    return {
+      success: false,
+      error: "Network error. Please check your connection and try again.",
+    };
+  }
+}
