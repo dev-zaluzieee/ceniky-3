@@ -56,6 +56,14 @@ export default function UniversalFormClient({
   // Determine if we're in edit mode
   const isEditMode = !!formId && !!initialData;
 
+  /**
+   * Generate unique ID for rooms and rows
+   * Must be defined before useState initializer to avoid ReferenceError
+   */
+  const generateId = (): string => {
+    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  };
+
   // Initialize form state - use initialData if provided, otherwise use defaults
   const [formData, setFormData] = useState<UniversalFormData>(() => {
     if (initialData) {
@@ -79,13 +87,6 @@ export default function UniversalFormClient({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
-
-  /**
-   * Generate unique ID for rooms and rows
-   */
-  const generateId = (): string => {
-    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  };
 
   // Update form data when initialData changes (e.g., after fetching)
   useEffect(() => {
