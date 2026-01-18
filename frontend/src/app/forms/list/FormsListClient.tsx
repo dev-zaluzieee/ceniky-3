@@ -59,6 +59,8 @@ function getEditUrl(formType: FormType, formId: number): string | null {
       return `/forms/horizontalni-zaluzie/${formId}`;
     case "plise-zaluzie":
       return `/forms/plise-zaluzie/${formId}`;
+    case "site":
+      return `/forms/site/${formId}`;
     default:
       return null;
   }
