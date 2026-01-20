@@ -105,22 +105,46 @@ export default function UniversalFormClient({
 
   // Update form data when initialData changes (e.g., after fetching)
   // Merge with defaults to ensure all required fields are present (handles legacy data)
+  // Preserves existing room/row IDs to maintain stable React keys and prevent unnecessary remounts
   useEffect(() => {
     if (initialData) {
       // Merge with defaults to ensure all required fields are present
       // This handles legacy data that may be missing new fields like name/email
       const defaults = getDefaultFormData();
-      setFormData({
-        ...defaults,
-        ...initialData,
-        rooms: initialData.rooms.map((room) => ({
-          ...room,
-          id: room.id || generateId(),
-          rows: room.rows.map((row) => ({
-            ...row,
-            id: row.id || generateId(),
-          })),
-        })),
+      
+      // Use functional update to preserve existing IDs from current state
+      // This prevents regenerating IDs and maintains stable React keys
+      setFormData((prevFormData) => {
+        // Only update if we don't have form data yet, or if initialData actually changed
+        // Preserve existing room/row IDs to maintain stable keys
+        const mergedData = {
+          ...defaults,
+          ...initialData,
+        };
+
+        // Preserve existing IDs from current state to maintain stable React keys
+        // Match rooms by index and preserve their IDs if they exist
+        mergedData.rooms = initialData.rooms.map((room, roomIndex) => {
+          // Preserve existing room ID if available (by index), otherwise use room.id from initialData, or generate
+          const existingRoom = prevFormData.rooms[roomIndex];
+          const preservedRoomId = existingRoom?.id || room.id || generateId();
+          
+          return {
+            ...room,
+            id: preservedRoomId,
+            rows: room.rows.map((row, rowIndex) => {
+              // Preserve existing row ID if available (by room and row index), otherwise use row.id from initialData, or generate
+              const existingRow = existingRoom?.rows[rowIndex];
+              const preservedRowId = existingRow?.id || row.id || generateId();
+              return {
+                ...row,
+                id: preservedRowId,
+              };
+            }),
+          };
+        });
+
+        return mergedData;
       });
     }
   }, [initialData]);
