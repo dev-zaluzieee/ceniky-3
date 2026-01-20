@@ -3,11 +3,13 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
+import { searchCustomersByPhone } from "@/lib/raynet-api";
 import {
   UniversalFormData,
   UniversalRoom,
   UniversalEntryRow,
 } from "@/types/forms/universal.types";
+import { RaynetLead } from "@/types/raynet.types";
 
 /**
  * Props for UniversalFormClient
@@ -87,6 +89,12 @@ export default function UniversalFormClient({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  // Raynet search state
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [foundCustomers, setFoundCustomers] = useState<RaynetLead[]>([]);
+  const [showCustomerSelection, setShowCustomerSelection] = useState(false);
 
   // Update form data when initialData changes (e.g., after fetching)
   useEffect(() => {
@@ -281,6 +289,92 @@ export default function UniversalFormClient({
   };
 
   /**
+   * Prefill form fields from Raynet customer data
+   * @param customer - Raynet lead record
+   */
+  const prefillFormFromRaynet = (customer: RaynetLead) => {
+    setFormData((prev) => ({
+      ...prev,
+      phone: customer.contactInfo.tel1 || prev.phone,
+      address: customer.address.street || prev.address,
+      city: customer.address.city || prev.city,
+      raynet_id: customer.id, // Link the customer
+    }));
+    setFoundCustomers([]);
+    setShowCustomerSelection(false);
+    setSearchError(null);
+  };
+
+  /**
+   * Search for customers in Raynet by phone number
+   * Always shows results to user for selection, even if only one customer is found
+   */
+  const handlePhoneSearch = async () => {
+    const phone = formData.phone.trim();
+
+    // Validate phone number
+    if (!phone || phone.length < 6) {
+      setSearchError("Zadejte platné telefonní číslo (minimálně 6 číslic)");
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError(null);
+    setFoundCustomers([]);
+    setShowCustomerSelection(false);
+
+    try {
+      const result = await searchCustomersByPhone(phone);
+
+      if (!result.success) {
+        setSearchError(result.error || "Nepodařilo se vyhledat zákazníka");
+        setIsSearching(false);
+        return;
+      }
+
+      if (result.data && result.data.customers.length > 0) {
+        // Always show selection UI, even for single customer
+        setFoundCustomers(result.data.customers);
+        setShowCustomerSelection(true);
+      } else {
+        setSearchError("Zákazník s tímto telefonním číslem nebyl nalezen v Raynet");
+      }
+    } catch (error: any) {
+      console.error("Error searching customers:", error);
+      setSearchError("Došlo k chybě při vyhledávání. Zkuste to prosím znovu.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  /**
+   * Handle customer selection from multiple results
+   * @param customer - Selected Raynet lead record
+   */
+  const handleSelectCustomer = (customer: RaynetLead) => {
+    prefillFormFromRaynet(customer);
+  };
+
+  /**
+   * Clear customer search results
+   */
+  const handleClearSearch = () => {
+    setFoundCustomers([]);
+    setShowCustomerSelection(false);
+    setSearchError(null);
+  };
+
+  /**
+   * Unlink Raynet customer from form
+   */
+  const handleUnlinkCustomer = () => {
+    setFormData((prev) => {
+      const { raynet_id, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  /**
    * Handle form submission
    * Uses updateForm if formId is provided, otherwise uses submitForm
    */
@@ -364,18 +458,176 @@ export default function UniversalFormClient({
             Základní informace
           </h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {/* Phone */}
-            <div>
+            {/* Phone with Raynet search */}
+            <div className="md:col-span-2 lg:col-span-3">
               <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Telefon
+                {formData.raynet_id && (
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                    <svg
+                      className="h-3 w-3"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    Propojeno s Raynet #{formData.raynet_id}
+                  </span>
+                )}
               </label>
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) => handleHeaderChange("phone", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                placeholder="+420 ..."
-              />
+              <div className="flex gap-2">
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => handleHeaderChange("phone", e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handlePhoneSearch();
+                    }
+                  }}
+                  className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                  placeholder="+420 ..."
+                  disabled={isSearching}
+                />
+                <button
+                  type="button"
+                  onClick={handlePhoneSearch}
+                  disabled={isSearching || !formData.phone.trim() || formData.phone.trim().length < 6}
+                  className="flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                >
+                  {isSearching ? (
+                    <>
+                      <svg
+                        className="h-4 w-4 animate-spin"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                      Vyhledávání...
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        />
+                      </svg>
+                      Vyhledat v Raynet
+                    </>
+                  )}
+                </button>
+                {formData.raynet_id && (
+                  <button
+                    type="button"
+                    onClick={handleUnlinkCustomer}
+                    className="flex items-center gap-2 rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
+                    title="Odpojit od Raynet zákazníka"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </div>
+
+              {/* Search Error */}
+              {searchError && (
+                <div className="mt-2 rounded-md bg-red-50 p-2 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400">
+                  {searchError}
+                </div>
+              )}
+
+              {/* Customer Selection (Always show results for user to choose) */}
+              {showCustomerSelection && foundCustomers.length > 0 && (
+                <div className="mt-3 rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+                  <div className="border-b border-zinc-200 px-4 py-2 dark:border-zinc-700">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                        {foundCustomers.length === 1
+                          ? "Nalezen 1 zákazník. Vyberte prosím:"
+                          : `Nalezeno ${foundCustomers.length} zákazníků. Vyberte prosím:`}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleClearSearch}
+                        className="text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                      >
+                        Zavřít
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto">
+                    {foundCustomers.map((customer) => (
+                      <div
+                        key={customer.id}
+                        className="border-b border-zinc-200 px-4 py-3 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-700/50"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <p className="font-medium text-zinc-900 dark:text-zinc-50">
+                              {customer.firstName} {customer.lastName}
+                              {customer.companyName && ` (${customer.companyName})`}
+                            </p>
+                            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                              {customer.address.street && `${customer.address.street}, `}
+                              {customer.address.city && customer.address.city}
+                              {customer.address.zipCode && ` ${customer.address.zipCode}`}
+                            </p>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                              Tel: {customer.contactInfo.tel1 || "N/A"} | Raynet #{customer.id}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleSelectCustomer(customer)}
+                            className="ml-4 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
+                          >
+                            Vybrat
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Address */}

@@ -46,4 +46,6 @@ export interface UniversalFormData {
   ladderHeight: string;
   totalArea: string;
   slatVerified: string;
+  // Raynet integration
+  raynet_id?: number; // Linked Raynet customer ID
 }
