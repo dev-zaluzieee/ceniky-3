@@ -34,6 +34,8 @@ export interface PliseZaluzieRoom {
  */
 export interface PliseZaluzieFormData {
   // Header section
+  name: string; // Customer name (firstName + lastName from Raynet)
+  email: string; // Customer email
   phone: string;
   address: string;
   city: string;
@@ -53,4 +55,6 @@ export interface PliseZaluzieFormData {
   ladderHeight: string;
   totalArea: string;
   fabricVerified: string; // Látka ověřena
+  // Raynet integration
+  raynet_id?: number; // Linked Raynet customer ID
 }

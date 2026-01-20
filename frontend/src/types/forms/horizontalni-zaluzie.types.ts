@@ -36,6 +36,8 @@ export interface HorizontalniZaluzieRoom {
  */
 export interface HorizontalniZaluzieFormData {
   // Header section
+  name: string; // Customer name (firstName + lastName from Raynet)
+  email: string; // Customer email
   phone: string;
   address: string;
   city: string;
@@ -54,4 +56,6 @@ export interface HorizontalniZaluzieFormData {
   totalArea: string;
   totalCount: string; // Celkem: ks
   slatVerified: string;
+  // Raynet integration
+  raynet_id?: number; // Linked Raynet customer ID
 }

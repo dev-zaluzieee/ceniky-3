@@ -36,6 +36,8 @@ export interface SiteRoom {
  */
 export interface SiteFormData {
   // Header section
+  name: string; // Customer name (firstName + lastName from Raynet)
+  email: string; // Customer email
   phone: string;
   address: string;
   city: string;
@@ -53,4 +55,6 @@ export interface SiteFormData {
   ladderHeight: string;
   totalArea: string;
   slatVerified: string;
+  // Raynet integration
+  raynet_id?: number; // Linked Raynet customer ID
 }
