@@ -69,10 +69,15 @@ export default function UniversalFormClient({
   };
 
   // Initialize form state - use initialData if provided, otherwise use defaults
+  // Merge with defaults to ensure all required fields are present (handles legacy data)
   const [formData, setFormData] = useState<UniversalFormData>(() => {
     if (initialData) {
+      // Merge with defaults to ensure all required fields are present
+      // This handles legacy data that may be missing new fields like name/email
+      const defaults = getDefaultFormData();
       // Ensure rooms and rows have IDs (regenerate if missing for safety)
       return {
+        ...defaults,
         ...initialData,
         rooms: initialData.rooms.map((room) => ({
           ...room,
@@ -99,9 +104,14 @@ export default function UniversalFormClient({
   const [showCustomerSelection, setShowCustomerSelection] = useState(false);
 
   // Update form data when initialData changes (e.g., after fetching)
+  // Merge with defaults to ensure all required fields are present (handles legacy data)
   useEffect(() => {
     if (initialData) {
+      // Merge with defaults to ensure all required fields are present
+      // This handles legacy data that may be missing new fields like name/email
+      const defaults = getDefaultFormData();
       setFormData({
+        ...defaults,
         ...initialData,
         rooms: initialData.rooms.map((room) => ({
           ...room,
