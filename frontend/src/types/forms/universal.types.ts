@@ -31,6 +31,8 @@ export interface UniversalRoom {
  */
 export interface UniversalFormData {
   // Header section
+  name: string; // Customer name (firstName + lastName from Raynet)
+  email: string; // Customer email
   phone: string;
   address: string;
   city: string;

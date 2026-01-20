@@ -31,6 +31,8 @@ interface UniversalFormClientProps {
  * Default empty form data
  */
 const getDefaultFormData = (): UniversalFormData => ({
+  name: "",
+  email: "",
   phone: "",
   address: "",
   city: "",
@@ -293,8 +295,16 @@ export default function UniversalFormClient({
    * @param customer - Raynet lead record
    */
   const prefillFormFromRaynet = (customer: RaynetLead) => {
+    // Build full name from firstName and lastName
+    const fullName = [customer.firstName, customer.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
     setFormData((prev) => ({
       ...prev,
+      name: fullName || prev.name,
+      email: customer.contactInfo.email || prev.email,
       phone: customer.contactInfo.tel1 || prev.phone,
       address: customer.address.street || prev.address,
       city: customer.address.city || prev.city,
@@ -458,6 +468,34 @@ export default function UniversalFormClient({
             Základní informace
           </h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {/* Name */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Jméno
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => handleHeaderChange("name", e.target.value)}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                placeholder="Jméno a příjmení"
+              />
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Email
+              </label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => handleHeaderChange("email", e.target.value)}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                placeholder="email@example.com"
+              />
+            </div>
+
             {/* Phone with Raynet search */}
             <div className="md:col-span-2 lg:col-span-3">
               <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
