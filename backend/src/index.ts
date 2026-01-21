@@ -11,6 +11,7 @@ import swaggerUi from "swagger-ui-express";
 import { getPool, testConnection, closePool } from "./config/database";
 import formsRoutes from "./routes/forms.routes";
 import raynetRoutes from "./routes/raynet.routes";
+import customersRoutes from "./routes/customers.routes";
 
 // Load environment variables
 dotenv.config();
@@ -98,6 +99,7 @@ app.get("/health", async (req: Request, res: Response) => {
 // API routes
 app.use("/api/forms", formsRoutes);
 app.use("/api/raynet", raynetRoutes);
+app.use("/api/customers", customersRoutes);
 
 // Root endpoint
 app.get("/", (req: Request, res: Response) => {
