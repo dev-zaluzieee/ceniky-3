@@ -56,6 +56,7 @@ export interface HorizontalniZaluzieFormData {
   totalArea: string;
   totalCount: string; // Celkem: ks
   slatVerified: string;
-  // Raynet integration
+  // Customer linking (Raynet + ERP)
   raynet_id?: number; // Linked Raynet customer ID
+  erp_customer_id?: number; // Linked ERP customer ID (read-only replica)
 }

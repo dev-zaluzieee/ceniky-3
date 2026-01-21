@@ -3,13 +3,14 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
-import { searchCustomersByPhone } from "@/lib/raynet-api";
+import { searchCustomersDual, validateCustomerPair } from "@/lib/customers-api";
 import {
   SiteFormData,
   SiteRoom,
   SiteEntryRow,
 } from "@/types/forms/site.types";
 import { RaynetLead } from "@/types/raynet.types";
+import { ErpCustomer } from "@/types/erp.types";
 
 /**
  * Props for SiteFormClient
@@ -102,8 +103,15 @@ export default function SiteFormClient({
   // Raynet search state
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [foundCustomers, setFoundCustomers] = useState<RaynetLead[]>([]);
+  const [raynetCandidates, setRaynetCandidates] = useState<RaynetLead[]>([]);
+  const [erpCandidates, setErpCandidates] = useState<ErpCustomer[]>([]);
+  const [selectedRaynet, setSelectedRaynet] = useState<RaynetLead | null>(null);
+  const [selectedErp, setSelectedErp] = useState<ErpCustomer | null>(null);
   const [showCustomerSelection, setShowCustomerSelection] = useState(false);
+
+  // Pair validation state (must be 1 Raynet + 1 ERP)
+  const [isValidatingPair, setIsValidatingPair] = useState(false);
+  const [pairWarning, setPairWarning] = useState<string | null>(null);
 
   // Update form data when initialData changes (e.g., after fetching)
   // Merge with defaults to ensure all required fields are present (handles legacy data)
@@ -330,33 +338,33 @@ export default function SiteFormClient({
   };
 
   /**
-   * Prefill form fields from Raynet customer data
-   * @param customer - Raynet lead record
+   * Apply validated prefill data to the form.
+   * Prefill values are validated as "Raynet + ERP" pair.
    */
-  const prefillFormFromRaynet = (customer: RaynetLead) => {
-    // Build full name from firstName and lastName
-    const fullName = [customer.firstName, customer.lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-
+  const applyValidatedPrefill = (prefill: {
+    name: string;
+    email: string;
+    phone: string;
+    address: string;
+    city: string;
+    raynet_id: number;
+    erp_customer_id: number;
+  }) => {
     setFormData((prev) => ({
       ...prev,
-      name: fullName || prev.name,
-      email: customer.contactInfo.email || prev.email,
-      phone: customer.contactInfo.tel1 || prev.phone,
-      address: customer.address.street || prev.address,
-      city: customer.address.city || prev.city,
-      raynet_id: customer.id, // Link the customer
+      name: prefill.name || prev.name,
+      email: prefill.email || prev.email,
+      phone: prefill.phone || prev.phone,
+      address: prefill.address || prev.address,
+      city: prefill.city || prev.city,
+      raynet_id: prefill.raynet_id,
+      erp_customer_id: prefill.erp_customer_id,
     }));
-    setFoundCustomers([]);
-    setShowCustomerSelection(false);
-    setSearchError(null);
   };
 
   /**
-   * Search for customers in Raynet by phone number
-   * Always shows results to user for selection, even if only one customer is found
+   * Search for customers in Raynet + ERP by phone number.
+   * Always shows results to user for selection (must pick 1 Raynet + 1 ERP).
    */
   const handlePhoneSearch = async () => {
     const phone = formData.phone.trim();
@@ -369,11 +377,15 @@ export default function SiteFormClient({
 
     setIsSearching(true);
     setSearchError(null);
-    setFoundCustomers([]);
+    setRaynetCandidates([]);
+    setErpCandidates([]);
+    setSelectedRaynet(null);
+    setSelectedErp(null);
     setShowCustomerSelection(false);
+    setPairWarning(null);
 
     try {
-      const result = await searchCustomersByPhone(phone);
+      const result = await searchCustomersDual(phone);
 
       if (!result.success) {
         setSearchError(result.error || "Nepodařilo se vyhledat zákazníka");
@@ -381,12 +393,20 @@ export default function SiteFormClient({
         return;
       }
 
-      if (result.data && result.data.customers.length > 0) {
-        // Always show selection UI, even for single customer
-        setFoundCustomers(result.data.customers);
-        setShowCustomerSelection(true);
+      if (result.data) {
+        const raynet = result.data.raynet.customers;
+        const erp = result.data.erp.customers;
+
+        setRaynetCandidates(raynet);
+        setErpCandidates(erp);
+
+        if (raynet.length === 0 && erp.length === 0) {
+          setSearchError("Zákazník s tímto telefonním číslem nebyl nalezen v Raynet ani ERP");
+        } else {
+          setShowCustomerSelection(true);
+        }
       } else {
-        setSearchError("Zákazník s tímto telefonním číslem nebyl nalezen v Raynet");
+        setSearchError("Nepodařilo se načíst výsledky vyhledávání");
       }
     } catch (error: any) {
       console.error("Error searching customers:", error);
@@ -397,28 +417,68 @@ export default function SiteFormClient({
   };
 
   /**
-   * Handle customer selection from multiple results
-   * @param customer - Selected Raynet lead record
+   * Validate the selected Raynet+ERP pair and apply prefill.
    */
-  const handleSelectCustomer = (customer: RaynetLead) => {
-    prefillFormFromRaynet(customer);
+  const handleValidateAndApply = async () => {
+    if (!selectedRaynet || !selectedErp) {
+      setPairWarning("⚠️ Vyberte prosím 1 zákazníka z Raynetu i z ERP.");
+      return;
+    }
+
+    setIsValidatingPair(true);
+    setPairWarning(null);
+
+    try {
+      const result = await validateCustomerPair(selectedRaynet, selectedErp);
+      if (!result.success || !result.data) {
+        setPairWarning(result.error || "⚠️ Nepodařilo se ověřit dvojici Raynet + ERP.");
+        return;
+      }
+
+      if (!result.data.ok) {
+        setPairWarning(result.data.warning || "⚠️ KONFLIKT DAT: dvojice Raynet + ERP se neshoduje.");
+        if (result.data.prefill) {
+          applyValidatedPrefill(result.data.prefill);
+        }
+        return;
+      }
+
+      if (result.data.prefill) {
+        applyValidatedPrefill(result.data.prefill);
+        setShowCustomerSelection(false);
+        setRaynetCandidates([]);
+        setErpCandidates([]);
+        setSelectedRaynet(null);
+        setSelectedErp(null);
+        setSearchError(null);
+        setPairWarning(null);
+      } else {
+        setPairWarning("⚠️ Ověření proběhlo, ale chybí prefill data.");
+      }
+    } finally {
+      setIsValidatingPair(false);
+    }
   };
 
   /**
    * Clear customer search results
    */
   const handleClearSearch = () => {
-    setFoundCustomers([]);
+    setRaynetCandidates([]);
+    setErpCandidates([]);
+    setSelectedRaynet(null);
+    setSelectedErp(null);
     setShowCustomerSelection(false);
     setSearchError(null);
+    setPairWarning(null);
   };
 
   /**
-   * Unlink Raynet customer from form
+   * Unlink customers from form (Raynet + ERP)
    */
   const handleUnlinkCustomer = () => {
     setFormData((prev) => {
-      const { raynet_id, ...rest } = prev;
+      const { raynet_id, erp_customer_id, ...rest } = prev;
       return rest;
     });
   };
@@ -539,7 +599,7 @@ export default function SiteFormClient({
             <div className="md:col-span-2 lg:col-span-3">
               <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Telefon
-                {formData.raynet_id && (
+                {(formData.raynet_id || formData.erp_customer_id) && (
                   <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
                     <svg
                       className="h-3 w-3"
@@ -554,7 +614,9 @@ export default function SiteFormClient({
                         d="M5 13l4 4L19 7"
                       />
                     </svg>
-                    Propojeno s Raynet #{formData.raynet_id}
+                    Propojeno
+                    {formData.raynet_id ? ` Raynet #${formData.raynet_id}` : ""}
+                    {formData.erp_customer_id ? ` | ERP #${formData.erp_customer_id}` : ""}
                   </span>
                 )}
               </label>
@@ -617,16 +679,16 @@ export default function SiteFormClient({
                           d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                         />
                       </svg>
-                      Vyhledat v Raynet
+                      Vyhledat v Raynet + ERP
                     </>
                   )}
                 </button>
-                {formData.raynet_id && (
+                {(formData.raynet_id || formData.erp_customer_id) && (
                   <button
                     type="button"
                     onClick={handleUnlinkCustomer}
                     className="flex items-center gap-2 rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
-                    title="Odpojit od Raynet zákazníka"
+                    title="Odpojit zákazníka (Raynet + ERP)"
                   >
                     <svg
                       className="h-4 w-4"
@@ -652,15 +714,20 @@ export default function SiteFormClient({
                 </div>
               )}
 
-              {/* Customer Selection (Always show results for user to choose) */}
-              {showCustomerSelection && foundCustomers.length > 0 && (
+              {/* Pair Warning (conflicts etc.) */}
+              {pairWarning && (
+                <div className="mt-3 rounded-md border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200">
+                  {pairWarning}
+                </div>
+              )}
+
+              {/* Customer Selection: must choose 1 from Raynet and 1 from ERP */}
+              {showCustomerSelection && (raynetCandidates.length > 0 || erpCandidates.length > 0) && (
                 <div className="mt-3 rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
                   <div className="border-b border-zinc-200 px-4 py-2 dark:border-zinc-700">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                        {foundCustomers.length === 1
-                          ? "Nalezen 1 zákazník. Vyberte prosím:"
-                          : `Nalezeno ${foundCustomers.length} zákazníků. Vyberte prosím:`}
+                        Vyberte prosím 1 zákazníka z Raynetu a 1 zákazníka z ERP (bez konfliktu).
                       </p>
                       <button
                         type="button"
@@ -671,37 +738,152 @@ export default function SiteFormClient({
                       </button>
                     </div>
                   </div>
-                  <div className="max-h-60 overflow-y-auto">
-                    {foundCustomers.map((customer) => (
-                      <div
-                        key={customer.id}
-                        className="border-b border-zinc-200 px-4 py-3 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-700/50"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <p className="font-medium text-zinc-900 dark:text-zinc-50">
-                              {customer.firstName} {customer.lastName}
-                              {customer.companyName && ` (${customer.companyName})`}
-                            </p>
-                            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                              {customer.address.street && `${customer.address.street}, `}
-                              {customer.address.city && customer.address.city}
-                              {customer.address.zipCode && ` ${customer.address.zipCode}`}
-                            </p>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-500">
-                              Tel: {customer.contactInfo.tel1 || "N/A"} | Raynet #{customer.id}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleSelectCustomer(customer)}
-                            className="ml-4 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
-                          >
-                            Vybrat
-                          </button>
-                        </div>
+                  <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+                    {/* Raynet column */}
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                          Raynet ({raynetCandidates.length})
+                        </p>
+                        {selectedRaynet && (
+                          <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                            Vybráno: #{selectedRaynet.id}
+                          </span>
+                        )}
                       </div>
-                    ))}
+
+                      {raynetCandidates.length === 0 ? (
+                        <p className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900/30 dark:text-zinc-400">
+                          Žádní zákazníci v Raynet nebyli nalezeni.
+                        </p>
+                      ) : (
+                        <div className="max-h-72 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-700">
+                          {raynetCandidates.map((c) => {
+                            const isSelected = selectedRaynet?.id === c.id;
+                            return (
+                              <div
+                                key={c.id}
+                                className={`border-b border-zinc-200 px-3 py-2 transition-colors dark:border-zinc-700 ${
+                                  isSelected
+                                    ? "bg-blue-50 dark:bg-blue-900/20"
+                                    : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                                      {c.firstName} {c.lastName}
+                                      {c.companyName && ` (${c.companyName})`}
+                                    </p>
+                                    <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                                      {c.address.street && `${c.address.street}, `}
+                                      {c.address.city && c.address.city}
+                                      {c.address.zipCode && ` ${c.address.zipCode}`}
+                                    </p>
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                                      Tel: {c.contactInfo.tel1 || "N/A"} | Email: {c.contactInfo.email || "N/A"} | Raynet #{c.id}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedRaynet(c)}
+                                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                                      isSelected
+                                        ? "bg-blue-600 text-white hover:bg-blue-700"
+                                        : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-600"
+                                    }`}
+                                  >
+                                    {isSelected ? "Vybráno" : "Vybrat"}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ERP column */}
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                          ERP ({erpCandidates.length})
+                        </p>
+                        {selectedErp && (
+                          <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                            Vybráno: #{selectedErp.id}
+                          </span>
+                        )}
+                      </div>
+
+                      {erpCandidates.length === 0 ? (
+                        <p className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900/30 dark:text-zinc-400">
+                          Žádní zákazníci v ERP nebyli nalezeni.
+                        </p>
+                      ) : (
+                        <div className="max-h-72 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-700">
+                          {erpCandidates.map((c) => {
+                            const isSelected = selectedErp?.id === c.id;
+                            return (
+                              <div
+                                key={c.id}
+                                className={`border-b border-zinc-200 px-3 py-2 transition-colors dark:border-zinc-700 ${
+                                  isSelected
+                                    ? "bg-blue-50 dark:bg-blue-900/20"
+                                    : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                                      {c.name || "—"}
+                                    </p>
+                                    <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                                      {c.address && `${c.address}, `}
+                                      {c.city || ""}
+                                      {c.zipcode ? ` ${c.zipcode}` : ""}
+                                    </p>
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                                      Tel: {c.phone || "N/A"} | Email: {c.email || "N/A"} | ERP #{c.id}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedErp(c)}
+                                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                                      isSelected
+                                        ? "bg-blue-600 text-white hover:bg-blue-700"
+                                        : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-600"
+                                    }`}
+                                  >
+                                    {isSelected ? "Vybráno" : "Vybrat"}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Validate button */}
+                  <div className="border-t border-zinc-200 px-4 py-3 dark:border-zinc-700">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                        {selectedRaynet && selectedErp
+                          ? "Vybráno 1× Raynet + 1× ERP. Klikněte na ověření."
+                          : "Vyberte prosím 1× Raynet a 1× ERP."}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleValidateAndApply}
+                        disabled={!selectedRaynet || !selectedErp || isValidatingPair}
+                        className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-zinc-800"
+                      >
+                        {isValidatingPair ? "Ověřuji..." : "Ověřit & použít"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

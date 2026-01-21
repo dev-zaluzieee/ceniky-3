@@ -389,9 +389,17 @@ export default function UniversalFormClient({
       }
 
       if (result.data) {
-        setRaynetCandidates(result.data.raynet.customers);
-        setErpCandidates(result.data.erp.customers);
-        setShowCustomerSelection(true);
+        const raynet = result.data.raynet.customers;
+        const erp = result.data.erp.customers;
+
+        setRaynetCandidates(raynet);
+        setErpCandidates(erp);
+
+        if (raynet.length === 0 && erp.length === 0) {
+          setSearchError("Zákazník s tímto telefonním číslem nebyl nalezen v Raynet ani ERP");
+        } else {
+          setShowCustomerSelection(true);
+        }
       } else {
         setSearchError("Nepodařilo se načíst výsledky vyhledávání");
       }

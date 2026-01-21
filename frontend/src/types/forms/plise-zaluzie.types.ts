@@ -55,6 +55,7 @@ export interface PliseZaluzieFormData {
   ladderHeight: string;
   totalArea: string;
   fabricVerified: string; // Látka ověřena
-  // Raynet integration
+  // Customer linking (Raynet + ERP)
   raynet_id?: number; // Linked Raynet customer ID
+  erp_customer_id?: number; // Linked ERP customer ID (read-only replica)
 }
