@@ -27,13 +27,14 @@ export interface FormRecord {
 }
 
 /**
- * Request body for creating a form
+ * Request body for creating a form.
+ * Every form must belong to an order (customer).
  */
 export interface CreateFormRequest {
   form_type: FormType;
   form_json: Record<string, any>;
-  /** Optional: link form to an order (zakázka) */
-  order_id?: number | null;
+  /** Required: order (zakázka) this form belongs to */
+  order_id: number;
 }
 
 /**

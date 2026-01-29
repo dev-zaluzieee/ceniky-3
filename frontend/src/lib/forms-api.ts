@@ -87,6 +87,26 @@ export async function submitForm(
 }
 
 /**
+ * Get a single form by ID (for duplicate, etc.)
+ * @param formId - ID of the form
+ * @returns Promise with form record or null if not found / error
+ */
+export async function getFormById(formId: number): Promise<FormRecord | null> {
+  try {
+    const response = await fetch(`/api/forms/${formId}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    const data = await response.json();
+    if (!response.ok || !data?.data) return null;
+    return data.data as FormRecord;
+  } catch (error: any) {
+    console.error("Error fetching form:", error);
+    return null;
+  }
+}
+
+/**
  * Update an existing form
  * @param formId - ID of the form to update
  * @param formData - Updated form data object

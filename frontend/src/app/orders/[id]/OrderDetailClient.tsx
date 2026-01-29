@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import type { OrderRecord } from "@/lib/orders-api";
 import { updateOrder } from "@/lib/orders-api";
 import type { FormRecord, FormType, PaginationInfo } from "@/lib/forms-api";
+import { getFormById, submitForm } from "@/lib/forms-api";
 import { parseForm } from "@/parsers/forms";
 
 /** Form type to display name (Czech) */
@@ -72,6 +73,8 @@ export default function OrderDetailClient({
   const [forms, setForms] = useState(initialForms);
   const [showAddForm, setShowAddForm] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<number | null>(null);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
 
   /** Editable customer data (synced from order) */
   const [customerData, setCustomerData] = useState({
@@ -143,6 +146,40 @@ export default function OrderDetailClient({
       console.error("Delete form error:", e);
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  /** Duplicate a form: fetch full form, create new with same type/json under this order */
+  const handleDuplicateForm = async (formId: number) => {
+    if (duplicatingId !== null) return;
+    setDuplicatingId(formId);
+    setDuplicateError(null);
+    try {
+      const form = await getFormById(formId);
+      if (!form) {
+        setDuplicateError("Formulář se nepodařilo načíst.");
+        return;
+      }
+      const res = await submitForm(form.form_type, form.form_json, order.id);
+      if (!res.success || !res.data) {
+        setDuplicateError(res.error ?? "Duplikace se nepodařila.");
+        return;
+      }
+      const newRecord: FormRecord = {
+        id: res.data.id,
+        user_id: res.data.user_id,
+        form_type: res.data.form_type,
+        form_json: res.data.form_json,
+        order_id: order.id,
+        created_at: res.data.created_at,
+        updated_at: res.data.updated_at,
+        deleted_at: null,
+      };
+      setForms((prev) => [...prev, newRecord]);
+    } catch (e: any) {
+      setDuplicateError(e?.message ?? "Chyba při duplikaci.");
+    } finally {
+      setDuplicatingId(null);
     }
   };
 
@@ -310,6 +347,10 @@ export default function OrderDetailClient({
           </p>
         )}
 
+        {duplicateError && (
+          <p className="mb-2 text-sm text-red-600 dark:text-red-400">{duplicateError}</p>
+        )}
+
         {/* Forms list */}
         {forms.length === 0 ? (
           <div className="rounded-lg border border-zinc-200 bg-white p-8 text-center dark:border-zinc-700 dark:bg-zinc-800">
@@ -361,6 +402,14 @@ export default function OrderDetailClient({
                       )}
                       <button
                         type="button"
+                        onClick={() => handleDuplicateForm(form.id)}
+                        disabled={duplicatingId === form.id}
+                        className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-600 disabled:opacity-50"
+                      >
+                        {duplicatingId === form.id ? "Kopíruji…" : "Duplikovat"}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDeleteForm(form.id)}
                         disabled={deletingId === form.id}
                         className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50"
@@ -374,16 +423,6 @@ export default function OrderDetailClient({
             })}
           </div>
         )}
-
-        {/* Link to forms list (vytvořené formuláře) */}
-        <div className="mt-8 border-t border-zinc-200 pt-6 dark:border-zinc-700">
-          <Link
-            href="/forms/list"
-            className="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-          >
-            Zobrazit všechny vytvořené formuláře →
-          </Link>
-        </div>
       </div>
     </div>
   );

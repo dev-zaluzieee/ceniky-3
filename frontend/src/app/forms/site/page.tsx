@@ -38,5 +38,10 @@ export default async function SiteFormPage({
     }
   }
 
+  // Create form requires an order (customer); redirect to orders if missing
+  if (orderId == null) {
+    redirect("/orders");
+  }
+
   return <SiteFormClient orderId={orderId} customerFromOrder={customerFromOrder} />;
 }

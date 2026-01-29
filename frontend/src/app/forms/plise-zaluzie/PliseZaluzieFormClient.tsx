@@ -531,10 +531,10 @@ export default function PliseZaluzieFormClient({
   return (
     <div className="min-h-screen bg-zinc-50 py-8 px-4 dark:bg-zinc-900">
       <div className="mx-auto max-w-7xl">
-        {/* Header with back link */}
+        {/* Header with back link: to order when orderId present, else to home */}
         <div className="mb-6 flex items-center justify-between">
           <Link
-            href="/"
+            href={orderId != null ? `/orders/${orderId}` : "/"}
             className="flex items-center gap-2 text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
           >
             <svg
@@ -550,7 +550,7 @@ export default function PliseZaluzieFormClient({
                 d="M15 19l-7-7 7-7"
               />
             </svg>
-            Zpět na výběr formulářů
+            {orderId != null ? "Zpět k zakázce" : "Zpět na výběr formulářů"}
           </Link>
         </div>
 

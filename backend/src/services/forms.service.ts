@@ -35,13 +35,14 @@ export async function createForm(
   // Validate form JSON
   validateFormJson(request.form_json);
 
-  // If order_id provided, ensure order exists and belongs to user
-  const orderId = request.order_id ?? null;
-  if (orderId != null) {
-    const order = await ordersQueries.getOrderById(pool, orderId, userId);
-    if (!order) {
-      throw new BadRequestError("Order not found or access denied", "ORDER_NOT_FOUND");
-    }
+  // order_id is required: every form must belong to an order
+  const orderId = request.order_id;
+  if (orderId == null || typeof orderId !== "number") {
+    throw new BadRequestError("order_id is required", "ORDER_ID_REQUIRED");
+  }
+  const order = await ordersQueries.getOrderById(pool, orderId, userId);
+  if (!order) {
+    throw new BadRequestError("Order not found or access denied", "ORDER_NOT_FOUND");
   }
 
   // Create form in database

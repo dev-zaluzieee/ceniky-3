@@ -38,5 +38,10 @@ export default async function UniversalFormPage({
     }
   }
 
+  // Create form requires an order (customer); redirect to orders if missing
+  if (orderId == null) {
+    redirect("/orders");
+  }
+
   return <UniversalFormClient orderId={orderId} customerFromOrder={customerFromOrder} />;
 }

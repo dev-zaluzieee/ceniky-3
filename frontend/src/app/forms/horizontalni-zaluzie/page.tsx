@@ -40,6 +40,11 @@ export default async function HorizontalniZaluzieFormPage({
     }
   }
 
+  // Create form requires an order (customer); redirect to orders if missing
+  if (orderId == null) {
+    redirect("/orders");
+  }
+
   return (
     <HorizontalniZaluzieFormClient
       orderId={orderId}

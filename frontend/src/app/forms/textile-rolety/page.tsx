@@ -38,5 +38,10 @@ export default async function TextileRoletyFormPage({
     }
   }
 
+  // Create form requires an order (customer); redirect to orders if missing
+  if (orderId == null) {
+    redirect("/orders");
+  }
+
   return <TextileRoletyFormClient orderId={orderId} customerFromOrder={customerFromOrder} />;
 }

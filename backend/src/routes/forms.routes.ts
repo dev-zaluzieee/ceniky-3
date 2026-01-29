@@ -126,7 +126,10 @@ router.post("/", authenticateToken, async (req: AuthenticatedRequest, res: Respo
       ...req.body,
       order_id: req.body.order_id != null ? parseInt(req.body.order_id, 10) : undefined,
     };
-    if (body.order_id !== undefined && isNaN(body.order_id)) {
+    if (body.order_id === undefined) {
+      return res.status(400).json({ success: false, error: "order_id is required" });
+    }
+    if (isNaN(body.order_id)) {
       return res.status(400).json({ success: false, error: "Invalid order_id" });
     }
 
