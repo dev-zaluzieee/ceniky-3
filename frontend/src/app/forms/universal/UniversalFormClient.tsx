@@ -12,20 +12,24 @@ import {
 import { RaynetLead } from "@/types/raynet.types";
 import { ErpCustomer } from "@/types/erp.types";
 
+/** Customer data from order (read-only when creating form under an order) */
+interface CustomerFromOrder {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+}
+
 /**
  * Props for UniversalFormClient
  */
 interface UniversalFormClientProps {
-  /**
-   * Initial form data for edit mode
-   * If provided, form will be initialized with this data
-   */
   initialData?: UniversalFormData;
-  /**
-   * Form ID for edit mode
-   * If provided, form will update existing form instead of creating new one
-   */
   formId?: number;
+  /** Order ID when creating form under an order; customer is read-only */
+  orderId?: number;
+  customerFromOrder?: CustomerFromOrder;
 }
 
 /**
@@ -57,9 +61,11 @@ const getDefaultFormData = (): UniversalFormData => ({
 export default function UniversalFormClient({
   initialData,
   formId,
+  orderId,
+  customerFromOrder,
 }: UniversalFormClientProps) {
-  // Determine if we're in edit mode
   const isEditMode = !!formId && !!initialData;
+  const customerLockedFromOrder = !!orderId && !!customerFromOrder;
 
   /**
    * Generate unique ID for rooms and rows
@@ -73,10 +79,7 @@ export default function UniversalFormClient({
   // Merge with defaults to ensure all required fields are present (handles legacy data)
   const [formData, setFormData] = useState<UniversalFormData>(() => {
     if (initialData) {
-      // Merge with defaults to ensure all required fields are present
-      // This handles legacy data that may be missing new fields like name/email
       const defaults = getDefaultFormData();
-      // Ensure rooms and rows have IDs (regenerate if missing for safety)
       return {
         ...defaults,
         ...initialData,
@@ -90,7 +93,18 @@ export default function UniversalFormClient({
         })),
       };
     }
-    return getDefaultFormData();
+    const defaults = getDefaultFormData();
+    if (customerFromOrder) {
+      return {
+        ...defaults,
+        name: customerFromOrder.name ?? "",
+        email: customerFromOrder.email ?? "",
+        phone: customerFromOrder.phone ?? "",
+        address: customerFromOrder.address ?? "",
+        city: customerFromOrder.city ?? "",
+      };
+    }
+    return defaults;
   });
 
   // Submission state
@@ -494,8 +508,7 @@ export default function UniversalFormClient({
         // Update existing form
         result = await updateForm(formId, formData);
       } else {
-        // Create new form
-        result = await submitForm("universal", formData);
+        result = await submitForm("universal", formData, orderId ?? undefined);
       }
 
       if (result.success) {
@@ -572,8 +585,9 @@ export default function UniversalFormClient({
                 type="text"
                 value={formData.name}
                 onChange={(e) => handleHeaderChange("name", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
                 placeholder="Jméno a příjmení"
+                disabled={customerLockedFromOrder}
               />
             </div>
 
@@ -586,8 +600,9 @@ export default function UniversalFormClient({
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleHeaderChange("email", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
                 placeholder="email@example.com"
+                disabled={customerLockedFromOrder}
               />
             </div>
 
@@ -595,7 +610,10 @@ export default function UniversalFormClient({
             <div className="md:col-span-2 lg:col-span-3">
               <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Telefon
-                {(formData.raynet_id || formData.erp_customer_id) && (
+                {customerLockedFromOrder && (
+                  <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-400">(z zakázky – nelze měnit)</span>
+                )}
+                {(formData.raynet_id || formData.erp_customer_id) && !customerLockedFromOrder && (
                   <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
                     <svg
                       className="h-3 w-3"
@@ -627,10 +645,11 @@ export default function UniversalFormClient({
                       handlePhoneSearch();
                     }
                   }}
-                  className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                  className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
                   placeholder="+420 ..."
-                  disabled={isSearching}
+                  disabled={isSearching || customerLockedFromOrder}
                 />
+                {!customerLockedFromOrder && (
                 <button
                   type="button"
                   onClick={handlePhoneSearch}
@@ -679,7 +698,8 @@ export default function UniversalFormClient({
                     </>
                   )}
                 </button>
-                {(formData.raynet_id || formData.erp_customer_id) && (
+                )}
+                {(formData.raynet_id || formData.erp_customer_id) && !customerLockedFromOrder && (
                   <button
                     type="button"
                     onClick={handleUnlinkCustomer}
@@ -703,6 +723,8 @@ export default function UniversalFormClient({
                 )}
               </div>
 
+              {!customerLockedFromOrder && (
+              <>
               {/* Search Error */}
               {searchError && (
                 <div className="mt-2 rounded-md bg-red-50 p-2 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400">
@@ -884,6 +906,8 @@ export default function UniversalFormClient({
                   </div>
                 </div>
               )}
+              </>
+              )}
             </div>
 
             {/* Address */}
@@ -895,8 +919,9 @@ export default function UniversalFormClient({
                 type="text"
                 value={formData.address}
                 onChange={(e) => handleHeaderChange("address", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
                 placeholder="Ulice, č.p."
+                disabled={customerLockedFromOrder}
               />
             </div>
 
@@ -909,8 +934,9 @@ export default function UniversalFormClient({
                 type="text"
                 value={formData.city}
                 onChange={(e) => handleHeaderChange("city", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
                 placeholder="Město"
+                disabled={customerLockedFromOrder}
               />
             </div>
 

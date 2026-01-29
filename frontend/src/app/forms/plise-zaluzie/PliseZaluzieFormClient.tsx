@@ -12,20 +12,20 @@ import {
 import { RaynetLead } from "@/types/raynet.types";
 import { ErpCustomer } from "@/types/erp.types";
 
-/**
- * Props for PliseZaluzieFormClient
- */
+/** Customer data from order (read-only when creating form under an order) */
+interface CustomerFromOrder {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+}
+
 interface PliseZaluzieFormClientProps {
-  /**
-   * Initial form data for edit mode
-   * If provided, form will be initialized with this data
-   */
   initialData?: PliseZaluzieFormData;
-  /**
-   * Form ID for edit mode
-   * If provided, form will update existing form instead of creating new one
-   */
   formId?: number;
+  orderId?: number;
+  customerFromOrder?: CustomerFromOrder;
 }
 
 /**
@@ -61,26 +61,19 @@ const getDefaultFormData = (): PliseZaluzieFormData => ({
 export default function PliseZaluzieFormClient({
   initialData,
   formId,
+  orderId,
+  customerFromOrder,
 }: PliseZaluzieFormClientProps) {
-  /**
-   * Generate unique ID for rooms and rows
-   * Must be defined before useState initializer to avoid ReferenceError
-   */
   const generateId = (): string => {
     return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   };
 
-  // Determine if we're in edit mode
   const isEditMode = !!formId && !!initialData;
+  const customerLockedFromOrder = !!orderId && !!customerFromOrder;
 
-  // Initialize form state - use initialData if provided, otherwise use defaults
-  // Merge with defaults to ensure all required fields are present (handles legacy data)
   const [formData, setFormData] = useState<PliseZaluzieFormData>(() => {
     if (initialData) {
-      // Merge with defaults to ensure all required fields are present
-      // This handles legacy data that may be missing new fields like name/email
       const defaults = getDefaultFormData();
-      // Ensure rooms and rows have IDs (regenerate if missing for safety)
       return {
         ...defaults,
         ...initialData,
@@ -94,7 +87,18 @@ export default function PliseZaluzieFormClient({
         })),
       };
     }
-    return getDefaultFormData();
+    const defaults = getDefaultFormData();
+    if (customerFromOrder) {
+      return {
+        ...defaults,
+        name: customerFromOrder.name ?? "",
+        email: customerFromOrder.email ?? "",
+        phone: customerFromOrder.phone ?? "",
+        address: customerFromOrder.address ?? "",
+        city: customerFromOrder.city ?? "",
+      };
+    }
+    return defaults;
   });
 
   // Submission state
@@ -498,8 +502,7 @@ export default function PliseZaluzieFormClient({
         // Update existing form
         result = await updateForm(formId, formData);
       } else {
-        // Create new form
-        result = await submitForm("plise-zaluzie", formData);
+        result = await submitForm("plise-zaluzie", formData, orderId ?? undefined);
       }
 
       if (result.success) {

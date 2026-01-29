@@ -36,20 +36,31 @@ export interface FormSubmissionResponse {
  * @param formData - Form data object
  * @returns Promise with submission response
  */
+/**
+ * Submit a form to the API (optionally linked to an order)
+ * @param formType - Type of form being submitted
+ * @param formData - Form data object
+ * @param orderId - Optional order ID to link form to (zakázka)
+ */
 export async function submitForm(
   formType: FormType,
-  formData: Record<string, any>
+  formData: Record<string, any>,
+  orderId?: number | null
 ): Promise<FormSubmissionResponse> {
   try {
+    const body: Record<string, unknown> = {
+      form_type: formType,
+      form_json: formData,
+    };
+    if (orderId != null) {
+      body.order_id = orderId;
+    }
     const response = await fetch("/api/forms", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        form_type: formType,
-        form_json: formData,
-      }),
+      body: JSON.stringify(body),
     });
 
     const data = await response.json();
@@ -127,6 +138,7 @@ export interface FormRecord {
   user_id: string;
   form_type: FormType;
   form_json: Record<string, any>;
+  order_id: number | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -158,6 +170,8 @@ export interface ListFormsResponse {
  */
 export interface ListFormsQuery {
   form_type?: FormType;
+  /** Filter by order ID (zakázka) */
+  order_id?: number;
   page?: number;
   limit?: number;
 }
@@ -175,6 +189,9 @@ export async function getForms(
     const params = new URLSearchParams();
     if (query.form_type) {
       params.append("form_type", query.form_type);
+    }
+    if (query.order_id != null) {
+      params.append("order_id", query.order_id.toString());
     }
     if (query.page) {
       params.append("page", query.page.toString());

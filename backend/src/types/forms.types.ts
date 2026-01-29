@@ -20,6 +20,7 @@ export interface FormRecord {
   user_id: string;
   form_type: FormType;
   form_json: Record<string, any>;
+  order_id: number | null;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
@@ -31,6 +32,8 @@ export interface FormRecord {
 export interface CreateFormRequest {
   form_type: FormType;
   form_json: Record<string, any>;
+  /** Optional: link form to an order (zakázka) */
+  order_id?: number | null;
 }
 
 /**
@@ -45,6 +48,8 @@ export interface UpdateFormRequest {
  */
 export interface ListFormsQuery {
   form_type?: FormType;
+  /** Filter forms by order ID */
+  order_id?: number;
   page?: number;
   limit?: number;
 }

@@ -13,22 +13,29 @@ import { DatabaseError, NotFoundError } from "../utils/errors";
  * @param userId - User ID (email)
  * @param formType - Type of form
  * @param formJson - Form data as JSON object
+ * @param orderId - Optional order ID to link form to
  * @returns Created form record
  */
 export async function createForm(
   pool: Pool,
   userId: string,
   formType: FormType,
-  formJson: Record<string, any>
+  formJson: Record<string, any>,
+  orderId?: number | null
 ): Promise<FormRecord> {
   const query = `
-    INSERT INTO forms (user_id, form_type, form_json)
-    VALUES ($1, $2, $3::jsonb)
-    RETURNING id, user_id, form_type, form_json, created_at, updated_at, deleted_at
+    INSERT INTO forms (user_id, form_type, form_json, order_id)
+    VALUES ($1, $2, $3::jsonb, $4)
+    RETURNING id, user_id, form_type, form_json, order_id, created_at, updated_at, deleted_at
   `;
 
   try {
-    const result = await pool.query(query, [userId, formType, JSON.stringify(formJson)]);
+    const result = await pool.query(query, [
+      userId,
+      formType,
+      JSON.stringify(formJson),
+      orderId ?? null,
+    ]);
     return mapRowToFormRecord(result.rows[0]);
   } catch (error: any) {
     throw new DatabaseError(`Failed to create form: ${error.message}`, error);
@@ -44,7 +51,7 @@ export async function createForm(
  */
 export async function getFormById(pool: Pool, id: number, userId: string): Promise<FormRecord | null> {
   const query = `
-    SELECT id, user_id, form_type, form_json, created_at, updated_at, deleted_at
+    SELECT id, user_id, form_type, form_json, order_id, created_at, updated_at, deleted_at
     FROM forms
     WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
   `;
@@ -86,6 +93,12 @@ export async function getFormsByUserId(
     paramIndex++;
   }
 
+  if (options.order_id != null) {
+    conditions.push(`order_id = $${paramIndex}`);
+    params.push(options.order_id);
+    paramIndex++;
+  }
+
   const whereClause = conditions.join(" AND ");
 
   // Get total count
@@ -95,7 +108,7 @@ export async function getFormsByUserId(
 
   // Get paginated results
   const dataQuery = `
-    SELECT id, user_id, form_type, form_json, created_at, updated_at, deleted_at
+    SELECT id, user_id, form_type, form_json, order_id, created_at, updated_at, deleted_at
     FROM forms
     WHERE ${whereClause}
     ORDER BY created_at DESC
@@ -131,7 +144,7 @@ export async function updateForm(
     UPDATE forms
     SET form_json = $1::jsonb, updated_at = CURRENT_TIMESTAMP
     WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL
-    RETURNING id, user_id, form_type, form_json, created_at, updated_at, deleted_at
+    RETURNING id, user_id, form_type, form_json, order_id, created_at, updated_at, deleted_at
   `;
 
   try {
@@ -180,6 +193,7 @@ function mapRowToFormRecord(row: any): FormRecord {
     user_id: row.user_id,
     form_type: row.form_type,
     form_json: typeof row.form_json === "string" ? JSON.parse(row.form_json) : row.form_json,
+    order_id: row.order_id != null ? row.order_id : null,
     created_at: new Date(row.created_at),
     updated_at: new Date(row.updated_at),
     deleted_at: row.deleted_at ? new Date(row.deleted_at) : null,

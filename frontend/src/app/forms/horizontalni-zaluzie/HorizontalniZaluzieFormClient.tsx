@@ -13,6 +13,17 @@ import { RaynetLead } from "@/types/raynet.types";
 import { ErpCustomer } from "@/types/erp.types";
 
 /**
+ * Customer data from order (read-only in form when creating form under an order)
+ */
+export interface CustomerFromOrder {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+}
+
+/**
  * Props for HorizontalniZaluzieFormClient
  */
 interface HorizontalniZaluzieFormClientProps {
@@ -26,6 +37,15 @@ interface HorizontalniZaluzieFormClientProps {
    * If provided, form will update existing form instead of creating new one
    */
   formId?: number;
+  /**
+   * Order ID when creating a form under an order (zakázka).
+   * Customer data is taken from order and shown read-only.
+   */
+  orderId?: number;
+  /**
+   * Customer data from the order (read-only). When set, customer fields are disabled.
+   */
+  customerFromOrder?: CustomerFromOrder;
 }
 
 /**
@@ -60,6 +80,8 @@ const getDefaultFormData = (): HorizontalniZaluzieFormData => ({
 export default function HorizontalniZaluzieFormClient({
   initialData,
   formId,
+  orderId,
+  customerFromOrder,
 }: HorizontalniZaluzieFormClientProps) {
   /**
    * Generate unique ID for rooms and rows
@@ -70,15 +92,14 @@ export default function HorizontalniZaluzieFormClient({
 
   // Determine if we're in edit mode
   const isEditMode = !!formId && !!initialData;
+  // Customer is locked from order (read-only) when creating a form under an order
+  const customerLockedFromOrder = !!orderId && !!customerFromOrder;
 
   // Initialize form state - use initialData if provided, otherwise use defaults
-  // Merge with defaults to ensure all required fields are present (handles legacy data)
+  // When customerFromOrder is set, prefill name, email, phone, address, city
   const [formData, setFormData] = useState<HorizontalniZaluzieFormData>(() => {
     if (initialData) {
-      // Merge with defaults to ensure all required fields are present
-      // This handles legacy data that may be missing new fields like name/email
       const defaults = getDefaultFormData();
-      // Ensure rooms and rows have IDs (regenerate if missing for safety)
       return {
         ...defaults,
         ...initialData,
@@ -92,7 +113,18 @@ export default function HorizontalniZaluzieFormClient({
         })),
       };
     }
-    return getDefaultFormData();
+    const defaults = getDefaultFormData();
+    if (customerFromOrder) {
+      return {
+        ...defaults,
+        name: customerFromOrder.name ?? "",
+        email: customerFromOrder.email ?? "",
+        phone: customerFromOrder.phone ?? "",
+        address: customerFromOrder.address ?? "",
+        city: customerFromOrder.city ?? "",
+      };
+    }
+    return defaults;
   });
 
   // Submission state
@@ -498,8 +530,8 @@ export default function HorizontalniZaluzieFormClient({
         // Update existing form
         result = await updateForm(formId, formData);
       } else {
-        // Create new form
-        result = await submitForm("horizontalni-zaluzie", formData);
+        // Create new form (optionally link to order)
+        result = await submitForm("horizontalni-zaluzie", formData, orderId ?? undefined);
       }
 
       if (result.success) {
@@ -572,13 +604,19 @@ export default function HorizontalniZaluzieFormClient({
               <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Jméno
               </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => handleHeaderChange("name", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                placeholder="Jméno a příjmení"
-              />
+              {customerLockedFromOrder ? (
+                <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700/50 dark:text-zinc-300">
+                  {formData.name || "—"}
+                </p>
+              ) : (
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => handleHeaderChange("name", e.target.value)}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                  placeholder="Jméno a příjmení"
+                />
+              )}
             </div>
 
             {/* Email */}
@@ -586,20 +624,26 @@ export default function HorizontalniZaluzieFormClient({
               <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Email
               </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => handleHeaderChange("email", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                placeholder="email@example.com"
-              />
+              {customerLockedFromOrder ? (
+                <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700/50 dark:text-zinc-300">
+                  {formData.email || "—"}
+                </p>
+              ) : (
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => handleHeaderChange("email", e.target.value)}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                  placeholder="email@example.com"
+                />
+              )}
             </div>
 
-            {/* Phone with Raynet search */}
+            {/* Phone with Raynet search (hidden when customer from order) */}
             <div className="md:col-span-2 lg:col-span-3">
               <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Telefon
-                {(formData.raynet_id || formData.erp_customer_id) && (
+                {(formData.raynet_id || formData.erp_customer_id) && !customerLockedFromOrder && (
                   <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
                     <svg
                       className="h-3 w-3"
@@ -619,7 +663,18 @@ export default function HorizontalniZaluzieFormClient({
                     {formData.erp_customer_id ? ` | ERP #${formData.erp_customer_id}` : ""}
                   </span>
                 )}
+                {customerLockedFromOrder && (
+                  <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    (z zakázky – nelze měnit)
+                  </span>
+                )}
               </label>
+              {customerLockedFromOrder ? (
+                <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700/50 dark:text-zinc-300">
+                  {formData.phone || "—"}
+                </p>
+              ) : (
+              <>
               <div className="flex gap-2">
                 <input
                   type="tel"
@@ -887,6 +942,8 @@ export default function HorizontalniZaluzieFormClient({
                   </div>
                 </div>
               )}
+              </>
+              )}
             </div>
 
             {/* Address */}
@@ -894,13 +951,19 @@ export default function HorizontalniZaluzieFormClient({
               <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Adresa
               </label>
-              <input
-                type="text"
-                value={formData.address}
-                onChange={(e) => handleHeaderChange("address", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                placeholder="Ulice, č.p."
-              />
+              {customerLockedFromOrder ? (
+                <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700/50 dark:text-zinc-300">
+                  {formData.address || "—"}
+                </p>
+              ) : (
+                <input
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) => handleHeaderChange("address", e.target.value)}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                  placeholder="Ulice, č.p."
+                />
+              )}
             </div>
 
             {/* City */}
@@ -908,13 +971,19 @@ export default function HorizontalniZaluzieFormClient({
               <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Město
               </label>
-              <input
-                type="text"
-                value={formData.city}
-                onChange={(e) => handleHeaderChange("city", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                placeholder="Město"
-              />
+              {customerLockedFromOrder ? (
+                <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700/50 dark:text-zinc-300">
+                  {formData.city || "—"}
+                </p>
+              ) : (
+                <input
+                  type="text"
+                  value={formData.city}
+                  onChange={(e) => handleHeaderChange("city", e.target.value)}
+                  className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                  placeholder="Město"
+                />
+              )}
             </div>
 
             {/* Product */}

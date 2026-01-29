@@ -13,8 +13,9 @@ import {
   PaginatedResponse,
 } from "../types/forms.types";
 import * as formsQueries from "../queries/forms.queries";
+import * as ordersQueries from "../queries/orders.queries";
 import { validateFormType, validateFormJson, validatePagination } from "../utils/validation";
-import { NotFoundError } from "../utils/errors";
+import { NotFoundError, BadRequestError } from "../utils/errors";
 
 /**
  * Create a new form
@@ -34,8 +35,23 @@ export async function createForm(
   // Validate form JSON
   validateFormJson(request.form_json);
 
+  // If order_id provided, ensure order exists and belongs to user
+  const orderId = request.order_id ?? null;
+  if (orderId != null) {
+    const order = await ordersQueries.getOrderById(pool, orderId, userId);
+    if (!order) {
+      throw new BadRequestError("Order not found or access denied", "ORDER_NOT_FOUND");
+    }
+  }
+
   // Create form in database
-  return await formsQueries.createForm(pool, userId, request.form_type, request.form_json);
+  return await formsQueries.createForm(
+    pool,
+    userId,
+    request.form_type,
+    request.form_json,
+    orderId
+  );
 }
 
 /**

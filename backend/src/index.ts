@@ -10,6 +10,7 @@ import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
 import { getPool, testConnection, closePool } from "./config/database";
 import formsRoutes from "./routes/forms.routes";
+import ordersRoutes from "./routes/orders.routes";
 import raynetRoutes from "./routes/raynet.routes";
 import customersRoutes from "./routes/customers.routes";
 
@@ -98,6 +99,7 @@ app.get("/health", async (req: Request, res: Response) => {
 
 // API routes
 app.use("/api/forms", formsRoutes);
+app.use("/api/orders", ordersRoutes);
 app.use("/api/raynet", raynetRoutes);
 app.use("/api/customers", customersRoutes);
 

@@ -122,8 +122,15 @@ router.post("/", authenticateToken, async (req: AuthenticatedRequest, res: Respo
   try {
     const pool = getPool();
     const userId = req.userId!;
+    const body = {
+      ...req.body,
+      order_id: req.body.order_id != null ? parseInt(req.body.order_id, 10) : undefined,
+    };
+    if (body.order_id !== undefined && isNaN(body.order_id)) {
+      return res.status(400).json({ success: false, error: "Invalid order_id" });
+    }
 
-    const form = await formsService.createForm(pool, userId, req.body);
+    const form = await formsService.createForm(pool, userId, body);
 
     res.status(201).json({
       success: true,
@@ -199,6 +206,7 @@ router.get("/", authenticateToken, async (req: AuthenticatedRequest, res: Respon
 
     const query: ListFormsQuery = {
       form_type: req.query.form_type as FormType | undefined,
+      order_id: req.query.order_id ? parseInt(req.query.order_id as string, 10) : undefined,
       page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
     };

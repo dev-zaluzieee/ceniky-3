@@ -110,14 +110,27 @@ export default function FormsListClient({
             </svg>
             Zpět na výběr formulářů
           </Link>
-          <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
-            Vytvořené formuláře
-          </h1>
-          {pagination && (
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-              Celkem {pagination.total} formulář{pagination.total !== 1 ? "ů" : ""}
-            </p>
-          )}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50">
+                Vytvořené formuláře
+              </h1>
+              {pagination && (
+                <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                  Celkem {pagination.total} formulář{pagination.total !== 1 ? "ů" : ""}
+                </p>
+              )}
+            </div>
+            <Link
+              href="/orders"
+              className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+            >
+              Přejít k zakázkám
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
         </div>
 
         {/* Error State */}
@@ -189,7 +202,7 @@ export default function FormsListClient({
                   <div className="flex items-start justify-between gap-4">
                     {/* Left side - Form info */}
                     <div className="flex-1">
-                      <div className="mb-3 flex items-center gap-3">
+                      <div className="mb-3 flex flex-wrap items-center gap-3">
                         <span
                           className={`inline-flex items-center rounded-md px-3 py-1 text-xs font-medium ${getFormTypeColor(form.form_type)}`}
                         >
@@ -198,6 +211,14 @@ export default function FormsListClient({
                         <span className="text-xs text-zinc-500 dark:text-zinc-400">
                           ID: {form.id}
                         </span>
+                        {form.order_id != null && (
+                          <Link
+                            href={`/orders/${form.order_id}`}
+                            className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50"
+                          >
+                            Zakázka #{form.order_id}
+                          </Link>
+                        )}
                       </div>
 
                       {/* Preview data - using parsed information */}

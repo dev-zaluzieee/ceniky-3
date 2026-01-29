@@ -81,6 +81,9 @@ export async function fetchFormsServer(
     if (query.form_type) {
       params.append("form_type", query.form_type);
     }
+    if (query.order_id != null) {
+      params.append("order_id", query.order_id.toString());
+    }
     if (query.page) {
       params.append("page", query.page.toString());
     }
