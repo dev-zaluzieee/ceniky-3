@@ -46,26 +46,9 @@ function formatDate(dateString: string): string {
   }).format(date);
 }
 
-/**
- * Get edit URL for a form based on its type
- * Returns null if edit is not yet implemented for this form type
- */
-function getEditUrl(formType: FormType, formId: number): string | null {
-  // All forms now have edit functionality implemented
-  switch (formType) {
-    case "universal":
-      return `/forms/universal/${formId}`;
-    case "horizontalni-zaluzie":
-      return `/forms/horizontalni-zaluzie/${formId}`;
-    case "plise-zaluzie":
-      return `/forms/plise-zaluzie/${formId}`;
-    case "site":
-      return `/forms/site/${formId}`;
-    case "textile-rolety":
-      return `/forms/textile-rolety/${formId}`;
-    default:
-      return null;
-  }
+/** Edit form URL under order: /orders/[orderId]/forms/[formId] */
+function getFormEditUrl(orderId: number, formId: number): string {
+  return `/orders/${orderId}/forms/${formId}`;
 }
 
 /**
@@ -302,10 +285,10 @@ export default function FormsListClient({
                           {formatDate(form.created_at)}
                         </div>
                       </div>
-                      {/* Edit button - only show if edit is available for this form type */}
-                      {getEditUrl(form.form_type, form.id) && (
+                      {/* Edit button – link to form under order */}
+                      {form.order_id != null && (
                         <Link
-                          href={getEditUrl(form.form_type, form.id)!}
+                          href={getFormEditUrl(form.order_id, form.id)}
                           className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
                         >
                           <svg

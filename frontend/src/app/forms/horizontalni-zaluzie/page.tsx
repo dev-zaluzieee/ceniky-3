@@ -1,54 +1,24 @@
+/**
+ * Legacy create URL: /forms/horizontalni-zaluzie?orderId=...
+ * Redirects to canonical URL: /orders/[orderId]/forms/create/horizontalni-zaluzie
+ */
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import HorizontalniZaluzieFormClient from "./HorizontalniZaluzieFormClient";
-import { fetchOrderByIdServer } from "@/lib/orders-server";
 
-/**
- * Horizontal blinds form page - Server Component
- * When orderId is in searchParams, fetches order and passes customer as read-only (create under order).
- */
 export default async function HorizontalniZaluzieFormPage({
   searchParams,
 }: {
   searchParams: Promise<{ orderId?: string }>;
 }) {
   const session = await getServerSession(authOptions);
-  if (!session) {
-    redirect("/login");
-  }
+  if (!session) redirect("/login");
 
   const params = await searchParams;
   const orderIdParam = params.orderId;
-  let orderId: number | undefined;
-  let customerFromOrder: { name?: string; email?: string; phone?: string; address?: string; city?: string } | undefined;
-
   if (orderIdParam) {
     const id = parseInt(orderIdParam, 10);
-    if (!isNaN(id)) {
-      const orderResult = await fetchOrderByIdServer(id);
-      if (orderResult.success && orderResult.data) {
-        orderId = id;
-        customerFromOrder = {
-          name: orderResult.data.name ?? undefined,
-          email: orderResult.data.email ?? undefined,
-          phone: orderResult.data.phone ?? undefined,
-          address: orderResult.data.address ?? undefined,
-          city: orderResult.data.city ?? undefined,
-        };
-      }
-    }
+    if (!isNaN(id)) redirect(`/orders/${id}/forms/create/horizontalni-zaluzie`);
   }
-
-  // Create form requires an order (customer); redirect to orders if missing
-  if (orderId == null) {
-    redirect("/orders");
-  }
-
-  return (
-    <HorizontalniZaluzieFormClient
-      orderId={orderId}
-      customerFromOrder={customerFromOrder}
-    />
-  );
+  redirect("/orders");
 }

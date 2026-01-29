@@ -17,30 +17,14 @@ const FORM_TYPE_NAMES: Record<FormType, string> = {
   universal: "Univerzální list",
 };
 
-/** Form type to path (create new form with orderId) */
-const FORM_TYPE_PATHS: Record<FormType, string> = {
-  "horizontalni-zaluzie": "/forms/horizontalni-zaluzie",
-  "plise-zaluzie": "/forms/plise-zaluzie",
-  site: "/forms/site",
-  "textile-rolety": "/forms/textile-rolety",
-  universal: "/forms/universal",
-};
+/** Edit form URL under order: /orders/[orderId]/forms/[formId] */
+function getFormEditUrl(orderId: number, formId: number): string {
+  return `/orders/${orderId}/forms/${formId}`;
+}
 
-function getEditUrl(formType: FormType, formId: number): string | null {
-  switch (formType) {
-    case "universal":
-      return `/forms/universal/${formId}`;
-    case "horizontalni-zaluzie":
-      return `/forms/horizontalni-zaluzie/${formId}`;
-    case "plise-zaluzie":
-      return `/forms/plise-zaluzie/${formId}`;
-    case "site":
-      return `/forms/site/${formId}`;
-    case "textile-rolety":
-      return `/forms/textile-rolety/${formId}`;
-    default:
-      return null;
-  }
+/** Create form URL under order: /orders/[orderId]/forms/create/[formType] */
+function getFormCreateUrl(orderId: number, formType: FormType): string {
+  return `/orders/${orderId}/forms/create/${formType}`;
 }
 
 function formatDate(dateString: string): string {
@@ -320,10 +304,10 @@ export default function OrderDetailClient({
               </button>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {(Object.keys(FORM_TYPE_PATHS) as FormType[]).map((formType) => (
+                {(Object.keys(FORM_TYPE_NAMES) as FormType[]).map((formType) => (
                   <Link
                     key={formType}
-                    href={`${FORM_TYPE_PATHS[formType]}?orderId=${order.id}`}
+                    href={getFormCreateUrl(order.id, formType)}
                     className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                   >
                     {FORM_TYPE_NAMES[formType]}
@@ -362,7 +346,6 @@ export default function OrderDetailClient({
           <div className="space-y-4">
             {forms.map((form) => {
               const parsedInfo = parseForm(form.form_type, form.form_json);
-              const editUrl = getEditUrl(form.form_type, form.id);
               return (
                 <div
                   key={form.id}
@@ -392,14 +375,12 @@ export default function OrderDetailClient({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {editUrl && (
-                        <Link
-                          href={editUrl}
-                          className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-                        >
-                          Upravit
-                        </Link>
-                      )}
+                      <Link
+                        href={getFormEditUrl(order.id, form.id)}
+                        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                      >
+                        Upravit
+                      </Link>
                       <button
                         type="button"
                         onClick={() => handleDuplicateForm(form.id)}
