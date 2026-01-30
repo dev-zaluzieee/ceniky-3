@@ -128,3 +128,64 @@ export async function fetchOrderByIdServer(
     return { success: false, error: "Failed to fetch order from server" };
   }
 }
+
+/** Extracted product line (from backend extract-products; prices are mocked) */
+export interface ExtractedProductLine {
+  produkt: string;
+  ks: number;
+  ram?: string;
+  lamelaLatka?: string;
+  cena: number;
+  sleva: number;
+  cenaPoSleve: number;
+}
+
+export interface ServerExtractProductsResponse {
+  success: boolean;
+  data?: {
+    products: ExtractedProductLine[];
+    source_form_ids: number[];
+  };
+  error?: string;
+}
+
+/**
+ * Fetch extracted products from step 1 forms for an order (for ADMF prefill; prices mocked on backend)
+ * @param orderId - Order ID
+ * @param formIds - Optional: only extract from these form IDs (must be step 1 and belong to order)
+ */
+export async function fetchExtractProductsServer(
+  orderId: number,
+  formIds?: number[]
+): Promise<ServerExtractProductsResponse> {
+  try {
+    const authToken = await createAuthToken();
+    if (!authToken) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const params = new URLSearchParams();
+    if (formIds != null && formIds.length > 0) {
+      params.set("formIds", formIds.join(","));
+    }
+    const query = params.toString();
+    const url = `${getBackendUrl()}/api/orders/${orderId}/extract-products${query ? `?${query}` : ""}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      cache: "no-store",
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: data.error || "Failed to extract products" };
+    }
+    return { success: true, data: data.data };
+  } catch (error) {
+    console.error("Error fetching extract-products:", error);
+    return { success: false, error: "Failed to extract products from server" };
+  }
+}

@@ -14,6 +14,7 @@ const VALID_FORM_TYPES: FormType[] = [
   "site",
   "textile-rolety",
   "universal",
+  "admf",
 ];
 
 /**

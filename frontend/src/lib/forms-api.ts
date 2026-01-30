@@ -11,7 +11,8 @@ export type FormType =
   | "plise-zaluzie"
   | "site"
   | "textile-rolety"
-  | "universal";
+  | "universal"
+  | "admf";
 
 /**
  * Form submission response

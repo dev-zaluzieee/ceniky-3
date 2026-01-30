@@ -15,11 +15,13 @@ import PliseZaluzieFormClient from "@/app/forms/plise-zaluzie/PliseZaluzieFormCl
 import SiteFormClient from "@/app/forms/site/SiteFormClient";
 import TextileRoletyFormClient from "@/app/forms/textile-rolety/TextileRoletyFormClient";
 import UniversalFormClient from "@/app/forms/universal/UniversalFormClient";
+import AdmfFormClient from "@/app/forms/admf/AdmfFormClient";
 import type { HorizontalniZaluzieFormData } from "@/types/forms/horizontalni-zaluzie.types";
 import type { PliseZaluzieFormData } from "@/types/forms/plise-zaluzie.types";
 import type { SiteFormData } from "@/types/forms/site.types";
 import type { TextileRoletyFormData } from "@/types/forms/textile-rolety.types";
 import type { UniversalFormData } from "@/types/forms/universal.types";
+import type { AdmfFormData } from "@/types/forms/admf.types";
 
 const VALID_FORM_TYPES: FormType[] = [
   "horizontalni-zaluzie",
@@ -27,6 +29,7 @@ const VALID_FORM_TYPES: FormType[] = [
   "site",
   "textile-rolety",
   "universal",
+  "admf",
 ];
 
 function normalizeRooms<T extends { rooms?: { rows?: unknown[] }[] }>(data: T): T {
@@ -128,6 +131,17 @@ export default async function OrderFormEditPage({
       const initialData = normalizeRooms(form.form_json as UniversalFormData);
       return (
         <UniversalFormClient
+          initialData={initialData}
+          formId={formId}
+          orderId={orderId}
+          customerFromOrder={customerFromOrder}
+        />
+      );
+    }
+    case "admf": {
+      const initialData = form.form_json as AdmfFormData;
+      return (
+        <AdmfFormClient
           initialData={initialData}
           formId={formId}
           orderId={orderId}

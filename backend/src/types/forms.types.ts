@@ -3,14 +3,26 @@
  */
 
 /**
- * Supported form types
+ * Supported form types.
+ * Step 1: product forms (horizontalni-zaluzie, plise-zaluzie, site, textile-rolety, universal).
+ * Step 2: ADMF (administrativní formulář) – generated from step 1 forms.
  */
 export type FormType =
   | "horizontalni-zaluzie"
   | "plise-zaluzie"
   | "site"
   | "textile-rolety"
-  | "universal";
+  | "universal"
+  | "admf";
+
+/** Step 1 form types (used for product extraction into ADMF) */
+export const STEP1_FORM_TYPES: FormType[] = [
+  "horizontalni-zaluzie",
+  "plise-zaluzie",
+  "site",
+  "textile-rolety",
+  "universal",
+];
 
 /**
  * Form data structure stored in database

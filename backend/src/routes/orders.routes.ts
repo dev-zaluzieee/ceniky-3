@@ -6,6 +6,7 @@
 import { Router, Response } from "express";
 import { getPool } from "../config/database";
 import * as ordersService from "../services/orders.service";
+import * as extractProductsService from "../services/extract-products.service";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { ApiError } from "../utils/errors";
 import { ListOrdersQuery } from "../types/orders.types";
@@ -57,6 +58,36 @@ router.get("/", authenticateToken, async (req: AuthenticatedRequest, res: Respon
     };
     const result = await ordersService.getOrdersByUserId(pool, userId, query);
     res.json({ success: true, data: result.data, pagination: result.pagination });
+  } catch (error: any) {
+    handleError(error, res);
+  }
+});
+
+/**
+ * GET /api/orders/:id/extract-products - Extract products from step 1 forms for ADMF prefill
+ * Query: formIds (optional) – comma-separated form IDs; if present, only those forms are used
+ * Returns product lines (with mocked prices) and source form IDs for hover highlight
+ */
+router.get("/:id/extract-products", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const userId = req.userId!;
+    const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const orderId = parseInt(idParam, 10);
+    if (isNaN(orderId)) {
+      return res.status(400).json({ success: false, error: "Invalid order ID" });
+    }
+    const formIdsParam = req.query.formIds as string | undefined;
+    let formIds: number[] | undefined;
+    if (formIdsParam && typeof formIdsParam === "string") {
+      formIds = formIdsParam
+        .split(",")
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !isNaN(n));
+      if (formIds.length === 0) formIds = undefined;
+    }
+    const result = await extractProductsService.extractProductsForOrder(pool, orderId, userId, formIds);
+    res.json({ success: true, data: result });
   } catch (error: any) {
     handleError(error, res);
   }

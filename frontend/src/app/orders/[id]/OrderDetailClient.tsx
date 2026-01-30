@@ -15,7 +15,17 @@ const FORM_TYPE_NAMES: Record<FormType, string> = {
   site: "Okenní sítě / Dveřní sítě",
   "textile-rolety": "Textilní a D/N roletky",
   universal: "Univerzální list",
+  admf: "Administrativní formulář",
 };
+
+/** Step 1 form types (product forms); ADMF is step 2 and listed separately */
+const STEP1_FORM_TYPES: FormType[] = [
+  "horizontalni-zaluzie",
+  "plise-zaluzie",
+  "site",
+  "textile-rolety",
+  "universal",
+];
 
 /** Edit form URL under order: /orders/[orderId]/forms/[formId] */
 function getFormEditUrl(orderId: number, formId: number): string {
@@ -59,6 +69,10 @@ export default function OrderDetailClient({
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<number | null>(null);
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
+  /** When user hovers an ADMF form, we highlight step 1 forms from which it was generated */
+  const [hoveredAdmfFormId, setHoveredAdmfFormId] = useState<number | null>(null);
+  /** Form IDs selected for generating a new ADMF (step 1 forms only) */
+  const [selectedFormIdsForAdmf, setSelectedFormIdsForAdmf] = useState<Set<number>>(new Set());
 
   /** Editable customer data (synced from order) */
   const [customerData, setCustomerData] = useState({
@@ -304,7 +318,7 @@ export default function OrderDetailClient({
               </button>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {(Object.keys(FORM_TYPE_NAMES) as FormType[]).map((formType) => (
+                {STEP1_FORM_TYPES.map((formType) => (
                   <Link
                     key={formType}
                     href={getFormCreateUrl(order.id, formType)}
@@ -335,75 +349,201 @@ export default function OrderDetailClient({
           <p className="mb-2 text-sm text-red-600 dark:text-red-400">{duplicateError}</p>
         )}
 
-        {/* Forms list */}
-        {forms.length === 0 ? (
-          <div className="rounded-lg border border-zinc-200 bg-white p-8 text-center dark:border-zinc-700 dark:bg-zinc-800">
-            <p className="text-zinc-600 dark:text-zinc-400">
-              V této zakázce zatím nejsou žádné formuláře. Klikněte na „Přidat formulář“ a vyberte typ.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {forms.map((form) => {
-              const parsedInfo = parseForm(form.form_type, form.form_json);
-              return (
-                <div
-                  key={form.id}
-                  className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="inline-flex rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
-                          {FORM_TYPE_NAMES[form.form_type]}
-                        </span>
-                        <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                          ID: {form.id}
-                        </span>
+        {/* Step 1 forms (product forms) */}
+        {(() => {
+          const step1Forms = forms.filter((f) => STEP1_FORM_TYPES.includes(f.form_type as FormType));
+          const sourceFormIdsToHighlight =
+            hoveredAdmfFormId != null
+              ? (forms.find((f) => f.id === hoveredAdmfFormId)?.form_json as { source_form_ids?: number[] } | undefined)
+                  ?.source_form_ids ?? []
+              : [];
+
+          return (
+            <>
+              {step1Forms.length === 0 ? (
+                <div className="rounded-lg border border-zinc-200 bg-white p-8 text-center dark:border-zinc-700 dark:bg-zinc-800">
+                  <p className="text-zinc-600 dark:text-zinc-400">
+                    V této zakázce zatím nejsou žádné formuláře (krok 1). Klikněte na „Přidat formulář“ a vyberte typ.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {step1Forms.map((form) => {
+                    const parsedInfo = parseForm(form.form_type, form.form_json);
+                    const isHighlighted = sourceFormIdsToHighlight.includes(form.id);
+                    const isSelectedForAdmf = selectedFormIdsForAdmf.has(form.id);
+                    const toggleAdmfSelection = () => {
+                      setSelectedFormIdsForAdmf((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(form.id)) next.delete(form.id);
+                        else next.add(form.id);
+                        return next;
+                      });
+                    };
+                    return (
+                      <div
+                        key={form.id}
+                        className={`rounded-lg border bg-white p-6 shadow-sm transition-all dark:bg-zinc-800 ${
+                          isHighlighted
+                            ? "border-amber-400 ring-2 ring-amber-400/50 dark:border-amber-500 dark:ring-amber-500/50"
+                            : "border-zinc-200 dark:border-zinc-700"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="flex items-start gap-3">
+                            {/* Checkbox: include this form in ADMF generation */}
+                            <label className="mt-0.5 flex cursor-pointer items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                              <input
+                                type="checkbox"
+                                checked={isSelectedForAdmf}
+                                onChange={toggleAdmfSelection}
+                                className="h-4 w-4 rounded border-zinc-300 text-amber-600 focus:ring-amber-500 dark:border-zinc-600 dark:bg-zinc-700"
+                              />
+                            </label>
+                            <div>
+                            <div className="mb-2 flex items-center gap-2">
+                              <span className="inline-flex rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
+                                {FORM_TYPE_NAMES[form.form_type]}
+                              </span>
+                              <span className="text-xs text-zinc-500 dark:text-zinc-400">ID: {form.id}</span>
+                            </div>
+                            <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                              {parsedInfo.name && <p>{parsedInfo.name}</p>}
+                              {parsedInfo.address && (
+                                <p>
+                                  {parsedInfo.address}
+                                  {parsedInfo.city ? `, ${parsedInfo.city}` : ""}
+                                </p>
+                              )}
+                              <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                                Vytvořeno: {formatDate(form.created_at)}
+                              </p>
+                            </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={getFormEditUrl(order.id, form.id)}
+                              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                            >
+                              Upravit
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => handleDuplicateForm(form.id)}
+                              disabled={duplicatingId === form.id}
+                              className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-600 disabled:opacity-50"
+                            >
+                              {duplicatingId === form.id ? "Kopíruji…" : "Duplikovat"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteForm(form.id)}
+                              disabled={deletingId === form.id}
+                              className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50"
+                            >
+                              {deletingId === form.id ? "Mažu…" : "Smazat"}
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-sm text-zinc-600 dark:text-zinc-400">
-                        {parsedInfo.name && <p>{parsedInfo.name}</p>}
-                        {parsedInfo.address && (
-                          <p>
-                            {parsedInfo.address}
-                            {parsedInfo.city ? `, ${parsedInfo.city}` : ""}
-                          </p>
-                        )}
-                        <p className="text-xs text-zinc-500 dark:text-zinc-500">
-                          Vytvořeno: {formatDate(form.created_at)}
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Step 2: Administrativní formuláře (ADMF) */}
+              <div className="mt-10 border-t border-zinc-200 pt-8 dark:border-zinc-700">
+                <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+                  Administrativní formuláře (ADMF)
+                </h2>
+                <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
+                  Vyberte formuláře výše („Zahrnout do ADMF“) a klikněte na „Generovat ADMF“. Při najetí myší na ADMF se zvýrazní zdrojové formuláře.
+                </p>
+                {/* Show "Generovat ADMF" only when at least one step 1 form is selected */}
+                {selectedFormIdsForAdmf.size > 0 && (
+                  <div className="mb-4">
+                    <Link
+                      href={`/orders/${order.id}/forms/create/admf?formIds=${Array.from(selectedFormIdsForAdmf).join(",")}`}
+                      className="inline-flex items-center gap-2 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+                    >
+                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Generovat ADMF
+                    </Link>
+                  </div>
+                )}
+                {(() => {
+                  const admfForms = forms.filter((f) => f.form_type === "admf");
+                  if (admfForms.length === 0) {
+                    return (
+                      <div className="rounded-lg border border-zinc-200 bg-white p-6 text-center dark:border-zinc-700 dark:bg-zinc-800">
+                        <p className="text-zinc-600 dark:text-zinc-400">
+                          Zatím žádný ADMF. Zaškrtněte formuláře v kroku 1 a klikněte na „Generovat ADMF“.
                         </p>
                       </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-4">
+                      {admfForms.map((form) => {
+                        const admfName = (form.form_json as { name?: string })?.name ?? "ADMF";
+                        return (
+                          <div
+                            key={form.id}
+                            onMouseEnter={() => setHoveredAdmfFormId(form.id)}
+                            onMouseLeave={() => setHoveredAdmfFormId(null)}
+                            className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-4">
+                              <div>
+                                <div className="mb-2 flex items-center gap-2">
+                                  <span className="inline-flex rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                                    {FORM_TYPE_NAMES.admf}
+                                  </span>
+                                  <span className="font-medium text-zinc-900 dark:text-zinc-50">{admfName}</span>
+                                  <span className="text-xs text-zinc-500 dark:text-zinc-400">ID: {form.id}</span>
+                                </div>
+                                <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                                  Vytvořeno: {formatDate(form.created_at)}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Link
+                                  href={getFormEditUrl(order.id, form.id)}
+                                  className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                                >
+                                  Upravit
+                                </Link>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDuplicateForm(form.id)}
+                                  disabled={duplicatingId === form.id}
+                                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-600 disabled:opacity-50"
+                                >
+                                  {duplicatingId === form.id ? "Kopíruji…" : "Duplikovat"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteForm(form.id)}
+                                  disabled={deletingId === form.id}
+                                  className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50"
+                                >
+                                  {deletingId === form.id ? "Mažu…" : "Smazat"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href={getFormEditUrl(order.id, form.id)}
-                        className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-                      >
-                        Upravit
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => handleDuplicateForm(form.id)}
-                        disabled={duplicatingId === form.id}
-                        className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-600 disabled:opacity-50"
-                      >
-                        {duplicatingId === form.id ? "Kopíruji…" : "Duplikovat"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteForm(form.id)}
-                        disabled={deletingId === form.id}
-                        className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50"
-                      >
-                        {deletingId === form.id ? "Mažu…" : "Smazat"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                  );
+                })()}
+              </div>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

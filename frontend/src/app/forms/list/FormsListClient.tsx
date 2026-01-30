@@ -14,6 +14,7 @@ function getFormTypeDisplayName(formType: FormType): string {
     "site": "Okenní sítě / Dveřní sítě",
     "textile-rolety": "Textilní a D/N roletky",
     "universal": "Univerzální list",
+    "admf": "Administrativní formulář",
   };
   return displayNames[formType] || formType;
 }
@@ -28,6 +29,7 @@ function getFormTypeColor(formType: FormType): string {
     "site": "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400",
     "textile-rolety": "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400",
     "universal": "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400",
+    "admf": "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
   };
   return colors[formType] || "bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400";
 }

@@ -6,13 +6,16 @@
 import { redirect, notFound } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { fetchOrderByIdServer } from "@/lib/orders-server";
+import { fetchOrderByIdServer, fetchExtractProductsServer } from "@/lib/orders-server";
+import { fetchFormsServer } from "@/lib/forms-server";
 import type { FormType } from "@/lib/forms-api";
+import type { AdmfProductRow } from "@/types/forms/admf.types";
 import HorizontalniZaluzieFormClient from "@/app/forms/horizontalni-zaluzie/HorizontalniZaluzieFormClient";
 import PliseZaluzieFormClient from "@/app/forms/plise-zaluzie/PliseZaluzieFormClient";
 import SiteFormClient from "@/app/forms/site/SiteFormClient";
 import TextileRoletyFormClient from "@/app/forms/textile-rolety/TextileRoletyFormClient";
 import UniversalFormClient from "@/app/forms/universal/UniversalFormClient";
+import AdmfFormClient from "@/app/forms/admf/AdmfFormClient";
 
 const VALID_FORM_TYPES: FormType[] = [
   "horizontalni-zaluzie",
@@ -20,12 +23,15 @@ const VALID_FORM_TYPES: FormType[] = [
   "site",
   "textile-rolety",
   "universal",
+  "admf",
 ];
 
 export default async function OrderFormCreatePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; formType: string }>;
+  searchParams: Promise<{ formIds?: string }>;
 }) {
   const session = await getServerSession(authOptions);
   if (!session) redirect("/login");
@@ -49,6 +55,10 @@ export default async function OrderFormCreatePage({
     address: order.address ?? undefined,
     city: order.city ?? undefined,
   };
+
+  /** For ADMF: formIds from query (required); redirect to order if missing */
+  const resolvedSearchParams = await searchParams;
+  const formIdsParam = resolvedSearchParams.formIds;
 
   switch (formType) {
     case "horizontalni-zaluzie":
@@ -86,6 +96,58 @@ export default async function OrderFormCreatePage({
           customerFromOrder={customerFromOrder}
         />
       );
+    case "admf": {
+      if (!formIdsParam || formIdsParam.trim() === "") {
+        redirect(`/orders/${orderId}`);
+      }
+      const formIds = formIdsParam
+        .split(",")
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !isNaN(n));
+      if (formIds.length === 0) {
+        redirect(`/orders/${orderId}`);
+      }
+
+      const extractRes = await fetchExtractProductsServer(orderId, formIds);
+      const formsRes = await fetchFormsServer({ order_id: orderId, form_type: "admf", limit: 100 });
+      const existingAdmfCount = formsRes.success && formsRes.data ? formsRes.data.length : 0;
+      const variantaName = `Varianta ${existingAdmfCount + 1}`;
+
+      const productRows: AdmfProductRow[] = (extractRes.success && extractRes.data?.products
+        ? extractRes.data.products
+        : []
+      ).map((p, i) => ({
+        id: `row-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 9)}`,
+        produkt: p.produkt,
+        ks: p.ks,
+        ram: p.ram ?? "",
+        lamelaLatka: p.lamelaLatka ?? "",
+        cena: p.cena,
+        sleva: p.sleva,
+        cenaPoSleve: p.cenaPoSleve,
+      }));
+
+      const initialData = {
+        name: variantaName,
+        source_form_ids: extractRes.success && extractRes.data?.source_form_ids ? extractRes.data.source_form_ids : [],
+        productRows,
+        jmenoPrijmeni: order.name ?? undefined,
+        email: order.email ?? undefined,
+        telefon: order.phone ?? undefined,
+        ulice: order.address ?? undefined,
+        mesto: order.city ?? undefined,
+        doplnujiciInformaceObjednavky: "",
+        doplnujiciInformaceMontaz: "",
+      };
+
+      return (
+        <AdmfFormClient
+          initialData={initialData}
+          orderId={orderId}
+          customerFromOrder={customerFromOrder}
+        />
+      );
+    }
     default:
       notFound();
   }

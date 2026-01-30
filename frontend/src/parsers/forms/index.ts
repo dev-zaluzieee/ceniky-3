@@ -39,6 +39,9 @@ export function parseForm(
       case "universal":
         return parseUniversalForm(formJson);
 
+      case "admf":
+        return { name: formJson?.name ?? "ADMF" };
+
       default:
         // Unknown form type - return empty info
         console.warn(`Unknown form type: ${formType}`);
