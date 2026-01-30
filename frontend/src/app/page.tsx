@@ -2,29 +2,30 @@ import Link from "next/link";
 
 /**
  * Main page with form selection
+ * Single logo lives in Header; brand palette: primary (green) + accent (pink)
  */
 export default function Home() {
   return (
-    <div className="min-h-screen bg-zinc-50 py-16 px-4 dark:bg-zinc-900">
+    <div className="min-h-screen bg-brand-mint/20 py-16 px-4 dark:bg-zinc-900">
       <div className="mx-auto max-w-4xl">
         {/* Page Header */}
         <div className="mb-12 text-center">
           <h1 className="mb-4 text-4xl font-bold text-zinc-900 dark:text-zinc-50">
-            VÝROBNÍ DOKUMENTACE
+            Ceníky
           </h1>
           <p className="text-lg text-zinc-600 dark:text-zinc-400">
             Vyberte zakázku nebo přehled uložených formulářů. Formuláře vytvoříte v rámci zakázky.
           </p>
         </div>
 
-        {/* Orders and Forms list cards */}
+        {/* Orders and Forms list cards - icons use brand primary/accent only */}
         <div className="mb-8 space-y-4">
           <Link
             href="/orders"
-            className="group flex items-center justify-between rounded-lg border-2 border-zinc-200 bg-white p-6 shadow-sm transition-all hover:border-blue-500 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-blue-500"
+            className="group flex items-center justify-between rounded-lg border-2 border-zinc-200 bg-white p-6 shadow-sm transition-all hover:border-primary hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-primary"
           >
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/15 text-primary dark:bg-primary/25 dark:text-primary">
                 <svg
                   className="h-6 w-6"
                   fill="none"
@@ -49,7 +50,7 @@ export default function Home() {
               </div>
             </div>
             <svg
-              className="h-5 w-5 text-blue-600 transition-transform group-hover:translate-x-1 dark:text-blue-400"
+              className="h-5 w-5 text-accent transition-transform group-hover:translate-x-1"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -65,10 +66,10 @@ export default function Home() {
 
           <Link
             href="/forms/list"
-            className="group flex items-center justify-between rounded-lg border-2 border-zinc-200 bg-white p-6 shadow-sm transition-all hover:border-blue-500 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-blue-500"
+            className="group flex items-center justify-between rounded-lg border-2 border-zinc-200 bg-white p-6 shadow-sm transition-all hover:border-primary hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-primary"
           >
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-accent/15 text-accent dark:bg-accent/25 dark:text-accent">
                 <svg
                   className="h-6 w-6"
                   fill="none"
@@ -93,7 +94,7 @@ export default function Home() {
               </div>
             </div>
             <svg
-              className="h-5 w-5 text-blue-600 transition-transform group-hover:translate-x-1 dark:text-blue-400"
+              className="h-5 w-5 text-accent transition-transform group-hover:translate-x-1"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"

@@ -67,7 +67,7 @@ export default function LoginClient({ callbackUrl }: { callbackUrl?: string }) {
               }}
               className={`flex-1 py-3 text-center font-medium transition-all duration-200 ${
                 loginMethod === "google"
-                  ? "text-[#0d6b57] dark:text-[#0d6b57] border-b-2 border-[#0d6b57]"
+                  ? "text-accent border-b-2 border-accent"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
               }`}
             >
@@ -81,7 +81,7 @@ export default function LoginClient({ callbackUrl }: { callbackUrl?: string }) {
               }}
               className={`flex-1 py-3 text-center font-medium transition-all duration-200 ${
                 loginMethod === "token"
-                  ? "text-[#0d6b57] dark:text-[#0d6b57] border-b-2 border-[#0d6b57]"
+                  ? "text-accent border-b-2 border-accent"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
               }`}
             >
@@ -109,7 +109,7 @@ export default function LoginClient({ callbackUrl }: { callbackUrl?: string }) {
               </p>
               <button
                 onClick={onGoogleSignIn}
-                className="w-full px-4 py-3 rounded-lg bg-[#0d6b57] text-white font-medium hover:bg-[#0a5545] focus:outline-none focus:ring-2 focus:ring-[#0d6b57] focus:ring-offset-2 dark:focus:ring-offset-zinc-800 transition-colors duration-200 shadow-sm hover:shadow-md"
+                className="w-full rounded-lg bg-accent px-4 py-3 font-medium text-white shadow-sm transition-colors duration-200 hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
               >
                 Přihlásit se přes Google
               </button>
@@ -130,7 +130,7 @@ export default function LoginClient({ callbackUrl }: { callbackUrl?: string }) {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={isLoading}
-                  className="w-full px-4 py-2.5 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#0d6b57] focus:border-transparent disabled:bg-zinc-100 dark:disabled:bg-zinc-800 disabled:cursor-not-allowed transition-colors"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-zinc-900 placeholder-zinc-400 transition-colors focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent disabled:cursor-not-allowed disabled:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 dark:placeholder-zinc-500 dark:disabled:bg-zinc-800"
                   placeholder="vas.email@example.com"
                 />
               </div>
@@ -145,14 +145,14 @@ export default function LoginClient({ callbackUrl }: { callbackUrl?: string }) {
                   onChange={(e) => setToken(e.target.value)}
                   required
                   disabled={isLoading}
-                  className="w-full px-4 py-2.5 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-[#0d6b57] focus:border-transparent disabled:bg-zinc-100 dark:disabled:bg-zinc-800 disabled:cursor-not-allowed transition-colors"
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-zinc-900 placeholder-zinc-400 transition-colors focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent disabled:cursor-not-allowed disabled:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 dark:placeholder-zinc-500 dark:disabled:bg-zinc-800"
                   placeholder="Zadejte token"
                 />
               </div>
               <button
                 type="submit"
                 disabled={isLoading || !email.trim() || !token.trim()}
-                className="w-full px-4 py-3 rounded-lg bg-[#0d6b57] text-white font-medium hover:bg-[#0a5545] focus:outline-none focus:ring-2 focus:ring-[#0d6b57] focus:ring-offset-2 dark:focus:ring-offset-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#0d6b57] transition-all duration-200 shadow-sm hover:shadow-md"
+                className="w-full rounded-lg bg-accent px-4 py-3 font-medium text-white shadow-sm transition-all duration-200 hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-zinc-800"
               >
                 {isLoading ? (
                   <span className="flex items-center justify-center">

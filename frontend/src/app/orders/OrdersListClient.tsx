@@ -289,7 +289,7 @@ export default function OrdersListClient({
             <button
               type="button"
               onClick={() => setShowCreateFlow(true)}
-              className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
+              className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
             >
               <svg
                 className="h-5 w-5"
@@ -388,7 +388,7 @@ export default function OrdersListClient({
                             <div
                               key={c.id}
                               className={`border-b border-zinc-200 px-3 py-2 last:border-0 dark:border-zinc-700 ${
-                                selectedRaynet?.id === c.id ? "bg-blue-50 dark:bg-blue-900/20" : ""
+                                selectedRaynet?.id === c.id ? "bg-accent/10 dark:bg-accent/20" : ""
                               }`}
                             >
                               <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
@@ -400,7 +400,7 @@ export default function OrdersListClient({
                               <button
                                 type="button"
                                 onClick={() => setSelectedRaynet(c)}
-                                className="mt-1 text-xs font-medium text-blue-600 dark:text-blue-400"
+                                className="mt-1 text-xs font-medium text-accent"
                               >
                                 {selectedRaynet?.id === c.id ? "Vybráno" : "Vybrat"}
                               </button>
@@ -417,7 +417,7 @@ export default function OrdersListClient({
                             <div
                               key={c.id}
                               className={`border-b border-zinc-200 px-3 py-2 last:border-0 dark:border-zinc-700 ${
-                                selectedErp?.id === c.id ? "bg-blue-50 dark:bg-blue-900/20" : ""
+                                selectedErp?.id === c.id ? "bg-accent/10 dark:bg-accent/20" : ""
                               }`}
                             >
                               <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
@@ -429,7 +429,7 @@ export default function OrdersListClient({
                               <button
                                 type="button"
                                 onClick={() => setSelectedErp(c)}
-                                className="mt-1 text-xs font-medium text-blue-600 dark:text-blue-400"
+                                className="mt-1 text-xs font-medium text-accent"
                               >
                                 {selectedErp?.id === c.id ? "Vybráno" : "Vybrat"}
                               </button>
@@ -454,7 +454,7 @@ export default function OrdersListClient({
                           type="button"
                           onClick={handleValidateAndCreate}
                           disabled={isValidating || isCreating}
-                          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
                         >
                           {isCreating ? "Vytvářím zakázku..." : isValidating ? "Ověřuji..." : "Ověřit a založit zakázku"}
                         </button>
@@ -548,7 +548,7 @@ export default function OrdersListClient({
                         type="button"
                         onClick={handleCreateFromManualForm}
                         disabled={isCreating}
-                        className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
                       >
                         {isCreating ? "Vytvářím zakázku..." : "Založit zakázku"}
                       </button>
@@ -578,7 +578,7 @@ export default function OrdersListClient({
             <button
               type="button"
               onClick={() => setShowCreateFlow(true)}
-              className="mt-6 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="mt-6 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
             >
               Založit zakázku
             </button>

@@ -28,7 +28,7 @@ function getFormTypeColor(formType: FormType): string {
     "plise-zaluzie": "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400",
     "site": "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400",
     "textile-rolety": "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400",
-    "universal": "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400",
+    "universal": "bg-accent/20 text-accent dark:bg-accent/30 dark:text-accent",
     "admf": "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
   };
   return colors[formType] || "bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400";
@@ -108,7 +108,7 @@ export default function FormsListClient({
             </div>
             <Link
               href="/orders"
-              className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+              className="inline-flex items-center gap-2 text-sm font-medium text-accent hover:underline"
             >
               Přejít k zakázkám
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,7 +166,7 @@ export default function FormsListClient({
             </p>
             <Link
               href="/"
-              className="mt-6 inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+              className="mt-6 inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
             >
               Přejít na výběr formulářů
             </Link>
@@ -291,7 +291,7 @@ export default function FormsListClient({
                       {form.order_id != null && (
                         <Link
                           href={getFormEditUrl(form.order_id, form.id)}
-                          className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
+                          className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
                         >
                           <svg
                             className="h-3.5 w-3.5"

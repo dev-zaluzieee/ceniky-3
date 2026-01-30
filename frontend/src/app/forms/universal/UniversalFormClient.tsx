@@ -585,7 +585,7 @@ export default function UniversalFormClient({
                 type="text"
                 value={formData.name}
                 onChange={(e) => handleHeaderChange("name", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
                 placeholder="Jméno a příjmení"
                 disabled={customerLockedFromOrder}
               />
@@ -600,7 +600,7 @@ export default function UniversalFormClient({
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleHeaderChange("email", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
                 placeholder="email@example.com"
                 disabled={customerLockedFromOrder}
               />
@@ -645,7 +645,7 @@ export default function UniversalFormClient({
                       handlePhoneSearch();
                     }
                   }}
-                  className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
+                  className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
                   placeholder="+420 ..."
                   disabled={isSearching || customerLockedFromOrder}
                 />
@@ -654,7 +654,7 @@ export default function UniversalFormClient({
                   type="button"
                   onClick={handlePhoneSearch}
                   disabled={isSearching || !formData.phone.trim() || formData.phone.trim().length < 6}
-                  className="flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                  className="flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                 >
                   {isSearching ? (
                     <>
@@ -784,7 +784,7 @@ export default function UniversalFormClient({
                                 key={c.id}
                                 className={`border-b border-zinc-200 px-3 py-2 transition-colors dark:border-zinc-700 ${
                                   isSelected
-                                    ? "bg-blue-50 dark:bg-blue-900/20"
+                                    ? "bg-accent/10 dark:bg-accent/20"
                                     : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
                                 }`}
                               >
@@ -806,9 +806,9 @@ export default function UniversalFormClient({
                                   <button
                                     type="button"
                                     onClick={() => setSelectedRaynet(c)}
-                                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-accent/20 ${
                                       isSelected
-                                        ? "bg-blue-600 text-white hover:bg-blue-700"
+                                        ? "bg-accent text-white hover:bg-accent-hover"
                                         : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-600"
                                     }`}
                                   >
@@ -848,7 +848,7 @@ export default function UniversalFormClient({
                                 key={c.id}
                                 className={`border-b border-zinc-200 px-3 py-2 transition-colors dark:border-zinc-700 ${
                                   isSelected
-                                    ? "bg-blue-50 dark:bg-blue-900/20"
+                                    ? "bg-accent/10 dark:bg-accent/20"
                                     : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
                                 }`}
                               >
@@ -869,9 +869,9 @@ export default function UniversalFormClient({
                                   <button
                                     type="button"
                                     onClick={() => setSelectedErp(c)}
-                                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-accent/20 ${
                                       isSelected
-                                        ? "bg-blue-600 text-white hover:bg-blue-700"
+                                        ? "bg-accent text-white hover:bg-accent-hover"
                                         : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-600"
                                     }`}
                                   >
@@ -898,7 +898,7 @@ export default function UniversalFormClient({
                         type="button"
                         onClick={handleValidateAndApply}
                         disabled={!selectedRaynet || !selectedErp || isValidatingPair}
-                        className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-zinc-800"
+                        className="inline-flex items-center justify-center rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-zinc-800"
                       >
                         {isValidatingPair ? "Ověřuji..." : "Ověřit & použít"}
                       </button>
@@ -919,7 +919,7 @@ export default function UniversalFormClient({
                 type="text"
                 value={formData.address}
                 onChange={(e) => handleHeaderChange("address", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
                 placeholder="Ulice, č.p."
                 disabled={customerLockedFromOrder}
               />
@@ -934,7 +934,7 @@ export default function UniversalFormClient({
                 type="text"
                 value={formData.city}
                 onChange={(e) => handleHeaderChange("city", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50 disabled:opacity-70"
                 placeholder="Město"
                 disabled={customerLockedFromOrder}
               />
@@ -949,7 +949,7 @@ export default function UniversalFormClient({
                 type="text"
                 value={formData.product}
                 onChange={(e) => handleHeaderChange("product", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
                 placeholder="Název produktu"
               />
             </div>
@@ -962,7 +962,7 @@ export default function UniversalFormClient({
               <select
                 value={formData.supplier}
                 onChange={(e) => handleHeaderChange("supplier", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
               >
                 <option value="KASKO / JACKO / ISOTRA / PAVON">
                   KASKO / JACKO / ISOTRA / PAVON
@@ -985,7 +985,7 @@ export default function UniversalFormClient({
                 onChange={(e) =>
                   handleHeaderChange("productType", e.target.value)
                 }
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
                 placeholder="Typ produktu"
               />
             </div>
@@ -998,7 +998,7 @@ export default function UniversalFormClient({
               <select
                 value={formData.status}
                 onChange={(e) => handleHeaderChange("status", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
               >
                 <option value="">Vyberte stav</option>
                 <option value="NOVÉ OKNA">NOVÉ OKNA</option>
@@ -1017,7 +1017,7 @@ export default function UniversalFormClient({
                 onChange={(e) =>
                   handleHeaderChange("installationType", e.target.value)
                 }
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
               >
                 <option value="">Vyberte typ</option>
                 <option value="PLAST">PLAST</option>
@@ -1037,7 +1037,7 @@ export default function UniversalFormClient({
             </h2>
             <button
               onClick={handleAddRoom}
-              className="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
+              className="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-zinc-800"
             >
               <svg
                 className="h-4 w-4"
@@ -1083,14 +1083,14 @@ export default function UniversalFormClient({
                           onChange={(e) =>
                             handleRoomNameChange(room.id, e.target.value)
                           }
-                          className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                          className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
                           placeholder="Např. Obývací pokoj"
                         />
                       </div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleAddRow(room.id)}
-                          className="flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                          className="flex items-center gap-1.5 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                         >
                           <svg
                             className="h-3.5 w-3.5"
@@ -1172,7 +1172,7 @@ export default function UniversalFormClient({
                                     e.target.value
                                   )
                                 }
-                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:bg-zinc-700"
+                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
                                 placeholder="Ovládání"
                               />
                             </td>
@@ -1188,7 +1188,7 @@ export default function UniversalFormClient({
                                     e.target.value
                                   )
                                 }
-                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:bg-zinc-700"
+                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
                                 placeholder="Šířka"
                               />
                             </td>
@@ -1204,7 +1204,7 @@ export default function UniversalFormClient({
                                     e.target.value
                                   )
                                 }
-                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:bg-zinc-700"
+                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
                                 placeholder="Výška"
                               />
                             </td>
@@ -1229,7 +1229,7 @@ export default function UniversalFormClient({
                                     e.target.value
                                   )
                                 }
-                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:bg-zinc-700"
+                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
                                 placeholder="Délka"
                               />
                             </td>
@@ -1245,7 +1245,7 @@ export default function UniversalFormClient({
                                     e.target.value
                                   )
                                 }
-                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:bg-zinc-700"
+                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
                                 placeholder="Barva"
                               />
                             </td>
@@ -1261,7 +1261,7 @@ export default function UniversalFormClient({
                                     e.target.value
                                   )
                                 }
-                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:bg-zinc-700"
+                                className="w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
                                 placeholder="Lamela"
                               />
                             </td>
@@ -1315,7 +1315,7 @@ export default function UniversalFormClient({
               <select
                 value={formData.ladder}
                 onChange={(e) => handleHeaderChange("ladder", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
               >
                 <option value="">Vyberte</option>
                 <option value="NE">NE</option>
@@ -1337,7 +1337,7 @@ export default function UniversalFormClient({
                   onChange={(e) =>
                     handleHeaderChange("ladderHeight", e.target.value)
                   }
-                  className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                  className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
                   placeholder="Výška"
                 />
               </div>
@@ -1354,7 +1354,7 @@ export default function UniversalFormClient({
                 onChange={(e) =>
                   handleHeaderChange("totalArea", e.target.value)
                 }
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
                 placeholder="0.00"
               />
             </div>
@@ -1369,7 +1369,7 @@ export default function UniversalFormClient({
                 onChange={(e) =>
                   handleHeaderChange("slatVerified", e.target.value)
                 }
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
               >
                 <option value="">Vyberte</option>
                 <option value="V SYSTÉMU">V SYSTÉMU</option>
@@ -1431,7 +1431,7 @@ export default function UniversalFormClient({
             <button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-zinc-800"
+              className="flex items-center justify-center gap-2 rounded-md bg-accent px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-zinc-800"
             >
               {isSubmitting ? (
                 <>

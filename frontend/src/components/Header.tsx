@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 
 /**
- * Header component with user information and sign out button
+ * Header component with logo, title and user info / sign out
+ * Styled with brand primary (green) background and white text
+ * Logo uses native img to avoid Next.js Image optimizer "received null" with WebP in dev
  */
 export default function Header() {
   const { data: session, status } = useSession();
@@ -13,25 +16,36 @@ export default function Header() {
   };
 
   return (
-    <header className="border-b border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+    <header className="border-b border-primary-hover/30 bg-primary shadow-sm dark:border-primary/50">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
-          <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-            Výrobní dokumentace
-          </h1>
-          
-          {/* User info and sign out button */}
+          {/* Logo and title */}
+          {/* Single branding: logo only (no duplicate text); larger so full logo is visible */}
+          <div className="flex items-center gap-4">
+            <Link href="/" className="flex shrink-0 items-center">
+              <img
+                src="/logo-zaluzieee-barevne-384x94.webp"
+                alt="Žaluzieee"
+                width={384}
+                height={94}
+                className="h-10 w-auto sm:h-11"
+              />
+            </Link>
+            <span className="hidden border-l border-white/30 pl-4 text-sm font-medium text-white/90 sm:inline">
+              Výrobní dokumentace
+            </span>
+          </div>
+
+          {/* User info and sign out - on-brand styling */}
           {status === "authenticated" && session?.user && (
-            <div className="flex items-center gap-4">
-              {/* Display user email or name */}
-              <span className="text-sm text-zinc-700 dark:text-zinc-300">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <span className="text-sm text-white/90">
                 {session.user.name || session.user.email}
               </span>
-              
-              {/* Sign out button */}
               <button
+                type="button"
                 onClick={handleSignOut}
-                className="px-3 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-50 border border-zinc-300 dark:border-zinc-600 rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
+                className="rounded-lg border border-white/40 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-primary"
               >
                 Odhlásit se
               </button>

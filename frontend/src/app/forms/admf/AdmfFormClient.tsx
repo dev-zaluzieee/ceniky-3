@@ -332,7 +332,7 @@ export default function AdmfFormClient({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-md bg-blue-600 px-6 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+              className="rounded-md bg-accent px-6 py-3 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
             >
               {isSubmitting ? "Ukládám…" : isEditMode ? "Uložit změny" : "Vytvořit formulář"}
             </button>
