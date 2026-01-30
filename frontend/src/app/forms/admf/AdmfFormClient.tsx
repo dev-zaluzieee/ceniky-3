@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
+import { generateAdmfPdf } from "@/lib/admf-pdf";
 import type { AdmfFormData, AdmfProductRow } from "@/types/forms/admf.types";
 
 /** Customer data from order (read-only when under order) */
@@ -78,6 +79,11 @@ export default function AdmfFormClient({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  /** Modal: "Uložit a odeslat zákazníkovi" – dev mode message */
+  const [showSendModal, setShowSendModal] = useState(false);
+  /** Loading PDF (font + generate); error message if PDF generation fails */
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const updateProductRow = (id: string, upd: Partial<AdmfProductRow>) => {
     setFormData((prev) => ({
@@ -144,6 +150,24 @@ export default function AdmfFormClient({
 
   const totalCenaPoSleve = formData.productRows.reduce((sum, r) => sum + (r.cenaPoSleve || 0), 0);
 
+  /** Generate PDF (with Czech font) and open in new tab (preview for customer) */
+  const handleShowPreview = async () => {
+    setPdfError(null);
+    setPdfLoading(true);
+    try {
+      const doc = await generateAdmfPdf(formData);
+      const blob = doc.output("blob");
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Nepodařilo se vygenerovat PDF.";
+      setPdfError(message);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 py-8 px-4 dark:bg-zinc-900">
       <div className="mx-auto max-w-7xl">
@@ -157,7 +181,70 @@ export default function AdmfFormClient({
             </svg>
             {orderId != null ? "Zpět k zakázce" : "Zpět na výběr formulářů"}
           </Link>
+          {/* ADMF actions menu: preview PDF, save & send to customer */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleShowPreview}
+              disabled={pdfLoading}
+              className="inline-flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600 disabled:opacity-50"
+            >
+              {pdfLoading ? (
+                <>Generuji PDF…</>
+              ) : (
+                <>
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  Zobrazit zákazníkovi
+                </>
+              )}
+            </button>
+            {pdfError && (
+              <p className="text-sm text-red-600 dark:text-red-400">{pdfError}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowSendModal(true)}
+              className="inline-flex items-center gap-2 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              Uložit a odeslat zákazníkovi
+            </button>
+          </div>
         </div>
+
+        {/* Modal: dev mode – save & send blocked */}
+        {showSendModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="send-modal-title"
+          >
+            <div className="max-w-md rounded-lg border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-800">
+              <h2 id="send-modal-title" className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                Uložit a odeslat zákazníkovi
+              </h2>
+              <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400">
+                V testovacím režimu neodesíláme e-maily zákazníkům ani neukládáme data do ERP a Raynet.
+                V režimu vývoje je tato operace blokována.
+              </p>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowSendModal(false)}
+                  className="rounded-md bg-zinc-200 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-300 dark:bg-zinc-600 dark:text-zinc-100 dark:hover:bg-zinc-500"
+                >
+                  Zavřít
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <h1 className="mb-8 text-3xl font-bold text-zinc-900 dark:text-zinc-50">
           ADMINISTRATIVNÍ FORMULÁŘ
