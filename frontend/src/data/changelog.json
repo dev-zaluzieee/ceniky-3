@@ -1,0 +1,35 @@
+[
+  {
+    "date": "2026-01-29",
+    "changes": [
+      "Implementován systém zakázek a zákazníků",
+      "První verze administrativního formuláře (ADMF), získávaného z Kroku 1 (formuláře v zakázce)",
+      "První verze PDF exportu pro ADMF"
+    ]
+  },
+  {
+    "date": "2026-01-26",
+    "changes": [
+      "Správa uložených formulářů v databázi (možnost uložení, editace a smazání)"
+    ]
+  },
+  {
+    "date": "2026-01-23",
+    "changes": [
+      "Napojení na Raynet a ERP pro účely získávání informací o zákaznících"
+    ]
+  },
+  {
+    "date": "2026-01-20",
+    "changes": [
+      "Přidána authentizace skrze sjednocený systém s OVT reportingem"
+    ]
+  },
+  {
+    "date": "2026-01-19",
+    "changes": [
+      "První demoverze",
+      "Přidány následující formuláře k nahlédnutí: Horizontální žaluzie, Plisé žaluzie, Okenní sítě / Dveřní sítě, Textilní a D/N roletky, Univerzální list"
+    ]
+  }
+]
