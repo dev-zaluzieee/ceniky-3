@@ -67,20 +67,21 @@ export function getDimensionLimits(category: PricingExportCategory): {
   let vyrobni = category.vyrobni_mezni_rozmer;
 
   // Flat keys (e.g. from DB export)
+  // Use || (not ??) so that NaN from toNum() becomes the default; ?? only replaces null/undefined
   if (!mezni && typeof category["mezni_rozmer_bez_zaruky_width_min"] !== "undefined") {
     mezni = {
       width_min: toNum(category["mezni_rozmer_bez_zaruky_width_min"]) || 0,
-      width_max: toNum(category["mezni_rozmer_bez_zaruky_width_max"]) ?? 9999,
+      width_max: toNum(category["mezni_rozmer_bez_zaruky_width_max"]) || 9999,
       height_min: toNum(category["mezni_rozmer_bez_zaruky_height_min"]) || 0,
-      height_max: toNum(category["mezni_rozmer_bez_zaruky_height_max"]) ?? 9999,
+      height_max: toNum(category["mezni_rozmer_bez_zaruky_height_max"]) || 9999,
     };
   }
   if (!vyrobni && typeof category["vyrobni_mezni_rozmer_width_min"] !== "undefined") {
     vyrobni = {
       width_min: toNum(category["vyrobni_mezni_rozmer_width_min"]) || 0,
-      width_max: toNum(category["vyrobni_mezni_rozmer_width_max"]) ?? 9999,
+      width_max: toNum(category["vyrobni_mezni_rozmer_width_max"]) || 9999,
       height_min: toNum(category["vyrobni_mezni_rozmer_height_min"]) || 0,
-      height_max: toNum(category["vyrobni_mezni_rozmer_height_max"]) ?? 9999,
+      height_max: toNum(category["vyrobni_mezni_rozmer_height_max"]) || 9999,
     };
   }
 
