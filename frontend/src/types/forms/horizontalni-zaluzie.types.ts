@@ -44,6 +44,7 @@ export interface HorizontalniZaluzieFormData {
   product: string;
   supplier: string;
   productType: string; // Typ produktu
+  specifikace: string; // Specifikace
   slatType: string; // Lamela - 25x0,18 / 25x0,21 / 16x0,21
   status: string;
   installationType: string;

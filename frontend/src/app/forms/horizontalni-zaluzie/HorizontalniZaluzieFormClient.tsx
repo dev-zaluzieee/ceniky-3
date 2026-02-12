@@ -62,6 +62,7 @@ const getDefaultFormData = (): HorizontalniZaluzieFormData => ({
   product: "HORIZONTÁLNÍ ŽALUZIE",
   supplier: "KASKO / JACKO / ISOTRA",
   productType: "",
+  specifikace: "",
   slatType: "",
   status: "",
   installationType: "",
@@ -1179,6 +1180,20 @@ export default function HorizontalniZaluzieFormClient({
                   {categoriesError}
                 </p>
               )}
+            </div>
+
+            {/* Specifikace */}
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Specifikace
+              </label>
+              <input
+                type="text"
+                value={formData.specifikace}
+                onChange={(e) => handleHeaderChange("specifikace", e.target.value)}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                placeholder="Specifikace"
+              />
             </div>
 
             {/* Slat Type */}
