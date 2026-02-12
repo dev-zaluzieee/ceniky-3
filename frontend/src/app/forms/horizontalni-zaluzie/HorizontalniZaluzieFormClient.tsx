@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import { searchCustomersDual, validateCustomerPair } from "@/lib/customers-api";
 import { fetchManufacturers, Manufacturer } from "@/lib/manufacturers-api";
 import { fetchCategories, Category } from "@/lib/categories-api";
+import { fetchPricingExport } from "@/lib/pricing-export-api";
+import {
+  getDimensionStatus,
+  type DimensionStatus,
+  type PricingExportData,
+} from "@/lib/pricing-export.types";
 import {
   HorizontalniZaluzieFormData,
   HorizontalniZaluzieRoom,
@@ -158,6 +164,17 @@ export default function HorizontalniZaluzieFormClient({
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
+
+  /** Category ID derived from selected productType (for pricing export) */
+  const selectedCategoryId = useMemo(
+    () => categories.find((c) => c.name === formData.productType)?.id ?? "",
+    [categories, formData.productType]
+  );
+
+  /** Pricing export for selected category (dimension limits, surcharges) */
+  const [pricingExport, setPricingExport] = useState<PricingExportData | null>(null);
+  const [isLoadingPricing, setIsLoadingPricing] = useState(false);
+  const [pricingError, setPricingError] = useState<string | null>(null);
   /** Ref to discard stale category responses when manufacturer changes rapidly */
   const latestManufacturerIdRef = useRef<string | null>(null);
 
@@ -286,6 +303,32 @@ export default function HorizontalniZaluzieFormClient({
 
     loadCategories();
   }, [selectedManufacturerId]);
+
+  /** Fetch pricing export when category is selected (for dimension limits) */
+  useEffect(() => {
+    if (!selectedCategoryId) {
+      setPricingExport(null);
+      setPricingError(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingPricing(true);
+    setPricingError(null);
+    fetchPricingExport(selectedCategoryId).then((result) => {
+      if (cancelled) return;
+      setIsLoadingPricing(false);
+      if (result.success && result.data) {
+        setPricingExport(result.data);
+        setPricingError(null);
+      } else {
+        setPricingExport(null);
+        setPricingError(result.error || "Nepodařilo načíst ceník");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCategoryId]);
 
   /**
    * Create a new empty entry row
@@ -1180,6 +1223,16 @@ export default function HorizontalniZaluzieFormClient({
                   {categoriesError}
                 </p>
               )}
+              {selectedCategoryId && isLoadingPricing && (
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  Načítání ceníku…
+                </p>
+              )}
+              {selectedCategoryId && pricingError && !isLoadingPricing && (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  {pricingError} (kontrola rozměrů nebude k dispozici)
+                </p>
+              )}
             </div>
 
             {/* Specifikace */}
@@ -1406,10 +1459,29 @@ export default function HorizontalniZaluzieFormClient({
                         </tr>
                       </thead>
                       <tbody>
-                        {room.rows.map((row, rowIndex) => (
+                        {room.rows.map((row, rowIndex) => {
+                          const dimStatus: DimensionStatus = pricingExport?.category
+                            ? getDimensionStatus(row.width, row.height, pricingExport.category)
+                            : null;
+                          const rowBgClass =
+                            dimStatus === "green"
+                              ? "bg-emerald-50 dark:bg-emerald-900/20"
+                              : dimStatus === "yellow"
+                                ? "bg-amber-50 dark:bg-amber-900/20"
+                                : dimStatus === "red"
+                                  ? "bg-red-50 dark:bg-red-900/20"
+                                  : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50";
+                          const dimMessage =
+                            dimStatus === "yellow"
+                              ? "Mimo mezní rozměr – bez záruky"
+                              : dimStatus === "red"
+                                ? "Mimo výrobní mezní rozměr – nelze vyrobit"
+                                : null;
+                          return (
+                            <>
                           <tr
                             key={row.id}
-                            className="hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
+                            className={rowBgClass}
                           >
                             <td className="border border-zinc-300 px-1 py-1 text-center text-zinc-600 dark:border-zinc-600 dark:text-zinc-400">
                               {rowIndex + 1}
@@ -1639,7 +1711,29 @@ export default function HorizontalniZaluzieFormClient({
                               )}
                             </td>
                           </tr>
-                        ))}
+                          {dimMessage && (
+                            <tr className={rowBgClass}>
+                              <td
+                                colSpan={14}
+                                className="border border-zinc-300 px-2 py-1 text-xs font-medium dark:border-zinc-600"
+                                role="alert"
+                              >
+                                {dimStatus === "yellow" && (
+                                  <span className="text-amber-700 dark:text-amber-300">
+                                    ⚠ {dimMessage}
+                                  </span>
+                                )}
+                                {dimStatus === "red" && (
+                                  <span className="text-red-700 dark:text-red-300">
+                                    ✕ {dimMessage}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
