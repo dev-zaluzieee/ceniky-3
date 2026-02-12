@@ -5,6 +5,7 @@ import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import { searchCustomersDual, validateCustomerPair } from "@/lib/customers-api";
 import { fetchManufacturers, Manufacturer } from "@/lib/manufacturers-api";
+import { fetchCategories, Category } from "@/lib/categories-api";
 import {
   HorizontalniZaluzieFormData,
   HorizontalniZaluzieRoom,
@@ -150,6 +151,12 @@ export default function HorizontalniZaluzieFormClient({
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [isLoadingManufacturers, setIsLoadingManufacturers] = useState(true);
   const [manufacturersError, setManufacturersError] = useState<string | null>(null);
+  const [selectedManufacturerId, setSelectedManufacturerId] = useState<string | null>(null);
+
+  // Categories state (for Typ produktu dropdown)
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
 
   // Update form data when initialData changes (e.g., after fetching)
   // Merge with defaults to ensure all required fields are present (handles legacy data)
@@ -209,7 +216,15 @@ export default function HorizontalniZaluzieFormClient({
         setFormData((prev) => {
           if (!prev.supplier || !result.data!.some((m) => m.name === prev.supplier)) {
             if (result.data!.length > 0) {
-              return { ...prev, supplier: result.data![0].name };
+              const firstManufacturer = result.data![0];
+              setSelectedManufacturerId(firstManufacturer.id);
+              return { ...prev, supplier: firstManufacturer.name };
+            }
+          } else {
+            // Find and set manufacturer ID for existing supplier value
+            const matchingManufacturer = result.data!.find((m) => m.name === prev.supplier);
+            if (matchingManufacturer) {
+              setSelectedManufacturerId(matchingManufacturer.id);
             }
           }
           return prev;
@@ -224,6 +239,40 @@ export default function HorizontalniZaluzieFormClient({
 
     loadManufacturers();
   }, []); // Empty dependency array - only run on mount
+
+  // Fetch categories when manufacturer is selected
+  useEffect(() => {
+    const loadCategories = async () => {
+      if (!selectedManufacturerId) {
+        setCategories([]);
+        return;
+      }
+
+      setIsLoadingCategories(true);
+      setCategoriesError(null);
+
+      const result = await fetchCategories(selectedManufacturerId);
+      if (result.success && result.data) {
+        setCategories(result.data);
+        // If productType is empty or not in the fetched list, set to first category name
+        setFormData((prev) => {
+          if (!prev.productType || !result.data!.some((c) => c.name === prev.productType)) {
+            if (result.data!.length > 0) {
+              return { ...prev, productType: result.data![0].name };
+            }
+          }
+          return prev;
+        });
+      } else {
+        setCategoriesError(result.error || "Nepodařilo se načíst kategorie");
+        console.error("Failed to fetch categories:", result.error);
+      }
+
+      setIsLoadingCategories(false);
+    };
+
+    loadCategories();
+  }, [selectedManufacturerId]);
 
   /**
    * Create a new empty entry row
@@ -1043,7 +1092,22 @@ export default function HorizontalniZaluzieFormClient({
               </label>
               <select
                 value={formData.supplier}
-                onChange={(e) => handleHeaderChange("supplier", e.target.value)}
+                onChange={(e) => {
+                  const selectedName = e.target.value;
+                  // Find manufacturer ID and update selectedManufacturerId
+                  const selectedManufacturer = manufacturers.find((m) => m.name === selectedName);
+                  if (selectedManufacturer) {
+                    setSelectedManufacturerId(selectedManufacturer.id);
+                  } else {
+                    setSelectedManufacturerId(null);
+                  }
+                  // Update supplier and clear productType when manufacturer changes
+                  setFormData((prev) => ({
+                    ...prev,
+                    supplier: selectedName,
+                    productType: "", // Clear productType when manufacturer changes
+                  }));
+                }}
                 disabled={isLoadingManufacturers}
                 className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
               >
@@ -1073,15 +1137,36 @@ export default function HorizontalniZaluzieFormClient({
               <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Typ produktu
               </label>
-              <input
-                type="text"
+              <select
                 value={formData.productType}
-                onChange={(e) =>
-                  handleHeaderChange("productType", e.target.value)
-                }
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                placeholder="PRIM / ISOLINE / LOCO / ATYP - ECO nebo ECO R / ISOTRA 25 / INTERIEROVÁ - TYP:"
-              />
+                onChange={(e) => handleHeaderChange("productType", e.target.value)}
+                disabled={!selectedManufacturerId || isLoadingCategories}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+              >
+                {!selectedManufacturerId ? (
+                  <option value="">Nejprve vyberte dodavatele</option>
+                ) : isLoadingCategories ? (
+                  <option value="">Načítání...</option>
+                ) : categoriesError ? (
+                  <option value="">Chyba při načítání</option>
+                ) : categories.length === 0 ? (
+                  <option value="">Žádné kategorie</option>
+                ) : (
+                  <>
+                    <option value="">Vyberte typ produktu</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.name}>
+                        {category.name} {category.code ? `(${category.code})` : ""}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+              {categoriesError && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  {categoriesError}
+                </p>
+              )}
             </div>
 
             {/* Slat Type */}
