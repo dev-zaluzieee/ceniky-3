@@ -5,8 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
-import jwt from "jsonwebtoken";
+import { getMainBackendToken } from "@/lib/auth-backend";
 
 /**
  * Get backend API URL from environment variables
@@ -16,56 +15,13 @@ function getBackendUrl(): string {
 }
 
 /**
- * Get authentication token for backend
- * Creates a JWT token from the session to forward to Express backend
- */
-async function getAuthToken(request: NextRequest): Promise<string | null> {
-  try {
-    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-    if (!token) {
-      console.error("No token found in session");
-      return null;
-    }
-
-    // Create a JWT token that the backend can verify
-    const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
-    if (!secret) {
-      console.error("No JWT secret configured");
-      return null;
-    }
-
-    // Get email from token - check both email and id fields
-    const email = token.email || token.id;
-    if (!email) {
-      console.error("Token missing email/id:", token);
-      return null;
-    }
-
-    // Create JWT token compatible with backend's jwt.verify
-    const jwtToken = jwt.sign(
-      {
-        email: email,
-        id: token.id || email,
-      },
-      secret,
-      { expiresIn: "1h" }
-    );
-
-    return jwtToken;
-  } catch (error) {
-    console.error("Error getting auth token:", error);
-    return null;
-  }
-}
-
-/**
  * GET /api/forms
  * List forms
  */
 export async function GET(request: NextRequest) {
   try {
     // Get authentication token
-    const authToken = await getAuthToken(request);
+    const authToken = await getMainBackendToken(request);
     if (!authToken) {
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
@@ -110,7 +66,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     // Get authentication token
-    const authToken = await getAuthToken(request);
+    const authToken = await getMainBackendToken(request);
     if (!authToken) {
       console.error("Failed to get auth token");
       return NextResponse.json(

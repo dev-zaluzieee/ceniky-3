@@ -3,9 +3,7 @@
  * Used in Server Components to fetch data directly from backend
  */
 
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import jwt from "jsonwebtoken";
+import { createMainBackendToken } from "./auth-backend";
 import type { OrderRecord, OrdersPaginationInfo } from "./orders-api";
 
 function getBackendUrl(): string {
@@ -14,23 +12,6 @@ function getBackendUrl(): string {
     process.env.NEXT_PUBLIC_BACKEND_API_URL ||
     "http://localhost:3001"
   );
-}
-
-async function createAuthToken(): Promise<string | null> {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) return null;
-    const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
-    if (!secret) return null;
-    return jwt.sign(
-      { email: session.user.email, id: session.user.email },
-      secret,
-      { expiresIn: "1h" }
-    );
-  } catch (error) {
-    console.error("Error creating auth token:", error);
-    return null;
-  }
 }
 
 export interface ServerOrdersResponse {
@@ -48,7 +29,7 @@ export async function fetchOrdersServer(
   query: { page?: number; limit?: number } = {}
 ): Promise<ServerOrdersResponse> {
   try {
-    const authToken = await createAuthToken();
+    const authToken = await createMainBackendToken();
     if (!authToken) {
       return { success: false, error: "Unauthorized" };
     }
@@ -100,7 +81,7 @@ export async function fetchOrderByIdServer(
   orderId: number
 ): Promise<ServerOrderResponse> {
   try {
-    const authToken = await createAuthToken();
+    const authToken = await createMainBackendToken();
     if (!authToken) {
       return { success: false, error: "Unauthorized" };
     }
@@ -159,7 +140,7 @@ export async function fetchExtractProductsServer(
   formIds?: number[]
 ): Promise<ServerExtractProductsResponse> {
   try {
-    const authToken = await createAuthToken();
+    const authToken = await createMainBackendToken();
     if (!authToken) {
       return { success: false, error: "Unauthorized" };
     }

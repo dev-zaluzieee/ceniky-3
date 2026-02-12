@@ -3,9 +3,7 @@
  * Used in Server Components to fetch data directly
  */
 
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import jwt from "jsonwebtoken";
+import { createMainBackendToken } from "./auth-backend";
 import { FormRecord, FormType, ListFormsQuery, PaginationInfo } from "./forms-api";
 
 /**
@@ -13,39 +11,6 @@ import { FormRecord, FormType, ListFormsQuery, PaginationInfo } from "./forms-ap
  */
 function getBackendUrl(): string {
   return process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_API_URL || "http://localhost:3001";
-}
-
-/**
- * Create authentication token for backend from server session
- * @returns JWT token string or null if not authenticated
- */
-async function createAuthToken(): Promise<string | null> {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return null;
-    }
-
-    const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
-    if (!secret) {
-      return null;
-    }
-
-    // Create JWT token compatible with backend's jwt.verify
-    const jwtToken = jwt.sign(
-      {
-        email: session.user.email,
-        id: session.user.email,
-      },
-      secret,
-      { expiresIn: "1h" }
-    );
-
-    return jwtToken;
-  } catch (error) {
-    console.error("Error creating auth token:", error);
-    return null;
-  }
 }
 
 /**
@@ -68,7 +33,7 @@ export async function fetchFormsServer(
 ): Promise<ServerFormsResponse> {
   try {
     // Get authentication token
-    const authToken = await createAuthToken();
+    const authToken = await createMainBackendToken();
     if (!authToken) {
       return {
         success: false,
@@ -146,7 +111,7 @@ export async function fetchFormByIdServer(
 ): Promise<ServerFormResponse> {
   try {
     // Get authentication token
-    const authToken = await createAuthToken();
+    const authToken = await createMainBackendToken();
     if (!authToken) {
       return {
         success: false,

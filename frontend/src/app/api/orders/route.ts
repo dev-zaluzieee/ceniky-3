@@ -5,8 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
-import jwt from "jsonwebtoken";
+import { getMainBackendToken } from "@/lib/auth-backend";
 
 /** Backend API URL from environment */
 function getBackendUrl(): string {
@@ -17,37 +16,12 @@ function getBackendUrl(): string {
   );
 }
 
-/** Create JWT for backend from NextAuth session */
-async function getAuthToken(request: NextRequest): Promise<string | null> {
-  try {
-    const token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
-    if (!token) return null;
-
-    const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
-    if (!secret) return null;
-
-    const email = token.email || token.id;
-    if (!email) return null;
-
-    return jwt.sign(
-      { email, id: token.id || email },
-      secret,
-      { expiresIn: "1h" }
-    );
-  } catch {
-    return null;
-  }
-}
-
 /**
  * GET /api/orders - List orders for authenticated user
  */
 export async function GET(request: NextRequest) {
   try {
-    const authToken = await getAuthToken(request);
+    const authToken = await getMainBackendToken(request);
     if (!authToken) {
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
@@ -86,7 +60,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const authToken = await getAuthToken(request);
+    const authToken = await getMainBackendToken(request);
     if (!authToken) {
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
