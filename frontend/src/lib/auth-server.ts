@@ -18,12 +18,12 @@ export async function getAccessToken(): Promise<string | null> {
       return null;
     }
 
-    // Check expiration
+    // Check expiration (invalid or non-numeric expires_at is treated as expired)
     const expiresAt = cookieStore.get("expires_at")?.value;
     if (expiresAt) {
       const expirationTime = parseInt(expiresAt, 10) * 1000; // Convert to milliseconds
       const now = Date.now();
-      if (now >= expirationTime) {
+      if (Number.isNaN(expirationTime) || now >= expirationTime) {
         // Token expired
         return null;
       }
@@ -55,12 +55,12 @@ export async function getServerSession(): Promise<{
       return null;
     }
 
-    // Check expiration
+    // Check expiration (invalid or non-numeric expires_at is treated as expired)
     const expiresAt = cookieStore.get("expires_at")?.value;
     if (expiresAt) {
       const expirationTime = parseInt(expiresAt, 10) * 1000; // Convert to milliseconds
       const now = Date.now();
-      if (now >= expirationTime) {
+      if (Number.isNaN(expirationTime) || now >= expirationTime) {
         // Token expired
         return null;
       }
@@ -68,13 +68,14 @@ export async function getServerSession(): Promise<{
 
     const userEmail = cookieStore.get("user_email")?.value || null;
     const userId = cookieStore.get("user_id")?.value || null;
+    const parsedExpiresAt = expiresAt ? parseInt(expiresAt, 10) : null;
 
     return {
       user: {
         email: userEmail,
         id: userId,
       },
-      expires_at: expiresAt ? parseInt(expiresAt, 10) : null,
+      expires_at: parsedExpiresAt != null && !Number.isNaN(parsedExpiresAt) ? parsedExpiresAt : null,
     };
   } catch (error) {
     console.error("Error getting server session:", error);

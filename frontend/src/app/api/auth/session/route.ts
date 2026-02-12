@@ -23,13 +23,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, authenticated: false }, { status: 401 });
     }
 
-    // Check expiration
+    // Check expiration (invalid or non-numeric expires_at is treated as expired)
     if (expiresAt) {
       const expirationTime = parseInt(expiresAt, 10) * 1000; // Convert to milliseconds
       const now = Date.now();
-      if (now >= expirationTime) {
-        // Token expired - clear cookies
-        const isProduction = process.env.NODE_ENV === "production";
+      if (Number.isNaN(expirationTime) || now >= expirationTime) {
+        // Token expired or invalid - clear cookies
         cookieStore.delete("access_token");
         cookieStore.delete("refresh_token");
         cookieStore.delete("expires_at");
@@ -39,6 +38,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const parsedExpiresAt = expiresAt ? parseInt(expiresAt, 10) : null;
+
     return NextResponse.json({
       success: true,
       authenticated: true,
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
         email: userEmail || null,
         id: userId || null,
       },
-      expires_at: expiresAt ? parseInt(expiresAt, 10) : null,
+      expires_at: parsedExpiresAt != null && !Number.isNaN(parsedExpiresAt) ? parsedExpiresAt : null,
     });
   } catch (error: any) {
     console.error("Error in GET /api/auth/session:", error);

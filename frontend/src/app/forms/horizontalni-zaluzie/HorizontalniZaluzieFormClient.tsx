@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import { searchCustomersDual, validateCustomerPair } from "@/lib/customers-api";
@@ -157,6 +157,8 @@ export default function HorizontalniZaluzieFormClient({
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  /** Ref to discard stale category responses when manufacturer changes rapidly */
+  const latestManufacturerIdRef = useRef<string | null>(null);
 
   // Update form data when initialData changes (e.g., after fetching)
   // Merge with defaults to ensure all required fields are present (handles legacy data)
@@ -242,8 +244,11 @@ export default function HorizontalniZaluzieFormClient({
 
   // Fetch categories when manufacturer is selected
   useEffect(() => {
+    const requestedId = selectedManufacturerId;
+    latestManufacturerIdRef.current = selectedManufacturerId;
+
     const loadCategories = async () => {
-      if (!selectedManufacturerId) {
+      if (!requestedId) {
         setCategories([]);
         return;
       }
@@ -251,7 +256,14 @@ export default function HorizontalniZaluzieFormClient({
       setIsLoadingCategories(true);
       setCategoriesError(null);
 
-      const result = await fetchCategories(selectedManufacturerId);
+      const result = await fetchCategories(requestedId);
+
+      // Discard stale response: user may have changed manufacturer while this request was in flight
+      if (latestManufacturerIdRef.current !== requestedId) {
+        setIsLoadingCategories(false);
+        return;
+      }
+
       if (result.success && result.data) {
         setCategories(result.data);
         // If productType is empty or not in the fetched list, set to first category name

@@ -33,13 +33,13 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Check token expiration
+  // Check token expiration (invalid or non-numeric expires_at is treated as expired)
   const expiresAt = req.cookies.get("expires_at")?.value;
   if (expiresAt) {
     const expirationTime = parseInt(expiresAt, 10) * 1000; // Convert to milliseconds
     const now = Date.now();
-    if (now >= expirationTime) {
-      // Token expired - redirect to login
+    if (Number.isNaN(expirationTime) || now >= expirationTime) {
+      // Token expired or invalid - redirect to login
       const url = req.nextUrl.clone();
       url.pathname = "/login";
       url.searchParams.set("callbackUrl", req.nextUrl.href);

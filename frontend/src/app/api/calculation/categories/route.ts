@@ -31,13 +31,13 @@ async function getCalculationBackendToken(request: NextRequest): Promise<string 
       return null;
     }
 
-    // Check token expiration
+    // Check token expiration (invalid or non-numeric expires_at is treated as expired)
     const expiresAt = request.cookies.get("expires_at")?.value;
     if (expiresAt) {
       const expirationTime = parseInt(expiresAt, 10) * 1000; // Convert to milliseconds
       const now = Date.now();
-      if (now >= expirationTime) {
-        console.error("Access token has expired");
+      if (Number.isNaN(expirationTime) || now >= expirationTime) {
+        console.error("Access token has expired or invalid expires_at");
         return null;
       }
     }
