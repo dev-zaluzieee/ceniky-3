@@ -5,8 +5,7 @@
  */
 
 import { redirect, notFound } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getServerSession } from "@/lib/auth-server";
 import { fetchFormByIdServer } from "@/lib/forms-server";
 import { fetchOrderByIdServer } from "@/lib/orders-server";
 import type { FormType } from "@/lib/forms-api";
@@ -46,7 +45,7 @@ export default async function OrderFormEditPage({
 }: {
   params: Promise<{ id: string; formId: string }>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession();
   if (!session) redirect("/login");
 
   const { id: orderIdParam, formId: formIdParam } = await params;

@@ -3,8 +3,7 @@
  * Redirects to canonical URL under order: /orders/[orderId]/forms/[formId]
  */
 import { redirect, notFound } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getServerSession } from "@/lib/auth-server";
 import { fetchFormByIdServer } from "@/lib/forms-server";
 
 export default async function TextileRoletyFormEditPage({
@@ -12,7 +11,7 @@ export default async function TextileRoletyFormEditPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession();
   if (!session) redirect("/login");
 
   const { id } = await params;

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getServerSession } from "@/lib/auth-server";
 import { fetchFormsServer } from "@/lib/forms-server";
 import FormsListClient from "./FormsListClient";
 
@@ -10,7 +9,7 @@ import FormsListClient from "./FormsListClient";
  */
 export default async function FormsListPage() {
   // Check authentication
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession();
   if (!session) {
     redirect("/login");
   }

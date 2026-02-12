@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getServerSession } from "@/lib/auth-server";
 import { getBackendBaseUrl } from "@/lib/backend";
-import { authOptions } from "../../[...nextauth]/route";
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions as any) as any;
+  const session = await getServerSession();
   const email = session?.user?.email as string | undefined;
   if (!email) return NextResponse.json({ error: "Missing session" }, { status: 401 });
   const base = getBackendBaseUrl();

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSession, signOut } from "next-auth/react";
+import { useAuth } from "@/hooks/useAuth";
 
 /**
  * Header component with logo, title and user info / sign out
@@ -9,11 +9,7 @@ import { useSession, signOut } from "next-auth/react";
  * Logo uses native img to avoid Next.js Image optimizer "received null" with WebP in dev
  */
 export default function Header() {
-  const { data: session, status } = useSession();
-
-  const handleSignOut = async () => {
-    await signOut({ callbackUrl: "/login" });
-  };
+  const { isAuthenticated, user, signOut, isLoading } = useAuth();
 
   return (
     <header className="border-b border-primary-hover/30 bg-primary shadow-sm dark:border-primary/50">
@@ -43,14 +39,14 @@ export default function Header() {
           </div>
 
           {/* User info and sign out - on-brand styling */}
-          {status === "authenticated" && session?.user && (
+          {!isLoading && isAuthenticated && user && (
             <div className="flex items-center gap-3 sm:gap-4">
               <span className="text-sm text-white/90">
-                {session.user.name || session.user.email}
+                {user.email}
               </span>
               <button
                 type="button"
-                onClick={handleSignOut}
+                onClick={signOut}
                 className="rounded-lg border border-white/40 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-primary"
               >
                 Odhlásit se

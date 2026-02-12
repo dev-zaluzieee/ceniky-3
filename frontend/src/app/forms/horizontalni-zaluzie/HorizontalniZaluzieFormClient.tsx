@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import { searchCustomersDual, validateCustomerPair } from "@/lib/customers-api";
+import { fetchManufacturers, Manufacturer } from "@/lib/manufacturers-api";
 import {
   HorizontalniZaluzieFormData,
   HorizontalniZaluzieRoom,
@@ -145,6 +146,11 @@ export default function HorizontalniZaluzieFormClient({
   const [isValidatingPair, setIsValidatingPair] = useState(false);
   const [pairWarning, setPairWarning] = useState<string | null>(null);
 
+  // Manufacturers state (for Dodavatel dropdown)
+  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
+  const [isLoadingManufacturers, setIsLoadingManufacturers] = useState(true);
+  const [manufacturersError, setManufacturersError] = useState<string | null>(null);
+
   // Update form data when initialData changes (e.g., after fetching)
   // Merge with defaults to ensure all required fields are present (handles legacy data)
   // Preserves existing room/row IDs to maintain stable React keys and prevent unnecessary remounts
@@ -188,6 +194,36 @@ export default function HorizontalniZaluzieFormClient({
       });
     }
   }, [initialData]);
+
+  // Fetch manufacturers on component mount
+  useEffect(() => {
+    const loadManufacturers = async () => {
+      setIsLoadingManufacturers(true);
+      setManufacturersError(null);
+
+      const result = await fetchManufacturers();
+      if (result.success && result.data) {
+        setManufacturers(result.data);
+        // If supplier is empty or not in the fetched list, set to first manufacturer name
+        // Use functional update to avoid dependency on formData.supplier
+        setFormData((prev) => {
+          if (!prev.supplier || !result.data!.some((m) => m.name === prev.supplier)) {
+            if (result.data!.length > 0) {
+              return { ...prev, supplier: result.data![0].name };
+            }
+          }
+          return prev;
+        });
+      } else {
+        setManufacturersError(result.error || "Nepodařilo se načíst dodavatele");
+        console.error("Failed to fetch manufacturers:", result.error);
+      }
+
+      setIsLoadingManufacturers(false);
+    };
+
+    loadManufacturers();
+  }, []); // Empty dependency array - only run on mount
 
   /**
    * Create a new empty entry row
@@ -1008,15 +1044,28 @@ export default function HorizontalniZaluzieFormClient({
               <select
                 value={formData.supplier}
                 onChange={(e) => handleHeaderChange("supplier", e.target.value)}
-                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                disabled={isLoadingManufacturers}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
               >
-                <option value="KASKO / JACKO / ISOTRA">
-                  KASKO / JACKO / ISOTRA
-                </option>
-                <option value="KASKO">KASKO</option>
-                <option value="JACKO">JACKO</option>
-                <option value="ISOTRA">ISOTRA</option>
+                {isLoadingManufacturers ? (
+                  <option value="">Načítání...</option>
+                ) : manufacturersError ? (
+                  <option value="">Chyba při načítání</option>
+                ) : manufacturers.length === 0 ? (
+                  <option value="">Žádní dodavatelé</option>
+                ) : (
+                  manufacturers.map((manufacturer) => (
+                    <option key={manufacturer.id} value={manufacturer.name}>
+                      {manufacturer.name}
+                    </option>
+                  ))
+                )}
               </select>
+              {manufacturersError && (
+                <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+                  {manufacturersError}
+                </p>
+              )}
             </div>
 
             {/* Product Type */}

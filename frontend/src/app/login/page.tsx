@@ -1,10 +1,15 @@
-import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { authOptions } from "../api/auth/[...nextauth]/route";
+import { getServerSession } from "@/lib/auth-server";
 import LoginClient from "./LoginClient";
 
-export default async function LoginPage() {
-  const session = await getServerSession(authOptions);
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ callbackUrl?: string }>;
+}) {
+  const session = await getServerSession();
   if (session) redirect("/");
-  return <LoginClient />;
+
+  const params = await searchParams;
+  return <LoginClient callbackUrl={params.callbackUrl} />;
 }

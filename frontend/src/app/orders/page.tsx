@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getServerSession } from "@/lib/auth-server";
 import { fetchOrdersServer } from "@/lib/orders-server";
 import OrdersListClient from "./OrdersListClient";
 
@@ -9,7 +8,7 @@ import OrdersListClient from "./OrdersListClient";
  * Fetches orders on the server and passes to Client Component
  */
 export default async function OrdersPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession();
   if (!session) {
     redirect("/login");
   }

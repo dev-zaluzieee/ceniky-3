@@ -3,15 +3,14 @@
  * Redirects to canonical URL: /orders/[orderId]/forms/create/textile-rolety
  */
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getServerSession } from "@/lib/auth-server";
 
 export default async function TextileRoletyFormPage({
   searchParams,
 }: {
   searchParams: Promise<{ orderId?: string }>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession();
   if (!session) redirect("/login");
 
   const params = await searchParams;

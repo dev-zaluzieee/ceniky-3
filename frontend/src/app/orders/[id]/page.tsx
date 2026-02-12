@@ -1,6 +1,5 @@
 import { redirect, notFound } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getServerSession } from "@/lib/auth-server";
 import { fetchOrderByIdServer } from "@/lib/orders-server";
 import { fetchFormsServer } from "@/lib/forms-server";
 import OrderDetailClient from "./OrderDetailClient";
@@ -14,7 +13,7 @@ export default async function OrderDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession();
   if (!session) {
     redirect("/login");
   }
