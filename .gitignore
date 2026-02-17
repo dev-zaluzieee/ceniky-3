@@ -84,3 +84,6 @@ logs
 
 # Sentry
 .sentryclirc
+
+# Ignore everything in /temp folder
+temp/

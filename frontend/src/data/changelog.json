@@ -1,5 +1,24 @@
 [
   {
+    "date": "2026-02-17",
+    "changes": [
+      "Náhledový tool pro editaci formuláře pomocí JSONu"
+    ]
+  },
+  {
+    "date": "2026-02-13",
+    "changes": [
+      "Aktualizován formulář horizontálních žaluzií: odpovídá upřesněnému zadání z sheetu",
+      "Implementovány mezní výrobní a záruční rozměry v horizontálních žaluziích"
+    ]
+  },
+  {
+    "date": "2026-02-11",
+    "changes": [
+      "Auth systém odpovídající adminu"
+    ]
+  },
+  {
     "date": "2026-01-29",
     "changes": [
       "Implementován systém zakázek a zákazníků",
