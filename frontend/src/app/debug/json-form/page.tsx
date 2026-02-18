@@ -140,7 +140,7 @@ export default function DebugJsonFormPage() {
 
   /** Display label for a property (label-form override or Name) */
   const getPropertyLabel = (prop: PropertyDefinition): string =>
-    (prop as Record<string, string>)["label-form"] ?? prop.Name;
+    prop["label-form"] ?? prop.Name;
 
   /**
    * Generate unique ID
