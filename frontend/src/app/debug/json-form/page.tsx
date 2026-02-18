@@ -4,13 +4,24 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 
 /**
- * Type definitions matching the JSON payload structure from validation tool
+ * Type definitions matching the JSON payload structure from validation tool (temp directory).
+ * New format uses zahlavi / form_body / zapati sections and optional label-form, Value.
  */
 interface PropertyDefinition {
   ID: string;
   Code: string;
   Name: string;
   DataType: "text" | "numeric" | "boolean" | "enum";
+  /** Optional default value (e.g. manufacturer) */
+  Value?: string | number | boolean;
+  /** Optional form label override */
+  "label-form"?: string;
+}
+
+interface SectionBlock {
+  Code: string;
+  Name: string;
+  Properties: PropertyDefinition[];
 }
 
 interface EnumValue {
@@ -22,11 +33,12 @@ interface EnumValue {
 
 interface ProductPayload {
   product_code: string;
-  properties: {
-    Code: string;
-    Name: string;
-    Properties: PropertyDefinition[];
-  };
+  /** Header section (form-level fields above the table) */
+  zahlavi?: SectionBlock;
+  /** Main repeatable row fields – columns in mistnosti rows */
+  form_body?: SectionBlock;
+  /** Footer section (form-level fields below the table) */
+  zapati?: SectionBlock;
   enums: {
     [key: string]: {
       default: EnumValue[];
@@ -36,6 +48,9 @@ interface ProductPayload {
   _metadata?: {
     generated_from_validations?: boolean;
     generated_at?: string;
+    zahlavi_count?: number;
+    form_body_count?: number;
+    zapati_count?: number;
     properties_count?: number;
     total_properties?: number;
   };
@@ -71,7 +86,10 @@ interface FormData {
   // Product info
   productCode: string;
   productName: string;
-  // Rooms (mistnosti)
+  // Form-level sections (from zahlavi / zapati)
+  zahlaviValues: Record<string, string | number | boolean>;
+  zapatiValues: Record<string, string | number | boolean>;
+  // Rooms (mistnosti) – row fields come from form_body
   rooms: Room[];
 }
 
@@ -101,24 +119,28 @@ export default function DebugJsonFormPage() {
   }, [rawJson]);
 
   /**
-   * Validate payload structure
+   * Validate payload structure (new format: zahlavi / form_body / zapati + enums)
    */
   const payload = useMemo((): ProductPayload | null => {
     if (!parsed.ok || !parsed.value) return null;
     const data = parsed.value as any;
-    
-    // Validate structure
-    if (
-      typeof data.product_code === "string" &&
-      data.properties &&
-      Array.isArray(data.properties.Properties) &&
-      data.enums &&
-      typeof data.enums === "object"
-    ) {
-      return data as ProductPayload;
-    }
-    return null;
+    if (typeof data.product_code !== "string" || !data.enums || typeof data.enums !== "object")
+      return null;
+    // At least form_body with Properties is required for the row table
+    const hasFormBody = data.form_body && Array.isArray(data.form_body.Properties) && data.form_body.Properties.length > 0;
+    if (!hasFormBody) return null;
+    return data as ProductPayload;
   }, [parsed]);
+
+  /** Row columns come from form_body.Properties */
+  const formBodyProperties = useMemo(
+    () => (payload?.form_body?.Properties ?? []) as PropertyDefinition[],
+    [payload]
+  );
+
+  /** Display label for a property (label-form override or Name) */
+  const getPropertyLabel = (prop: PropertyDefinition): string =>
+    (prop as Record<string, string>)["label-form"] ?? prop.Name;
 
   /**
    * Generate unique ID
@@ -127,25 +149,42 @@ export default function DebugJsonFormPage() {
     return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   };
 
+  /** Build empty row from form_body properties; use Value when present */
+  const createEmptyFormBodyRow = (): FormRow => {
+    const row: FormRow = { id: generateId() };
+    formBodyProperties.forEach((prop) => {
+      if (prop.Value !== undefined) {
+        row[prop.Code] = prop.Value;
+      } else if (prop.DataType === "boolean") {
+        row[prop.Code] = false;
+      } else if (prop.DataType === "numeric") {
+        row[prop.Code] = "";
+      } else {
+        row[prop.Code] = "";
+      }
+    });
+    return row;
+  };
+
+  /** Build initial values for a section (zahlavi or zapati) */
+  const sectionInitialValues = (section: SectionBlock | undefined): Record<string, string | number | boolean> => {
+    const out: Record<string, string | number | boolean> = {};
+    if (!section) return out;
+    section.Properties.forEach((prop) => {
+      if (prop.Value !== undefined) out[prop.Code] = prop.Value;
+      else if (prop.DataType === "boolean") out[prop.Code] = false;
+      else if (prop.DataType === "numeric") out[prop.Code] = "";
+      else out[prop.Code] = "";
+    });
+    return out;
+  };
+
   /**
    * Initialize form from payload
    */
   const handleGenerateForm = () => {
     if (!payload) return;
 
-    // Create initial empty row with all properties
-    const initialRow: FormRow = { id: generateId() };
-    payload.properties.Properties.forEach((prop) => {
-      if (prop.DataType === "boolean") {
-        initialRow[prop.Code] = false;
-      } else if (prop.DataType === "numeric") {
-        initialRow[prop.Code] = "";
-      } else {
-        initialRow[prop.Code] = "";
-      }
-    });
-
-    // Initialize form data
     const newFormData: FormData = {
       name: "",
       email: "",
@@ -153,12 +192,14 @@ export default function DebugJsonFormPage() {
       address: "",
       city: "",
       productCode: payload.product_code,
-      productName: payload.properties.Name,
+      productName: payload.form_body?.Name ?? payload.zahlavi?.Name ?? payload.zapati?.Name ?? payload.product_code,
+      zahlaviValues: sectionInitialValues(payload.zahlavi),
+      zapatiValues: sectionInitialValues(payload.zapati),
       rooms: [
         {
           id: generateId(),
           name: "",
-          rows: [initialRow],
+          rows: [createEmptyFormBodyRow()],
         },
       ],
     };
@@ -171,19 +212,7 @@ export default function DebugJsonFormPage() {
    * Add a new room
    */
   const handleAddRoom = () => {
-    if (!formData || !payload) return;
-
-    const initialRow: FormRow = { id: generateId() };
-    payload.properties.Properties.forEach((prop) => {
-      if (prop.DataType === "boolean") {
-        initialRow[prop.Code] = false;
-      } else if (prop.DataType === "numeric") {
-        initialRow[prop.Code] = "";
-      } else {
-        initialRow[prop.Code] = "";
-      }
-    });
-
+    if (!formData) return;
     setFormData({
       ...formData,
       rooms: [
@@ -191,7 +220,7 @@ export default function DebugJsonFormPage() {
         {
           id: generateId(),
           name: "",
-          rows: [initialRow],
+          rows: [createEmptyFormBodyRow()],
         },
       ],
     });
@@ -225,24 +254,12 @@ export default function DebugJsonFormPage() {
    * Add a row to a room
    */
   const handleAddRow = (roomId: string) => {
-    if (!formData || !payload) return;
-
-    const initialRow: FormRow = { id: generateId() };
-    payload.properties.Properties.forEach((prop) => {
-      if (prop.DataType === "boolean") {
-        initialRow[prop.Code] = false;
-      } else if (prop.DataType === "numeric") {
-        initialRow[prop.Code] = "";
-      } else {
-        initialRow[prop.Code] = "";
-      }
-    });
-
+    if (!formData) return;
     setFormData({
       ...formData,
       rooms: formData.rooms.map((room) =>
         room.id === roomId
-          ? { ...room, rows: [...room.rows, initialRow] }
+          ? { ...room, rows: [...room.rows, createEmptyFormBodyRow()] }
           : room
       ),
     });
@@ -260,6 +277,28 @@ export default function DebugJsonFormPage() {
           ? { ...room, rows: room.rows.filter((row) => row.id !== rowId) }
           : room
       ),
+    });
+  };
+
+  /**
+   * Update zahlavi (header) section field value
+   */
+  const handleZahlaviChange = (propertyCode: string, value: string | number | boolean) => {
+    if (!formData) return;
+    setFormData({
+      ...formData,
+      zahlaviValues: { ...formData.zahlaviValues, [propertyCode]: value },
+    });
+  };
+
+  /**
+   * Update zapati (footer) section field value
+   */
+  const handleZapatiChange = (propertyCode: string, value: string | number | boolean) => {
+    if (!formData) return;
+    setFormData({
+      ...formData,
+      zapatiValues: { ...formData.zapatiValues, [propertyCode]: value },
     });
   };
 
@@ -419,12 +458,13 @@ export default function DebugJsonFormPage() {
                   <span>Čekám na vložení…</span>
                 ) : parsed.ok && payload ? (
                   <span className="text-green-600 dark:text-green-400">
-                    ✓ JSON je validní ({payload.properties.Properties.length}{" "}
-                    vlastností)
+                    ✓ JSON je validní (form_body: {formBodyProperties.length}
+                    {payload.zahlavi ? `, zahlavi: ${payload.zahlavi.Properties.length}` : ""}
+                    {payload.zapati ? `, zapati: ${payload.zapati.Properties.length}` : ""})
                   </span>
                 ) : parsed.ok ? (
                   <span className="text-amber-600 dark:text-amber-400">
-                    ⚠ JSON je validní, ale chybí očekávaná struktura
+                    ⚠ Chybí form_body.Properties (nebo je prázdné)
                   </span>
                 ) : (
                   <span className="text-red-600 dark:text-red-400">
@@ -439,7 +479,7 @@ export default function DebugJsonFormPage() {
               onChange={(e) => setRawJson(e.target.value)}
               spellCheck={false}
               className="h-[400px] w-full resize-y rounded-lg border border-zinc-300 bg-zinc-950 p-4 font-mono text-xs text-zinc-100 outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 dark:border-zinc-600"
-              placeholder={`Vložte sem JSON payload…\n\nOčekávaná struktura:\n{\n  "product_code": "...",\n  "properties": {\n    "Properties": [...]\n  },\n  "enums": {...}\n}`}
+              placeholder={`Vložte sem JSON payload…\n\nOčekávaná struktura:\n{\n  "product_code": "...",\n  "zahlavi": { "Properties": [...] },\n  "form_body": { "Properties": [...] },\n  "zapati": { "Properties": [...] },\n  "enums": {...}\n}`}
             />
 
             {!parsed.ok && (
@@ -450,8 +490,8 @@ export default function DebugJsonFormPage() {
 
             {parsed.ok && !payload && (
               <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-                JSON je validní, ale chybí očekávaná struktura (product_code,
-                properties.Properties, enums).
+                JSON je validní, ale chybí očekávaná struktura: product_code,
+                enums a form_body s neprázdným polem Properties.
               </p>
             )}
 
@@ -555,6 +595,31 @@ export default function DebugJsonFormPage() {
               </div>
             </div>
 
+            {/* Zahlavi (header) section – form-level fields */}
+            {payload?.zahlavi && payload.zahlavi.Properties.length > 0 && (
+              <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+                <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+                  Záhlaví (zahlavi)
+                </h2>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {(payload.zahlavi.Properties as PropertyDefinition[]).map((prop) => (
+                    <div key={prop.ID}>
+                      <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                        {getPropertyLabel(prop)}
+                      </label>
+                      <div className="rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700">
+                        {renderFormField(
+                          prop,
+                          formData?.zahlaviValues[prop.Code] ?? "",
+                          (value) => handleZahlaviChange(prop.Code, value)
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Rooms Section */}
             <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
               <div className="mb-4 flex items-center justify-between">
@@ -631,77 +696,100 @@ export default function DebugJsonFormPage() {
                         </div>
                       </div>
 
-                      {/* Room Table */}
-                      {payload && (
-                        <div className="overflow-x-auto">
-                          <table className="w-full border-collapse text-xs">
-                            <thead className="bg-zinc-100 dark:bg-zinc-700">
-                              <tr>
-                                <th className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300">
-                                  #
-                                </th>
-                                {payload.properties.Properties.map((prop) => (
-                                  <th
-                                    key={prop.ID}
-                                    className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300"
-                                    title={prop.Name}
-                                  >
-                                    {prop.Name}
-                                  </th>
-                                ))}
-                                <th className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300">
-                                  Akce
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {room.rows.map((row, rowIndex) => (
-                                <tr
-                                  key={row.id}
-                                  className="hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
+                      {/* Room Table – columns from form_body */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-xs">
+                          <thead className="bg-zinc-100 dark:bg-zinc-700">
+                            <tr>
+                              <th className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300">
+                                #
+                              </th>
+                              {formBodyProperties.map((prop) => (
+                                <th
+                                  key={prop.ID}
+                                  className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300"
+                                  title={prop.Name}
                                 >
-                                  <td className="border border-zinc-300 px-1 py-1 text-center text-zinc-600 dark:border-zinc-600 dark:text-zinc-400">
-                                    {rowIndex + 1}
-                                  </td>
-                                  {payload.properties.Properties.map((prop) => (
-                                    <td
-                                      key={prop.ID}
-                                      className="border border-zinc-300 px-1 py-1 dark:border-zinc-600"
-                                    >
-                                      {renderFormField(
-                                        prop,
-                                        row[prop.Code] ?? "",
-                                        (value) =>
-                                          handleRowChange(
-                                            room.id,
-                                            row.id,
-                                            prop.Code,
-                                            value
-                                          )
-                                      )}
-                                    </td>
-                                  ))}
-                                  <td className="border border-zinc-300 px-1 py-1 dark:border-zinc-600">
-                                    <button
-                                      onClick={() =>
-                                        handleRemoveRow(room.id, row.id)
-                                      }
-                                      className="rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-1 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
-                                    >
-                                      Odstranit
-                                    </button>
-                                  </td>
-                                </tr>
+                                  {getPropertyLabel(prop)}
+                                </th>
                               ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
+                              <th className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300">
+                                Akce
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {room.rows.map((row, rowIndex) => (
+                              <tr
+                                key={row.id}
+                                className="hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
+                              >
+                                <td className="border border-zinc-300 px-1 py-1 text-center text-zinc-600 dark:border-zinc-600 dark:text-zinc-400">
+                                  {rowIndex + 1}
+                                </td>
+                                {formBodyProperties.map((prop) => (
+                                  <td
+                                    key={prop.ID}
+                                    className="border border-zinc-300 px-1 py-1 dark:border-zinc-600"
+                                  >
+                                    {renderFormField(
+                                      prop,
+                                      row[prop.Code] ?? "",
+                                      (value) =>
+                                        handleRowChange(
+                                          room.id,
+                                          row.id,
+                                          prop.Code,
+                                          value
+                                        )
+                                    )}
+                                  </td>
+                                ))}
+                                <td className="border border-zinc-300 px-1 py-1 dark:border-zinc-600">
+                                  <button
+                                    onClick={() =>
+                                      handleRemoveRow(room.id, row.id)
+                                    }
+                                    className="rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-1 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
+                                  >
+                                    Odstranit
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+
+            {/* Zapati (footer) section – form-level fields */}
+            {payload?.zapati && payload.zapati.Properties.length > 0 && (
+              <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+                <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+                  Zápatí (zapati)
+                </h2>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {(payload.zapati.Properties as PropertyDefinition[]).map((prop) => (
+                    <div key={prop.ID}>
+                      <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                        {getPropertyLabel(prop)}
+                      </label>
+                      <div className="rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700">
+                        {renderFormField(
+                          prop,
+                          formData?.zapatiValues[prop.Code] ?? "",
+                          (value) => handleZapatiChange(prop.Code, value)
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Data Preview Section */}
             <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
