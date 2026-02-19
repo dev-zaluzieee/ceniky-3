@@ -5,13 +5,13 @@ import Link from "next/link";
 
 /**
  * Type definitions matching the JSON payload structure from validation tool (temp directory).
- * New format uses zahlavi / form_body / zapati sections and optional label-form, Value.
+ * Supports zahlavi / form_body / zapati, label-form, Value, textarea, enum groups, dependencies.
  */
 interface PropertyDefinition {
   ID: string;
   Code: string;
   Name: string;
-  DataType: "text" | "numeric" | "boolean" | "enum";
+  DataType: "text" | "numeric" | "boolean" | "enum" | "textarea";
   /** Optional default value (e.g. manufacturer) */
   Value?: string | number | boolean;
   /** Optional form label override */
@@ -29,21 +29,29 @@ interface EnumValue {
   name: string;
   groups: string[];
   active?: boolean;
+  /** Optional note (e.g. "pouze pro přenosy") – shown as tooltip */
+  note?: string;
+}
+
+/** Enum entry: has required "default" list; may have group keys (e.g. g_01) with EnumValue[] */
+type EnumEntry = { default: EnumValue[]; [groupKey: string]: EnumValue[] | undefined };
+
+/** Dependency: when source_enum === source_value, target_property only allows allowed_values */
+interface PayloadDependency {
+  source_enum: string;
+  source_value: string;
+  target_property: string;
+  allowed_values: string[];
 }
 
 interface ProductPayload {
   product_code: string;
-  /** Header section (form-level fields above the table) */
   zahlavi?: SectionBlock;
-  /** Main repeatable row fields – columns in mistnosti rows */
   form_body?: SectionBlock;
-  /** Footer section (form-level fields below the table) */
   zapati?: SectionBlock;
-  enums: {
-    [key: string]: {
-      default: EnumValue[];
-    };
-  };
+  enums: Record<string, EnumEntry>;
+  /** Conditional allowed values per row (e.g. when Montáž = Plast, Typ only allows 25) */
+  dependencies?: PayloadDependency[];
   downloaded_at?: string;
   _metadata?: {
     generated_from_validations?: boolean;
@@ -160,6 +168,7 @@ export default function DebugJsonFormPage() {
       } else if (prop.DataType === "numeric") {
         row[prop.Code] = "";
       } else {
+        // text, textarea, enum
         row[prop.Code] = "";
       }
     });
@@ -174,7 +183,7 @@ export default function DebugJsonFormPage() {
       if (prop.Value !== undefined) out[prop.Code] = prop.Value;
       else if (prop.DataType === "boolean") out[prop.Code] = false;
       else if (prop.DataType === "numeric") out[prop.Code] = "";
-      else out[prop.Code] = "";
+      else out[prop.Code] = ""; // text, textarea, enum
     });
     return out;
   };
@@ -328,36 +337,78 @@ export default function DebugJsonFormPage() {
   };
 
   /**
-   * Get enum options for a property
+   * Get enum options for a property (optionally from a group key).
+   * Excludes options with active === false.
    */
-  const getEnumOptions = (propertyCode: string): EnumValue[] => {
+  const getEnumOptions = (propertyCode: string, groupKey?: string): EnumValue[] => {
     if (!payload) return [];
-    const enumData = payload.enums[propertyCode];
-    return enumData?.default || [];
+    const entry = payload.enums[propertyCode] as EnumEntry | undefined;
+    if (!entry) return [];
+    let list: EnumValue[] | undefined;
+    if (groupKey && Array.isArray(entry[groupKey])) {
+      list = entry[groupKey] as EnumValue[];
+    } else {
+      list = entry.default;
+    }
+    const raw = list ?? [];
+    return raw.filter((opt) => opt.active !== false);
   };
 
   /**
-   * Render form field based on property type
+   * Get enum options for a property in row context: apply dependencies so when
+   * source_enum === source_value, only allowed_values are shown.
+   */
+  const getEnumOptionsForRow = (propertyCode: string, row: FormRow): EnumValue[] => {
+    let options = getEnumOptions(propertyCode);
+    const deps = payload?.dependencies?.filter((d) => d.target_property === propertyCode) ?? [];
+    for (const dep of deps) {
+      const sourceVal = row[dep.source_enum];
+      if (sourceVal === dep.source_value && Array.isArray(dep.allowed_values)) {
+        const allowedSet = new Set(dep.allowed_values);
+        options = options.filter((opt) => allowedSet.has(opt.code));
+        break;
+      }
+    }
+    return options;
+  };
+
+  /**
+   * Render form field based on property type.
+   * When row is provided, enum options are filtered by dependencies and current row values.
    */
   const renderFormField = (
     property: PropertyDefinition,
     value: string | number | boolean,
-    onChange: (value: string | number | boolean) => void
+    onChange: (value: string | number | boolean) => void,
+    context?: { row?: FormRow }
   ) => {
     if (property.DataType === "enum") {
-      const options = getEnumOptions(property.Code);
+      const options = context?.row
+        ? getEnumOptionsForRow(property.Code, context.row)
+        : getEnumOptions(property.Code);
+      const currentCode = String(value);
+      const valueInOptions = options.some((o) => o.code === currentCode);
       return (
         <select
-          value={String(value)}
+          value={currentCode}
           onChange={(e) => onChange(e.target.value)}
           className="w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
         >
           <option value="">-</option>
           {options.map((opt) => (
-            <option key={opt.code} value={opt.code}>
-              {opt.name} ({opt.code})
+            <option
+              key={opt.code}
+              value={opt.code}
+              title={opt.note ?? undefined}
+            >
+              {opt.name} ({opt.code}){opt.note ? ` — ${opt.note}` : ""}
             </option>
           ))}
+          {!valueInOptions && currentCode && (
+            <option value={currentCode} disabled>
+              — {currentCode} —
+            </option>
+          )}
         </select>
       );
     }
@@ -385,7 +436,19 @@ export default function DebugJsonFormPage() {
       );
     }
 
-    // Default: text
+    if (property.DataType === "textarea") {
+      return (
+        <textarea
+          value={String(value)}
+          onChange={(e) => onChange(e.target.value)}
+          rows={2}
+          className="w-full resize-y rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
+          placeholder="text"
+        />
+      );
+    }
+
+    // text
     return (
       <input
         type="text"
@@ -741,7 +804,8 @@ export default function DebugJsonFormPage() {
                                           row.id,
                                           prop.Code,
                                           value
-                                        )
+                                        ),
+                                      { row }
                                     )}
                                   </td>
                                 ))}
