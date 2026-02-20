@@ -36,12 +36,18 @@ interface EnumValue {
 /** Enum entry: has required "default" list; may have group keys (e.g. g_01) with EnumValue[] */
 type EnumEntry = { default: EnumValue[]; [groupKey: string]: EnumValue[] | undefined };
 
-/** Dependency: when source_enum === source_value, target_property only allows allowed_values */
+/**
+ * Dependency rule: when source_enum === source_value in the row,
+ * either restrict target to allowed_values (dropdown) or disable the field (field_disabled).
+ */
 interface PayloadDependency {
   source_enum: string;
   source_value: string;
   target_property: string;
-  allowed_values: string[];
+  /** When set: child dropdown only shows these values */
+  allowed_values?: string[];
+  /** When true: child field is grayed out / disabled */
+  field_disabled?: boolean;
 }
 
 interface ProductPayload {
@@ -356,14 +362,15 @@ export default function DebugJsonFormPage() {
 
   /**
    * Get enum options for a property in row context: apply dependencies so when
-   * source_enum === source_value, only allowed_values are shown.
+   * source_enum === source_value, only allowed_values are shown (if that rule exists).
    */
   const getEnumOptionsForRow = (propertyCode: string, row: FormRow): EnumValue[] => {
     let options = getEnumOptions(propertyCode);
     const deps = payload?.dependencies?.filter((d) => d.target_property === propertyCode) ?? [];
     for (const dep of deps) {
       const sourceVal = row[dep.source_enum];
-      if (sourceVal === dep.source_value && Array.isArray(dep.allowed_values)) {
+      if (sourceVal !== dep.source_value) continue;
+      if (Array.isArray(dep.allowed_values) && dep.allowed_values.length > 0) {
         const allowedSet = new Set(dep.allowed_values);
         options = options.filter((opt) => allowedSet.has(opt.code));
         break;
@@ -373,8 +380,17 @@ export default function DebugJsonFormPage() {
   };
 
   /**
+   * True if the field should be disabled (grayed out) due to a dependency:
+   * when source_enum === source_value and the rule has field_disabled === true.
+   */
+  const isFieldDisabledByDependency = (propertyCode: string, row: FormRow): boolean => {
+    const deps = payload?.dependencies?.filter((d) => d.target_property === propertyCode && d.field_disabled === true) ?? [];
+    return deps.some((dep) => row[dep.source_enum] === dep.source_value);
+  };
+
+  /**
    * Render form field based on property type.
-   * When row is provided, enum options are filtered by dependencies and current row values.
+   * When row is provided, enum options are filtered by dependencies and fields can be disabled by field_disabled rules.
    */
   const renderFormField = (
     property: PropertyDefinition,
@@ -382,6 +398,9 @@ export default function DebugJsonFormPage() {
     onChange: (value: string | number | boolean) => void,
     context?: { row?: FormRow }
   ) => {
+    const disabled = context?.row ? isFieldDisabledByDependency(property.Code, context.row) : false;
+    const disabledClass = disabled ? "cursor-not-allowed opacity-60 bg-zinc-100 dark:bg-zinc-800" : "";
+
     if (property.DataType === "enum") {
       const options = context?.row
         ? getEnumOptionsForRow(property.Code, context.row)
@@ -391,8 +410,9 @@ export default function DebugJsonFormPage() {
       return (
         <select
           value={currentCode}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
+          onChange={(e) => !disabled && onChange(e.target.value)}
+          disabled={disabled}
+          className={`w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
         >
           <option value="">-</option>
           {options.map((opt) => (
@@ -418,8 +438,9 @@ export default function DebugJsonFormPage() {
         <input
           type="checkbox"
           checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked)}
-          className="h-4 w-4 rounded border-zinc-300 text-accent focus:ring-accent"
+          onChange={(e) => !disabled && onChange(e.target.checked)}
+          disabled={disabled}
+          className={`h-4 w-4 rounded border-zinc-300 text-accent focus:ring-accent ${disabledClass}`}
         />
       );
     }
@@ -429,8 +450,9 @@ export default function DebugJsonFormPage() {
         <input
           type="number"
           value={String(value)}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
+          onChange={(e) => !disabled && onChange(e.target.value)}
+          disabled={disabled}
+          className={`w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
           placeholder="číslo"
         />
       );
@@ -440,9 +462,10 @@ export default function DebugJsonFormPage() {
       return (
         <textarea
           value={String(value)}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => !disabled && onChange(e.target.value)}
+          disabled={disabled}
           rows={2}
-          className="w-full resize-y rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
+          className={`w-full resize-y rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
           placeholder="text"
         />
       );
@@ -453,8 +476,9 @@ export default function DebugJsonFormPage() {
       <input
         type="text"
         value={String(value)}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700"
+        onChange={(e) => !disabled && onChange(e.target.value)}
+        disabled={disabled}
+        className={`w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
         placeholder="text"
       />
     );
