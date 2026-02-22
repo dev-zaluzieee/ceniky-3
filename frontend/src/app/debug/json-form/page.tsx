@@ -1,111 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-
-/**
- * Type definitions matching the JSON payload structure from validation tool (temp directory).
- * Supports zahlavi / form_body / zapati, label-form, Value, textarea, enum groups, dependencies.
- */
-interface PropertyDefinition {
-  ID: string;
-  Code: string;
-  Name: string;
-  DataType: "text" | "numeric" | "boolean" | "enum" | "textarea";
-  /** Optional default value (e.g. manufacturer) */
-  Value?: string | number | boolean;
-  /** Optional form label override */
-  "label-form"?: string;
-}
-
-interface SectionBlock {
-  Code: string;
-  Name: string;
-  Properties: PropertyDefinition[];
-}
-
-interface EnumValue {
-  code: string;
-  name: string;
-  groups: string[];
-  active?: boolean;
-  /** Optional note (e.g. "pouze pro přenosy") – shown as tooltip */
-  note?: string;
-}
-
-/** Enum entry: has required "default" list; may have group keys (e.g. g_01) with EnumValue[] */
-type EnumEntry = { default: EnumValue[]; [groupKey: string]: EnumValue[] | undefined };
-
-/**
- * Dependency rule: when source_enum === source_value in the row,
- * either restrict target to allowed_values (dropdown) or disable the field (field_disabled).
- */
-interface PayloadDependency {
-  source_enum: string;
-  source_value: string;
-  target_property: string;
-  /** When set: child dropdown only shows these values */
-  allowed_values?: string[];
-  /** When true: child field is grayed out / disabled */
-  field_disabled?: boolean;
-}
-
-interface ProductPayload {
-  product_code: string;
-  zahlavi?: SectionBlock;
-  form_body?: SectionBlock;
-  zapati?: SectionBlock;
-  enums: Record<string, EnumEntry>;
-  /** Conditional allowed values per row (e.g. when Montáž = Plast, Typ only allows 25) */
-  dependencies?: PayloadDependency[];
-  downloaded_at?: string;
-  _metadata?: {
-    generated_from_validations?: boolean;
-    generated_at?: string;
-    zahlavi_count?: number;
-    form_body_count?: number;
-    zapati_count?: number;
-    properties_count?: number;
-    total_properties?: number;
-  };
-}
-
-/**
- * Form row entry - dynamically generated from properties
- */
-interface FormRow {
-  id: string;
-  [key: string]: string | number | boolean; // Dynamic property values
-}
-
-/**
- * Room (místnost) - contains multiple rows
- */
-interface Room {
-  id: string;
-  name: string;
-  rows: FormRow[];
-}
-
-/**
- * Form data structure
- */
-interface FormData {
-  // Customer fields
-  name: string;
-  email: string;
-  phone: string;
-  address: string;
-  city: string;
-  // Product info
-  productCode: string;
-  productName: string;
-  // Form-level sections (from zahlavi / zapati)
-  zahlaviValues: Record<string, string | number | boolean>;
-  zapatiValues: Record<string, string | number | boolean>;
-  // Rooms (mistnosti) – row fields come from form_body
-  rooms: Room[];
-}
+import type { JsonSchemaFormData, ProductPayload, PropertyDefinition } from "@/types/json-schema-form.types";
+import DynamicProductForm, { buildInitialFormData } from "@/components/forms/DynamicProductForm";
 
 /**
  * Debug tool: paste a product JSON payload (from the experimental validation app)
@@ -117,7 +15,18 @@ interface FormData {
 export default function DebugJsonFormPage() {
   const [rawJson, setRawJson] = useState<string>("");
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState<FormData | null>(null);
+  const [formData, setFormData] = useState<ReturnType<typeof buildInitialFormData> | null>(null);
+
+  /** Setter compatible with DynamicProductForm (only updates when formData is non-null) */
+  const setFormDataForForm = useCallback(
+    (action: React.SetStateAction<JsonSchemaFormData>) => {
+      setFormData((prev) => {
+        if (prev === null) return prev;
+        return typeof action === "function" ? action(prev) : action;
+      });
+    },
+    []
+  );
 
   /**
    * Parse JSON in a safe, UI-friendly way (no throwing during render).
@@ -146,347 +55,20 @@ export default function DebugJsonFormPage() {
     return data as ProductPayload;
   }, [parsed]);
 
-  /** Row columns come from form_body.Properties */
+  /** Row columns from form_body (for validation message in JSON section) */
   const formBodyProperties = useMemo(
     () => (payload?.form_body?.Properties ?? []) as PropertyDefinition[],
     [payload]
   );
 
-  /** Display label for a property (label-form override or Name) */
-  const getPropertyLabel = (prop: PropertyDefinition): string =>
-    prop["label-form"] ?? prop.Name;
-
-  /**
-   * Generate unique ID
-   */
-  const generateId = (): string => {
-    return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  };
-
-  /** Build empty row from form_body properties; use Value when present */
-  const createEmptyFormBodyRow = (): FormRow => {
-    const row: FormRow = { id: generateId() };
-    formBodyProperties.forEach((prop) => {
-      if (prop.Value !== undefined) {
-        row[prop.Code] = prop.Value;
-      } else if (prop.DataType === "boolean") {
-        row[prop.Code] = false;
-      } else if (prop.DataType === "numeric") {
-        row[prop.Code] = "";
-      } else {
-        // text, textarea, enum
-        row[prop.Code] = "";
-      }
-    });
-    return row;
-  };
-
-  /** Build initial values for a section (zahlavi or zapati) */
-  const sectionInitialValues = (section: SectionBlock | undefined): Record<string, string | number | boolean> => {
-    const out: Record<string, string | number | boolean> = {};
-    if (!section) return out;
-    section.Properties.forEach((prop) => {
-      if (prop.Value !== undefined) out[prop.Code] = prop.Value;
-      else if (prop.DataType === "boolean") out[prop.Code] = false;
-      else if (prop.DataType === "numeric") out[prop.Code] = "";
-      else out[prop.Code] = ""; // text, textarea, enum
-    });
-    return out;
-  };
-
-  /**
-   * Initialize form from payload
-   */
+  /** Initialize form from payload and show form view */
   const handleGenerateForm = () => {
     if (!payload) return;
-
-    const newFormData: FormData = {
-      name: "",
-      email: "",
-      phone: "",
-      address: "",
-      city: "",
-      productCode: payload.product_code,
-      productName: payload.form_body?.Name ?? payload.zahlavi?.Name ?? payload.zapati?.Name ?? payload.product_code,
-      zahlaviValues: sectionInitialValues(payload.zahlavi),
-      zapatiValues: sectionInitialValues(payload.zapati),
-      rooms: [
-        {
-          id: generateId(),
-          name: "",
-          rows: [createEmptyFormBodyRow()],
-        },
-      ],
-    };
-
-    setFormData(newFormData);
+    setFormData(buildInitialFormData(payload));
     setShowForm(true);
   };
 
-  /**
-   * Add a new room
-   */
-  const handleAddRoom = () => {
-    if (!formData) return;
-    setFormData({
-      ...formData,
-      rooms: [
-        ...formData.rooms,
-        {
-          id: generateId(),
-          name: "",
-          rows: [createEmptyFormBodyRow()],
-        },
-      ],
-    });
-  };
-
-  /**
-   * Remove a room
-   */
-  const handleRemoveRoom = (roomId: string) => {
-    if (!formData) return;
-    setFormData({
-      ...formData,
-      rooms: formData.rooms.filter((room) => room.id !== roomId),
-    });
-  };
-
-  /**
-   * Update room name
-   */
-  const handleRoomNameChange = (roomId: string, name: string) => {
-    if (!formData) return;
-    setFormData({
-      ...formData,
-      rooms: formData.rooms.map((room) =>
-        room.id === roomId ? { ...room, name } : room
-      ),
-    });
-  };
-
-  /**
-   * Add a row to a room
-   */
-  const handleAddRow = (roomId: string) => {
-    if (!formData) return;
-    setFormData({
-      ...formData,
-      rooms: formData.rooms.map((room) =>
-        room.id === roomId
-          ? { ...room, rows: [...room.rows, createEmptyFormBodyRow()] }
-          : room
-      ),
-    });
-  };
-
-  /**
-   * Remove a row from a room
-   */
-  const handleRemoveRow = (roomId: string, rowId: string) => {
-    if (!formData) return;
-    setFormData({
-      ...formData,
-      rooms: formData.rooms.map((room) =>
-        room.id === roomId
-          ? { ...room, rows: room.rows.filter((row) => row.id !== rowId) }
-          : room
-      ),
-    });
-  };
-
-  /**
-   * Update zahlavi (header) section field value
-   */
-  const handleZahlaviChange = (propertyCode: string, value: string | number | boolean) => {
-    if (!formData) return;
-    setFormData({
-      ...formData,
-      zahlaviValues: { ...formData.zahlaviValues, [propertyCode]: value },
-    });
-  };
-
-  /**
-   * Update zapati (footer) section field value
-   */
-  const handleZapatiChange = (propertyCode: string, value: string | number | boolean) => {
-    if (!formData) return;
-    setFormData({
-      ...formData,
-      zapatiValues: { ...formData.zapatiValues, [propertyCode]: value },
-    });
-  };
-
-  /**
-   * Update row field value
-   */
-  const handleRowChange = (
-    roomId: string,
-    rowId: string,
-    propertyCode: string,
-    value: string | number | boolean
-  ) => {
-    if (!formData) return;
-    setFormData({
-      ...formData,
-      rooms: formData.rooms.map((room) =>
-        room.id === roomId
-          ? {
-              ...room,
-              rows: room.rows.map((row) =>
-                row.id === rowId ? { ...row, [propertyCode]: value } : row
-              ),
-            }
-          : room
-      ),
-    });
-  };
-
-  /**
-   * Get enum options for a property (optionally from a group key).
-   * Excludes options with active === false.
-   */
-  const getEnumOptions = (propertyCode: string, groupKey?: string): EnumValue[] => {
-    if (!payload) return [];
-    const entry = payload.enums[propertyCode] as EnumEntry | undefined;
-    if (!entry) return [];
-    let list: EnumValue[] | undefined;
-    if (groupKey && Array.isArray(entry[groupKey])) {
-      list = entry[groupKey] as EnumValue[];
-    } else {
-      list = entry.default;
-    }
-    const raw = list ?? [];
-    return raw.filter((opt) => opt.active !== false);
-  };
-
-  /**
-   * Get enum options for a property in row context: apply dependencies so when
-   * source_enum === source_value, only allowed_values are shown (if that rule exists).
-   */
-  const getEnumOptionsForRow = (propertyCode: string, row: FormRow): EnumValue[] => {
-    let options = getEnumOptions(propertyCode);
-    const deps = payload?.dependencies?.filter((d) => d.target_property === propertyCode) ?? [];
-    for (const dep of deps) {
-      const sourceVal = row[dep.source_enum];
-      if (sourceVal !== dep.source_value) continue;
-      if (Array.isArray(dep.allowed_values) && dep.allowed_values.length > 0) {
-        const allowedSet = new Set(dep.allowed_values);
-        options = options.filter((opt) => allowedSet.has(opt.code));
-        break;
-      }
-    }
-    return options;
-  };
-
-  /**
-   * True if the field should be disabled (grayed out) due to a dependency:
-   * when source_enum === source_value and the rule has field_disabled === true.
-   */
-  const isFieldDisabledByDependency = (propertyCode: string, row: FormRow): boolean => {
-    const deps = payload?.dependencies?.filter((d) => d.target_property === propertyCode && d.field_disabled === true) ?? [];
-    return deps.some((dep) => row[dep.source_enum] === dep.source_value);
-  };
-
-  /**
-   * Render form field based on property type.
-   * When row is provided, enum options are filtered by dependencies and fields can be disabled by field_disabled rules.
-   */
-  const renderFormField = (
-    property: PropertyDefinition,
-    value: string | number | boolean,
-    onChange: (value: string | number | boolean) => void,
-    context?: { row?: FormRow }
-  ) => {
-    const disabled = context?.row ? isFieldDisabledByDependency(property.Code, context.row) : false;
-    const disabledClass = disabled ? "cursor-not-allowed opacity-60 bg-zinc-100 dark:bg-zinc-800" : "";
-
-    if (property.DataType === "enum") {
-      const options = context?.row
-        ? getEnumOptionsForRow(property.Code, context.row)
-        : getEnumOptions(property.Code);
-      const currentCode = String(value);
-      const valueInOptions = options.some((o) => o.code === currentCode);
-      return (
-        <select
-          value={currentCode}
-          onChange={(e) => !disabled && onChange(e.target.value)}
-          disabled={disabled}
-          className={`w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
-        >
-          <option value="">-</option>
-          {options.map((opt) => (
-            <option
-              key={opt.code}
-              value={opt.code}
-              title={opt.note ?? undefined}
-            >
-              {opt.name} ({opt.code}){opt.note ? ` — ${opt.note}` : ""}
-            </option>
-          ))}
-          {!valueInOptions && currentCode && (
-            <option value={currentCode} disabled>
-              — {currentCode} —
-            </option>
-          )}
-        </select>
-      );
-    }
-
-    if (property.DataType === "boolean") {
-      return (
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(e) => !disabled && onChange(e.target.checked)}
-          disabled={disabled}
-          className={`h-4 w-4 rounded border-zinc-300 text-accent focus:ring-accent ${disabledClass}`}
-        />
-      );
-    }
-
-    if (property.DataType === "numeric") {
-      return (
-        <input
-          type="number"
-          value={String(value)}
-          onChange={(e) => !disabled && onChange(e.target.value)}
-          disabled={disabled}
-          className={`w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
-          placeholder="číslo"
-        />
-      );
-    }
-
-    if (property.DataType === "textarea") {
-      return (
-        <textarea
-          value={String(value)}
-          onChange={(e) => !disabled && onChange(e.target.value)}
-          disabled={disabled}
-          rows={2}
-          className={`w-full resize-y rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
-          placeholder="text"
-        />
-      );
-    }
-
-    // text
-    return (
-      <input
-        type="text"
-        value={String(value)}
-        onChange={(e) => !disabled && onChange(e.target.value)}
-        disabled={disabled}
-        className={`w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
-        placeholder="text"
-      />
-    );
-  };
-
-  /**
-   * Export form data as JSON (for debugging/inspection)
-   */
+  /** Export form data as JSON (for debugging/inspection) */
   const handleExportData = () => {
     if (!formData) return;
     const json = JSON.stringify(formData, null, 2);
@@ -593,299 +175,43 @@ export default function DebugJsonFormPage() {
             </div>
           </section>
         ) : (
-          /* Form Section */
+          /* Form Section – shared DynamicProductForm + debug-only data preview */
           <div className="space-y-6">
-            {/* Customer Section */}
-            <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-              <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-                Základní informace
-              </h2>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Jméno
-                  </label>
-                  <input
-                    type="text"
-                    value={formData?.name || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData!, name: e.target.value })
-                    }
-                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                    placeholder="Jméno a příjmení"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={formData?.email || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData!, email: e.target.value })
-                    }
-                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                    placeholder="email@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Telefon
-                  </label>
-                  <input
-                    type="tel"
-                    value={formData?.phone || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData!, phone: e.target.value })
-                    }
-                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                    placeholder="+420 ..."
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Adresa
-                  </label>
-                  <input
-                    type="text"
-                    value={formData?.address || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData!, address: e.target.value })
-                    }
-                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                    placeholder="Ulice a číslo"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Město
-                  </label>
-                  <input
-                    type="text"
-                    value={formData?.city || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData!, city: e.target.value })
-                    }
-                    className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                    placeholder="Město"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    Produkt
-                  </label>
-                  <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700/50 dark:text-zinc-300">
-                    {formData?.productName || formData?.productCode || "—"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Zahlavi (header) section – form-level fields */}
-            {payload?.zahlavi && payload.zahlavi.Properties.length > 0 && (
-              <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-                <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-                  Záhlaví (zahlavi)
-                </h2>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {(payload.zahlavi.Properties as PropertyDefinition[]).map((prop) => (
-                    <div key={prop.ID}>
-                      <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                        {getPropertyLabel(prop)}
-                      </label>
-                      <div className="rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700">
-                        {renderFormField(
-                          prop,
-                          formData?.zahlaviValues[prop.Code] ?? "",
-                          (value) => handleZahlaviChange(prop.Code, value)
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Rooms Section */}
-            <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-                  Místnosti (mistnosti)
-                </h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleAddRoom}
-                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  >
-                    Přidat místnost
-                  </button>
-                  <button
-                    onClick={handleExportData}
-                    className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-                  >
-                    Exportovat data
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowForm(false);
-                      setFormData(null);
-                    }}
-                    className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-                  >
-                    Zpět k JSON
-                  </button>
-                </div>
-              </div>
-
-              {formData && formData.rooms.length === 0 ? (
-                <div className="rounded-lg border border-zinc-200 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-800">
-                  <p className="text-zinc-500 dark:text-zinc-400">
-                    Zatím nejsou přidány žádné místnosti. Klikněte na tlačítko výše
-                    pro přidání první místnosti.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {formData?.rooms.map((room) => (
-                    <div
-                      key={room.id}
-                      className="rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800"
+            {payload && formData && (
+              <DynamicProductForm
+                payload={payload}
+                formData={formData}
+                setFormData={setFormDataForForm}
+                actionsInRoomsHeader={
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleExportData}
+                      className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                     >
-                      {/* Room Header */}
-                      <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-700/50">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex-1">
-                            <input
-                              type="text"
-                              value={room.name}
-                              onChange={(e) =>
-                                handleRoomNameChange(room.id, e.target.value)
-                              }
-                              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-                              placeholder="Název místnosti"
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleAddRow(room.id)}
-                              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-                            >
-                              Přidat řádek
-                            </button>
-                            <button
-                              onClick={() => handleRemoveRoom(room.id)}
-                              className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
-                            >
-                              Odstranit místnost
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Room Table – columns from form_body */}
-                      <div className="overflow-x-auto">
-                        <table className="w-full border-collapse text-xs">
-                          <thead className="bg-zinc-100 dark:bg-zinc-700">
-                            <tr>
-                              <th className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300">
-                                #
-                              </th>
-                              {formBodyProperties.map((prop) => (
-                                <th
-                                  key={prop.ID}
-                                  className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300"
-                                  title={prop.Name}
-                                >
-                                  {getPropertyLabel(prop)}
-                                </th>
-                              ))}
-                              <th className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300">
-                                Akce
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {room.rows.map((row, rowIndex) => (
-                              <tr
-                                key={row.id}
-                                className="hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
-                              >
-                                <td className="border border-zinc-300 px-1 py-1 text-center text-zinc-600 dark:border-zinc-600 dark:text-zinc-400">
-                                  {rowIndex + 1}
-                                </td>
-                                {formBodyProperties.map((prop) => (
-                                  <td
-                                    key={prop.ID}
-                                    className="border border-zinc-300 px-1 py-1 dark:border-zinc-600"
-                                  >
-                                    {renderFormField(
-                                      prop,
-                                      row[prop.Code] ?? "",
-                                      (value) =>
-                                        handleRowChange(
-                                          room.id,
-                                          row.id,
-                                          prop.Code,
-                                          value
-                                        ),
-                                      { row }
-                                    )}
-                                  </td>
-                                ))}
-                                <td className="border border-zinc-300 px-1 py-1 dark:border-zinc-600">
-                                  <button
-                                    onClick={() =>
-                                      handleRemoveRow(room.id, row.id)
-                                    }
-                                    className="rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-1 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
-                                  >
-                                    Odstranit
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Zapati (footer) section – form-level fields */}
-            {payload?.zapati && payload.zapati.Properties.length > 0 && (
-              <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-                <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-                  Zápatí (zapati)
-                </h2>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {(payload.zapati.Properties as PropertyDefinition[]).map((prop) => (
-                    <div key={prop.ID}>
-                      <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                        {getPropertyLabel(prop)}
-                      </label>
-                      <div className="rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700">
-                        {renderFormField(
-                          prop,
-                          formData?.zapatiValues[prop.Code] ?? "",
-                          (value) => handleZapatiChange(prop.Code, value)
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                      Exportovat data
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForm(false);
+                        setFormData(null);
+                      }}
+                      className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                    >
+                      Zpět k JSON
+                    </button>
+                  </>
+                }
+              />
             )}
-
-            {/* Data Preview Section */}
+            {/* Debug-only: data preview */}
             <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
               <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
                 Náhled dat (mistnosti)
               </h2>
               <pre className="max-h-[400px] overflow-auto rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-xs dark:border-zinc-700 dark:bg-zinc-900">
-                {JSON.stringify(formData?.rooms || [], null, 2)}
+                {JSON.stringify(formData?.rooms ?? [], null, 2)}
               </pre>
             </div>
           </div>

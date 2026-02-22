@@ -15,6 +15,7 @@ function getFormTypeDisplayName(formType: FormType): string {
     "textile-rolety": "Textilní a D/N roletky",
     "universal": "Univerzální list",
     "admf": "Administrativní formulář",
+    "custom": "Vlastní formulář (JSON)",
   };
   return displayNames[formType] || formType;
 }
@@ -30,6 +31,7 @@ function getFormTypeColor(formType: FormType): string {
     "textile-rolety": "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400",
     "universal": "bg-accent/20 text-accent dark:bg-accent/30 dark:text-accent",
     "admf": "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
+    "custom": "bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400",
   };
   return colors[formType] || "bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400";
 }

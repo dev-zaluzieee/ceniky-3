@@ -16,6 +16,7 @@ const FORM_TYPE_NAMES: Record<FormType, string> = {
   "textile-rolety": "Textilní a D/N roletky",
   universal: "Univerzální list",
   admf: "Administrativní formulář",
+  custom: "Vlastní formulář (JSON)",
 };
 
 /** Step 1 form types (product forms); ADMF is step 2 and listed separately */
@@ -25,6 +26,7 @@ const STEP1_FORM_TYPES: FormType[] = [
   "site",
   "textile-rolety",
   "universal",
+  "custom",
 ];
 
 /** Edit form URL under order: /orders/[orderId]/forms/[formId] */

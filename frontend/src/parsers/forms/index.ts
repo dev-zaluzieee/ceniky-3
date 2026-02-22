@@ -42,6 +42,11 @@ export function parseForm(
       case "admf":
         return { name: formJson?.name ?? "ADMF" };
 
+      case "custom": {
+        const data = formJson?.data;
+        return { name: data?.productName ?? "Vlastní formulář" };
+      }
+
       default:
         // Unknown form type - return empty info
         console.warn(`Unknown form type: ${formType}`);

@@ -12,7 +12,8 @@ export type FormType =
   | "site"
   | "textile-rolety"
   | "universal"
-  | "admf";
+  | "admf"
+  | "custom";
 
 /**
  * Form submission response

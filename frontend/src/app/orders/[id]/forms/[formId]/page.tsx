@@ -15,12 +15,14 @@ import SiteFormClient from "@/app/forms/site/SiteFormClient";
 import TextileRoletyFormClient from "@/app/forms/textile-rolety/TextileRoletyFormClient";
 import UniversalFormClient from "@/app/forms/universal/UniversalFormClient";
 import AdmfFormClient from "@/app/forms/admf/AdmfFormClient";
+import CustomFormClient from "@/app/forms/custom/CustomFormClient";
 import type { HorizontalniZaluzieFormData } from "@/types/forms/horizontalni-zaluzie.types";
 import type { PliseZaluzieFormData } from "@/types/forms/plise-zaluzie.types";
 import type { SiteFormData } from "@/types/forms/site.types";
 import type { TextileRoletyFormData } from "@/types/forms/textile-rolety.types";
 import type { UniversalFormData } from "@/types/forms/universal.types";
 import type { AdmfFormData } from "@/types/forms/admf.types";
+import type { CustomFormJson } from "@/types/json-schema-form.types";
 
 const VALID_FORM_TYPES: FormType[] = [
   "horizontalni-zaluzie",
@@ -29,6 +31,7 @@ const VALID_FORM_TYPES: FormType[] = [
   "textile-rolety",
   "universal",
   "admf",
+  "custom",
 ];
 
 function normalizeRooms<T extends { rooms?: { rows?: unknown[] }[] }>(data: T): T {
@@ -144,6 +147,18 @@ export default async function OrderFormEditPage({
           initialData={initialData}
           formId={formId}
           orderId={orderId}
+          customerFromOrder={customerFromOrder}
+        />
+      );
+    }
+    case "custom": {
+      const initialData = form.form_json as CustomFormJson | undefined;
+      if (!initialData?.schema || !initialData?.data) notFound();
+      return (
+        <CustomFormClient
+          orderId={orderId}
+          formId={formId}
+          initialData={initialData}
           customerFromOrder={customerFromOrder}
         />
       );

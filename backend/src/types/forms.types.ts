@@ -13,7 +13,8 @@ export type FormType =
   | "site"
   | "textile-rolety"
   | "universal"
-  | "admf";
+  | "admf"
+  | "custom";
 
 /** Step 1 form types (used for product extraction into ADMF) */
 export const STEP1_FORM_TYPES: FormType[] = [

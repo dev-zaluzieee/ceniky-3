@@ -15,6 +15,7 @@ import SiteFormClient from "@/app/forms/site/SiteFormClient";
 import TextileRoletyFormClient from "@/app/forms/textile-rolety/TextileRoletyFormClient";
 import UniversalFormClient from "@/app/forms/universal/UniversalFormClient";
 import AdmfFormClient from "@/app/forms/admf/AdmfFormClient";
+import CustomFormClient from "@/app/forms/custom/CustomFormClient";
 
 const VALID_FORM_TYPES: FormType[] = [
   "horizontalni-zaluzie",
@@ -23,6 +24,7 @@ const VALID_FORM_TYPES: FormType[] = [
   "textile-rolety",
   "universal",
   "admf",
+  "custom",
 ];
 
 export default async function OrderFormCreatePage({
@@ -91,6 +93,13 @@ export default async function OrderFormCreatePage({
     case "universal":
       return (
         <UniversalFormClient
+          orderId={orderId}
+          customerFromOrder={customerFromOrder}
+        />
+      );
+    case "custom":
+      return (
+        <CustomFormClient
           orderId={orderId}
           customerFromOrder={customerFromOrder}
         />
