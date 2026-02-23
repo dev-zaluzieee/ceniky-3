@@ -143,14 +143,61 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
 
   y = ((doc as unknown) as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
 
-  // ---- Total ----
-  const total = (formData.productRows || []).reduce(
+  // ---- Product total (bez DPH) ----
+  const totalProdukty = (formData.productRows || []).reduce(
     (sum, r) => sum + (r.cenaPoSleve ?? 0),
     0
   );
   setFont(FONT_SIZE_BODY);
-  doc.text(`Celkem: ${total} Kč`, MARGIN, y);
+  doc.text(`Součet produktů (bez DPH): ${totalProdukty} Kč`, MARGIN, y);
+  y += 6;
+
+  // ---- Montáž ----
+  const montazBezDph = formData.montazCenaBezDph ?? 1339;
+  const vatRate = formData.vatRate ?? 12;
+  const montazSDph = Math.round(montazBezDph * (1 + vatRate / 100));
+  doc.text(`Montáž: ${montazBezDph} Kč (bez DPH), ${montazSDph} Kč (s DPH ${vatRate}%)`, MARGIN, y);
+  y += 6;
+
+  // ---- Celkem ----
+  const totalBezDph = totalProdukty + montazBezDph;
+  const totalSDph = Math.round(totalBezDph * (1 + vatRate / 100));
+  doc.text(`Celkem bez DPH: ${totalBezDph} Kč`, MARGIN, y);
+  y += 5;
+  doc.text(`Celkem s DPH (${vatRate}%): ${totalSDph} Kč`, MARGIN, y);
   y += 10;
+
+  // ---- DPH (VAT) ----
+  setFont(FONT_SIZE_HEADING);
+  doc.text("DPH", MARGIN, y);
+  y += 6;
+  setFont(FONT_SIZE_BODY);
+  doc.text(`Plátce DPH: ${formData.platceDph ? "Ano" : "Ne"}`, MARGIN, y);
+  y += 5;
+  doc.text(`Faktura: ${formData.faktura ? "Ano" : "Ne"}`, MARGIN, y);
+  y += 5;
+  doc.text(`Nebytový prostor: ${formData.nebytovyProstor ? "Ano" : "Ne"}`, MARGIN, y);
+  y += 5;
+  doc.text(`Bytový prostor: ${formData.bytovyProstor ? "Ano" : "Ne"}`, MARGIN, y);
+  y += 5;
+  doc.text(`Sazba DPH: ${vatRate} %`, MARGIN, y);
+  y += 10;
+
+  // ---- K OBJEDNÁNÍ: záloha, doplatek, datum ----
+  setFont(FONT_SIZE_HEADING);
+  doc.text("K OBJEDNÁNÍ", MARGIN, y);
+  y += 6;
+  setFont(FONT_SIZE_BODY);
+  doc.text(`Zálohová faktura: ${formData.zalohovaFaktura ?? 0} Kč`, MARGIN, y);
+  y += 5;
+  const doplatek = formData.doplatek ?? Math.max(0, totalSDph - (formData.zalohovaFaktura ?? 0));
+  doc.text(`Doplatek: ${doplatek} Kč`, MARGIN, y);
+  y += 5;
+  if (formData.datum) {
+    doc.text(`Datum: ${formData.datum}`, MARGIN, y);
+    y += 5;
+  }
+  y += 6;
 
   // ---- Doplňující informace ----
   if (

@@ -87,6 +87,7 @@ export default async function OrderFormCreatePage({
       cenaPoSleve: p.cenaPoSleve,
     }));
 
+    const today = new Date().toISOString().slice(0, 10);
     const initialData = {
       name: variantaName,
       source_form_ids: extractRes.success && extractRes.data?.source_form_ids ? extractRes.data.source_form_ids : [],
@@ -98,6 +99,14 @@ export default async function OrderFormCreatePage({
       mesto: order.city ?? undefined,
       doplnujiciInformaceObjednavky: "",
       doplnujiciInformaceMontaz: "",
+      montazCenaBezDph: 1339,
+      platceDph: false,
+      faktura: true,
+      nebytovyProstor: false,
+      bytovyProstor: true,
+      vatRate: 12 as const,
+      zalohovaFaktura: 0,
+      datum: today,
     };
 
     return (

@@ -1,31 +1,34 @@
 /**
  * Type definitions for ADMF (administrativní formulář) form
- * Matches the administrative form layout; product table prefilled from step 1 forms.
+ * Product prices and montáž are stored without VAT; VAT is applied for display and záloha/doplatek.
  */
 
-/** Single row in "Záznam o jednání se zákazníkem" table */
+/** Single row in "Záznam o jednání se zákazníkem" table (prices without VAT) */
 export interface AdmfProductRow {
   id: string;
   produkt: string;
   ks: number;
   ram: string;
   lamelaLatka: string;
+  /** Unit price without VAT */
   cena: number;
+  /** Discount % (0–100) */
   sleva: number;
+  /** Price after discount, without VAT */
   cenaPoSleve: number;
 }
 
+/** VAT rate in % */
+export type AdmfVatRate = 0 | 12 | 21;
+
 /**
  * ADMF form data (form_json)
- * source_form_ids: form IDs from which this ADMF was generated (for hover highlight on order page)
  */
 export interface AdmfFormData {
-  /** Display name (e.g. "Varianta 1", "Varianta 2"); editable */
   name: string;
-  /** Form IDs from step 1 used to generate this ADMF (for hover highlight) */
   source_form_ids: number[];
 
-  /** Customer/order block (from order, read-only on form when under order) */
+  /** Customer block (from order) */
   mesto?: string;
   castMesta?: string;
   ulice?: string;
@@ -34,35 +37,35 @@ export interface AdmfFormData {
   email?: string;
   bytRdFirma?: string;
 
-  /** Product table */
+  /** Product table (prices without VAT) */
   productRows: AdmfProductRow[];
+
+  /** Montáž: price without VAT (default 1339 → 1500 with 12% VAT) */
+  montazCenaBezDph?: number;
 
   /** Doplňující informace */
   doplnujiciInformaceObjednavky?: string;
   doplnujiciInformaceMontaz?: string;
 
-  /** K OBJEDNÁNÍ */
-  platceDph?: string;
-  faktura?: string;
-  nebytovyProstor?: string;
-  bytovyProstor?: string;
-  cena0?: boolean;
-  cena12?: boolean;
-  cena21?: boolean;
-  celaZakazkaSicekEtapy?: string;
-  ic?: string;
-  zaloha?: string;
-  zalohovaFaktura?: string;
-  doplatek?: string;
-  koncovaFaktura?: string;
+  /** VAT logic – booleans (A/N on paper) */
+  platceDph?: boolean;
+  faktura?: boolean;
+  nebytovyProstor?: boolean;
+  bytovyProstor?: boolean;
+  /** Selected VAT rate % (default 12) */
+  vatRate?: AdmfVatRate;
 
-  /** Dodací lhůta, montáž */
+  /** K OBJEDNÁNÍ – zálohová faktura (amount with VAT, what customer pays as deposit) */
+  zalohovaFaktura?: number;
+  /** Doplatek = celkem s DPH − zálohová faktura (computed, can be stored for PDF) */
+  doplatek?: number;
+
   predpokladanaDodaciDoba?: string;
   kodTerminalu?: string;
   dobaMontaze?: string;
   maZakaznikVyfocenouLamelu?: string;
 
-  /** Podpisy */
+  /** Datum (default today, editable) */
   datum?: string;
   podpisZakaznika?: string;
   jmenoPodpisZprostredkovatele?: string;

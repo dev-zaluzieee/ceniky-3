@@ -4,7 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import { generateAdmfPdf } from "@/lib/admf-pdf";
-import type { AdmfFormData, AdmfProductRow } from "@/types/forms/admf.types";
+import type { AdmfFormData, AdmfProductRow, AdmfVatRate } from "@/types/forms/admf.types";
+
+/** Today in YYYY-MM-DD for date input default */
+function todayString(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 /** Customer data from order (read-only when under order) */
 interface CustomerFromOrder {
@@ -38,8 +43,16 @@ function getDefaultFormData(): AdmfFormData {
     name: "Varianta 1",
     source_form_ids: [],
     productRows: [],
+    montazCenaBezDph: 1339,
     doplnujiciInformaceObjednavky: "",
     doplnujiciInformaceMontaz: "",
+    platceDph: false,
+    faktura: true,
+    nebytovyProstor: false,
+    bytovyProstor: true,
+    vatRate: 12,
+    zalohovaFaktura: 0,
+    datum: todayString(),
   };
 }
 
@@ -118,9 +131,17 @@ export default function AdmfFormClient({
     setIsSubmitting(true);
     setSubmitError(null);
     setSubmitSuccess(false);
+    const totalB = formData.productRows.reduce((s, r) => s + (r.cenaPoSleve || 0), 0) + (formData.montazCenaBezDph ?? 1339);
+    const vat = (formData.vatRate ?? 12) as AdmfVatRate;
+    const totalS = Math.round(totalB * (1 + vat / 100));
+    const zaloha = formData.zalohovaFaktura ?? 0;
+    const dataToSave: AdmfFormData = {
+      ...formData,
+      doplatek: Math.max(0, totalS - zaloha),
+    };
     try {
       if (isEditMode && formId) {
-        const res = await updateForm(formId, formData);
+        const res = await updateForm(formId, dataToSave);
         if (!res.success) {
           setSubmitError(res.error ?? "Uložení se nepodařilo.");
           return;
@@ -131,7 +152,7 @@ export default function AdmfFormClient({
           setSubmitError("Zakázka není vybrána.");
           return;
         }
-        const res = await submitForm("admf", formData, orderId);
+        const res = await submitForm("admf", dataToSave, orderId);
         if (!res.success) {
           setSubmitError(res.error ?? "Odeslání se nepodařilo.");
           return;
@@ -148,7 +169,15 @@ export default function AdmfFormClient({
     }
   };
 
-  const totalCenaPoSleve = formData.productRows.reduce((sum, r) => sum + (r.cenaPoSleve || 0), 0);
+  const totalProduktyBezDph = formData.productRows.reduce((sum, r) => sum + (r.cenaPoSleve || 0), 0);
+  const montazBezDph = formData.montazCenaBezDph ?? 1339;
+  const totalBezDph = totalProduktyBezDph + montazBezDph;
+  const vatRate = (formData.vatRate ?? 12) as AdmfVatRate;
+  const totalSDph = Math.round(totalBezDph * (1 + vatRate / 100));
+  const zalohovaFaktura = formData.zalohovaFaktura ?? 0;
+  const minZaloha = Math.round(0.5 * totalSDph);
+  const zalohaTooLow = totalSDph > 0 && zalohovaFaktura < minZaloha;
+  const doplatek = Math.max(0, totalSDph - zalohovaFaktura);
 
   /** Generate PDF (with Czech font) and open in new tab (preview for customer) */
   const handleShowPreview = async () => {
@@ -278,97 +307,101 @@ export default function AdmfFormClient({
             </div>
           )}
 
-          {/* Záznam o jednání se zákazníkem – product table */}
+          {/* Záznam o jednání se zákazníkem – product table (prices without VAT; s DPH shown for info) */}
           <div className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-800">
             <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">Záznam o jednání se zákazníkem</h2>
-            {/* Table with generous column spacing for a cleaner layout */}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] border-collapse text-sm">
+              <table className="w-full min-w-[780px] border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-zinc-200 dark:border-zinc-600">
                     <th className="px-4 py-3 text-left font-medium text-zinc-700 dark:text-zinc-300">produkt</th>
                     <th className="w-20 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">ks</th>
                     <th className="px-4 py-3 text-left font-medium text-zinc-700 dark:text-zinc-300">rám</th>
                     <th className="px-4 py-3 text-left font-medium text-zinc-700 dark:text-zinc-300">lamela/látka</th>
-                    <th className="w-28 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena</th>
+                    <th className="w-28 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena (bez DPH)</th>
                     <th className="w-24 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">sleva %</th>
-                    <th className="w-32 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena po slevě</th>
+                    <th className="w-32 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena po slevě (bez DPH)</th>
+                    <th className="w-36 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena po slevě (s DPH)</th>
                     <th className="w-12 px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody>
-                  {formData.productRows.map((row) => (
-                    <tr key={row.id} className="border-b border-zinc-100 dark:border-zinc-700">
-                      <td className="px-4 py-2">
-                        <input
-                          type="text"
-                          value={row.produkt}
-                          onChange={(e) => updateProductRow(row.id, { produkt: e.target.value })}
-                          className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                        />
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        <input
-                          type="number"
-                          min={1}
-                          value={row.ks}
-                          onChange={(e) => updateProductRow(row.id, { ks: parseInt(e.target.value, 10) || 1 })}
-                          className="w-14 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                        />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input
-                          type="text"
-                          value={row.ram}
-                          onChange={(e) => updateProductRow(row.id, { ram: e.target.value })}
-                          className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                        />
-                      </td>
-                      <td className="px-4 py-2">
-                        <input
-                          type="text"
-                          value={row.lamelaLatka}
-                          onChange={(e) => updateProductRow(row.id, { lamelaLatka: e.target.value })}
-                          className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                        />
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        <input
-                          type="number"
-                          min={0}
-                          value={row.cena || ""}
-                          onChange={(e) => updateProductRow(row.id, { cena: parseInt(e.target.value, 10) || 0 })}
-                          className="w-24 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                        />
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={row.sleva || ""}
-                          onChange={(e) => updateProductRow(row.id, { sleva: parseInt(e.target.value, 10) || 0 })}
-                          className="w-20 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                        />
-                      </td>
-                      <td className="px-4 py-2 text-right font-medium">{row.cenaPoSleve}</td>
-                      <td className="px-4 py-2">
-                        <button
-                          type="button"
-                          onClick={() => removeProductRow(row.id)}
-                          className="rounded px-1 py-0.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                          title="Odebrat řádek"
-                        >
-                          ×
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {formData.productRows.map((row) => {
+                    const cenaPoSleveSDph = Math.round((row.cenaPoSleve || 0) * (1 + vatRate / 100));
+                    return (
+                      <tr key={row.id} className="border-b border-zinc-100 dark:border-zinc-700">
+                        <td className="px-4 py-2">
+                          <input
+                            type="text"
+                            value={row.produkt}
+                            onChange={(e) => updateProductRow(row.id, { produkt: e.target.value })}
+                            className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <input
+                            type="number"
+                            min={1}
+                            value={row.ks}
+                            onChange={(e) => updateProductRow(row.id, { ks: parseInt(e.target.value, 10) || 1 })}
+                            className="w-14 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="text"
+                            value={row.ram}
+                            onChange={(e) => updateProductRow(row.id, { ram: e.target.value })}
+                            className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="text"
+                            value={row.lamelaLatka}
+                            onChange={(e) => updateProductRow(row.id, { lamelaLatka: e.target.value })}
+                            className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            value={row.cena || ""}
+                            onChange={(e) => updateProductRow(row.id, { cena: parseInt(e.target.value, 10) || 0 })}
+                            className="w-24 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={row.sleva || ""}
+                            onChange={(e) => updateProductRow(row.id, { sleva: parseInt(e.target.value, 10) || 0 })}
+                            className="w-20 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-right font-medium">{row.cenaPoSleve}</td>
+                        <td className="px-4 py-2 text-right text-zinc-600 dark:text-zinc-400">{cenaPoSleveSDph}</td>
+                        <td className="px-4 py-2">
+                          <button
+                            type="button"
+                            onClick={() => removeProductRow(row.id)}
+                            className="rounded px-1 py-0.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                            title="Odebrat řádek"
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-right text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Celkem: {totalCenaPoSleve} Kč
+            <p className="mt-2 text-right text-sm text-zinc-600 dark:text-zinc-400">
+              Součet produktů bez DPH: {totalProduktyBezDph} Kč
             </p>
             <button
               type="button"
@@ -377,6 +410,32 @@ export default function AdmfFormClient({
             >
               + Přidat řádek
             </button>
+          </div>
+
+          {/* Montáž */}
+          <div className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-800">
+            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">Montáž</h2>
+            <div className="flex flex-wrap items-center gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Cena montáže (bez DPH) [Kč]
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={formData.montazCenaBezDph ?? 1339}
+                  onChange={(e) =>
+                    setFormData((p) => ({ ...p, montazCenaBezDph: parseInt(e.target.value, 10) || 0 }))
+                  }
+                  className="w-32 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                />
+              </div>
+              <div className="flex items-end gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                <span>bez DPH: {montazBezDph} Kč</span>
+                <span>·</span>
+                <span>s DPH ({vatRate}%): {Math.round(montazBezDph * (1 + vatRate / 100))} Kč</span>
+              </div>
+            </div>
           </div>
 
           {/* Doplňující informace */}
@@ -403,6 +462,131 @@ export default function AdmfFormClient({
                   onChange={(e) => setFormData((p) => ({ ...p, doplnujiciInformaceMontaz: e.target.value }))}
                   rows={3}
                   className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* DPH (VAT) logic */}
+          <div className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-800">
+            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">DPH</h2>
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-6">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.platceDph ?? false}
+                    onChange={(e) => setFormData((p) => ({ ...p, platceDph: e.target.checked }))}
+                    className="h-4 w-4 rounded border-zinc-300 text-accent focus:ring-accent"
+                  />
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">Plátce DPH</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.faktura ?? true}
+                    onChange={(e) => setFormData((p) => ({ ...p, faktura: e.target.checked }))}
+                    className="h-4 w-4 rounded border-zinc-300 text-accent focus:ring-accent"
+                  />
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">Faktura</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.nebytovyProstor ?? false}
+                    onChange={(e) => setFormData((p) => ({ ...p, nebytovyProstor: e.target.checked }))}
+                    className="h-4 w-4 rounded border-zinc-300 text-accent focus:ring-accent"
+                  />
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">Nebytový prostor</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.bytovyProstor ?? true}
+                    onChange={(e) => setFormData((p) => ({ ...p, bytovyProstor: e.target.checked }))}
+                    className="h-4 w-4 rounded border-zinc-300 text-accent focus:ring-accent"
+                  />
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">Bytový prostor</span>
+                </label>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Sazba DPH [%]
+                </label>
+                <select
+                  value={formData.vatRate ?? 12}
+                  onChange={(e) =>
+                    setFormData((p) => ({ ...p, vatRate: parseInt(e.target.value, 10) as AdmfVatRate }))
+                  }
+                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                >
+                  <option value={0}>0 %</option>
+                  <option value={12}>12 %</option>
+                  <option value={21}>21 %</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* K OBJEDNÁNÍ – celkem, záloha, doplatek, datum */}
+          <div className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-800">
+            <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">K OBJEDNÁNÍ</h2>
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-6 text-sm">
+                <p className="font-medium text-zinc-700 dark:text-zinc-300">
+                  Celkem bez DPH: {totalBezDph} Kč
+                </p>
+                <p className="font-medium text-zinc-700 dark:text-zinc-300">
+                  Celkem s DPH ({vatRate}%): {totalSDph} Kč
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Zálohová faktura [Kč] (s DPH, min. 50 % celkové ceny)
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    value={formData.zalohovaFaktura ?? ""}
+                    onChange={(e) =>
+                      setFormData((p) => ({ ...p, zalohovaFaktura: parseInt(e.target.value, 10) || 0 }))
+                    }
+                    className="w-36 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((p) => ({ ...p, zalohovaFaktura: minZaloha }))
+                    }
+                    className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                  >
+                    Nastavit na 50 %
+                  </button>
+                </div>
+                {zalohaTooLow && totalSDph > 0 && (
+                  <p className="mt-1 text-sm text-amber-600 dark:text-amber-400">
+                    Záloha by měla být alespoň 50 % celkové ceny ({minZaloha} Kč).
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Doplatek [Kč]
+                </label>
+                <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium dark:border-zinc-600 dark:bg-zinc-700/50 dark:text-zinc-300">
+                  {doplatek} Kč
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Datum
+                </label>
+                <input
+                  type="date"
+                  value={formData.datum ?? todayString()}
+                  onChange={(e) => setFormData((p) => ({ ...p, datum: e.target.value }))}
+                  className="rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
                 />
               </div>
             </div>
