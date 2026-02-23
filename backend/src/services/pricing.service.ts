@@ -1,18 +1,23 @@
 /**
  * Pricing service – returns price for a product line.
- * MOCK IMPLEMENTATION: In the future this will call an external pricing API.
- * Until then we return a random value between 500 and 10000 for development/testing.
+ * Price must be provided by the form schema (e.g. schema.pricing.dimension_grid.prices).
+ * This module throws when no price is available; there is no fallback or mock.
  */
 
 import type { ExtractedProductLine } from "../types/extract-products.types";
 
 /**
  * Get unit price for a product line.
- * MOCK: Returns random number 500–10000. Replace with real API call when available.
+ * Throws if price cannot be determined – no mock or random values.
+ * Callers must obtain price from schema (e.g. dimension grid) before calling;
+ * in practice, do not call this when schema price is missing; throw a clear error instead.
  */
-export function getPriceForProduct(_product: Omit<ExtractedProductLine, "cena" | "sleva" | "cenaPoSleve">): number {
-  // MOCK: Random price for development. Replace with external pricing API call.
-  const MIN_MOCK_PRICE = 500;
-  const MAX_MOCK_PRICE = 10000;
-  return Math.floor(Math.random() * (MAX_MOCK_PRICE - MIN_MOCK_PRICE + 1)) + MIN_MOCK_PRICE;
+export function getPriceForProduct(
+  product: Omit<ExtractedProductLine, "cena" | "sleva" | "cenaPoSleve">
+): number {
+  throw new Error(
+    `Price not available for product "${product.produkt}". ` +
+      "Pricing must be provided in the form schema (e.g. schema.pricing.dimension_grid.prices). " +
+      "Do not use mock or random prices."
+  );
 }

@@ -5,17 +5,6 @@
 
 import type { FormType } from "../types/forms.types";
 import type { ExtractedProductLine } from "../types/extract-products.types";
-import { getPriceForProduct } from "./pricing.service";
-
-/** Product line before price (extractor output); price added by service */
-export type ProductLineWithoutPrice = Omit<ExtractedProductLine, "cena" | "sleva" | "cenaPoSleve">;
-
-function addPrice(line: ProductLineWithoutPrice): ExtractedProductLine {
-  const cena = getPriceForProduct(line);
-  const sleva = 0;
-  const cenaPoSleve = Math.round(cena * (1 - sleva / 100));
-  return { ...line, cena, sleva, cenaPoSleve };
-}
 
 /** Possible row property codes for width/height (order of preference) */
 const WIDTH_KEYS = ["ovl_sirka", "width", "Sirka", "sirka", "šířka"];
@@ -82,12 +71,14 @@ export function extractFromCustom(formJson: Record<string, unknown>): ExtractedP
       const produkt = `${productName} - ${dimStr}`;
 
       const priceFromSchema = getPriceFromSchema(schema, width, height);
-      const cena = priceFromSchema ?? getPriceForProduct({
-        produkt,
-        ks: 1,
-        ram: (row.ram as string) ?? (row.frameColor as string) ?? "",
-        lamelaLatka: (row.lamelaLatka as string) ?? (row.latka as string) ?? "",
-      });
+      if (priceFromSchema === undefined) {
+        const dimKey = [width, height].filter(Boolean).join("×") || "?";
+        throw new Error(
+          `No price in schema for product "${productName}", dimensions ${dimKey}. ` +
+            "Ensure schema.pricing.dimension_grid.prices contains an entry for this width×height (e.g. key \"400_500\")."
+        );
+      }
+      const cena = priceFromSchema;
       const sleva = 0;
       const cenaPoSleve = Math.round(cena * (1 - sleva / 100));
 
