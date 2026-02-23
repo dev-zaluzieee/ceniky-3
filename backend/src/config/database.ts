@@ -86,3 +86,49 @@ export async function closePool(): Promise<void> {
     console.log("Database connection pool closed");
   }
 }
+
+/** Optional second pool for pricing database (PRICING_DATABASE_URL) */
+let pricingPool: Pool | null = null;
+
+/**
+ * Get or create pricing database connection pool.
+ * Used for product_pricing (OVT-available forms). Throws if PRICING_DATABASE_URL is not set.
+ */
+export function getPricingPool(): Pool {
+  if (!pricingPool) {
+    const url = process.env.PRICING_DATABASE_URL;
+    if (!url) {
+      throw new Error("PRICING_DATABASE_URL environment variable is not set");
+    }
+    try {
+      const parsed = new URL(url);
+      const config: PoolConfig = {
+        user: parsed.username,
+        password: parsed.password,
+        host: parsed.hostname,
+        port: parseInt(parsed.port || "5432", 10),
+        database: parsed.pathname.slice(1),
+        ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
+        max: parseInt(process.env.DB_POOL_MAX || "10", 10),
+        idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT || "30000", 10),
+        connectionTimeoutMillis: parseInt(process.env.DB_POOL_CONNECTION_TIMEOUT || "2000", 10),
+      };
+      pricingPool = new Pool(config);
+      pricingPool.on("error", (err) => {
+        console.error("Unexpected error on idle pricing database client", err);
+      });
+    } catch (error) {
+      throw new Error(`Invalid PRICING_DATABASE_URL format: ${error}`);
+    }
+  }
+  return pricingPool;
+}
+
+/** Close pricing pool (e.g. on shutdown). */
+export async function closePricingPool(): Promise<void> {
+  if (pricingPool) {
+    await pricingPool.end();
+    pricingPool = null;
+    console.log("Pricing database connection pool closed");
+  }
+}

@@ -1,12 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
 import type { OrderRecord } from "@/lib/orders-api";
 import { updateOrder } from "@/lib/orders-api";
 import type { FormRecord, FormType, PaginationInfo } from "@/lib/forms-api";
 import { getFormById, submitForm } from "@/lib/forms-api";
 import { parseForm } from "@/parsers/forms";
+import {
+  listPricingManufacturers,
+  listPricingForms,
+  type PricingFormListItem,
+} from "@/lib/pricing-forms-api";
 
 /** Form type to display name (Czech) */
 const FORM_TYPE_NAMES: Record<FormType, string> = {
@@ -53,6 +59,7 @@ export default function OrderDetailClient({
   forms: initialForms,
   formsPagination,
 }: OrderDetailClientProps) {
+  const router = useRouter();
   const [order, setOrder] = useState(initialOrder);
   const [forms, setForms] = useState(initialForms);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -63,6 +70,49 @@ export default function OrderDetailClient({
   const [hoveredAdmfFormId, setHoveredAdmfFormId] = useState<number | null>(null);
   /** Form IDs selected for generating a new ADMF (step 1 forms only) */
   const [selectedFormIdsForAdmf, setSelectedFormIdsForAdmf] = useState<Set<number>>(new Set());
+
+  /** OVT pricing forms: load manufacturers when "Přidat formulář" is opened */
+  const [manufacturers, setManufacturers] = useState<string[]>([]);
+  const [manufacturersLoaded, setManufacturersLoaded] = useState(false);
+  const [pricingManufacturer, setPricingManufacturer] = useState("");
+  const [pricingSearch, setPricingSearch] = useState("");
+  const [pricingResults, setPricingResults] = useState<PricingFormListItem[] | null>(null);
+  const [pricingLoading, setPricingLoading] = useState(false);
+  const [pricingError, setPricingError] = useState<string | null>(null);
+
+  /** Load manufacturers when add-form panel opens */
+  useEffect(() => {
+    if (!showAddForm || manufacturersLoaded) return;
+    let cancelled = false;
+    (async () => {
+      const res = await listPricingManufacturers();
+      if (cancelled) return;
+      setManufacturersLoaded(true);
+      if (res.success && res.data) setManufacturers(res.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showAddForm, manufacturersLoaded]);
+
+  /** Run search for pricing forms (manufacturer + product_code) */
+  const runPricingSearch = useCallback(async () => {
+    setPricingError(null);
+    setPricingLoading(true);
+    setPricingResults(null);
+    const res = await listPricingForms({
+      manufacturer: pricingManufacturer.trim() || undefined,
+      search: pricingSearch.trim() || undefined,
+    });
+    setPricingLoading(false);
+    if (res.success && res.data !== undefined) setPricingResults(res.data);
+    else setPricingError(res.error ?? "Nepodařilo načíst formuláře.");
+  }, [pricingManufacturer, pricingSearch]);
+
+  /** Navigate to custom form create with selected pricing form (prefilled from OVT JSON) */
+  const goToCustomFormWithPricing = (pricingId: string) => {
+    router.push(`/orders/${order.id}/forms/create/custom?pricingId=${encodeURIComponent(pricingId)}`);
+  };
 
   /** Editable customer data (synced from order) */
   const [customerData, setCustomerData] = useState({
@@ -307,23 +357,88 @@ export default function OrderDetailClient({
                 Přidat formulář
               </button>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                {STEP1_FORM_TYPES.map((formType) => (
+              <div className="flex flex-wrap items-start gap-4">
+                {/* Catalog: manufacturer + search → select form by product_code */}
+                <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800">
+                  <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    Vybrat z katalogu
+                  </p>
+                  <div className="mb-2 flex flex-wrap gap-2">
+                    <select
+                      value={pricingManufacturer}
+                      onChange={(e) => setPricingManufacturer(e.target.value)}
+                      className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-100"
+                    >
+                      <option value="">Všichni výrobci</option>
+                      {manufacturers.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={pricingSearch}
+                      onChange={(e) => setPricingSearch(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && runPricingSearch()}
+                      placeholder="Hledat dle product_code…"
+                      className="min-w-[180px] rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={runPricingSearch}
+                      disabled={pricingLoading}
+                      className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                    >
+                      {pricingLoading ? "Hledám…" : "Hledat"}
+                    </button>
+                  </div>
+                  {pricingError && (
+                    <p className="mb-2 text-sm text-red-600 dark:text-red-400">{pricingError}</p>
+                  )}
+                  {pricingResults !== null && (
+                    <div className="max-h-48 overflow-y-auto rounded border border-zinc-200 dark:border-zinc-600">
+                      {pricingResults.length === 0 ? (
+                        <p className="p-2 text-sm text-zinc-500 dark:text-zinc-400">
+                          Žádné formuláře nevyhovují.
+                        </p>
+                      ) : (
+                        <ul className="divide-y divide-zinc-200 dark:divide-zinc-600">
+                          {pricingResults.map((item) => (
+                            <li key={item.id}>
+                              <button
+                                type="button"
+                                onClick={() => goToCustomFormWithPricing(item.id)}
+                                className="w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                              >
+                                <span className="font-medium">{item.product_code}</span>
+                                {item.manufacturer && (
+                                  <span className="ml-2 text-zinc-500 dark:text-zinc-400">
+                                    ({item.manufacturer})
+                                  </span>
+                                )}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* Fallback: paste JSON */}
+                <div className="flex flex-wrap items-center gap-2">
                   <Link
-                    key={formType}
-                    href={getFormCreateUrl(order.id, formType)}
+                    href={getFormCreateUrl(order.id, "custom")}
                     className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                   >
-                    {FORM_TYPE_NAMES[formType]}
+                    {FORM_TYPE_NAMES.custom} (vložit JSON)
                   </Link>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setShowAddForm(false)}
-                  className="text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                >
-                  Zavřít
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddForm(false)}
+                    className="text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  >
+                    Zavřít
+                  </button>
+                </div>
               </div>
             )}
           </div>

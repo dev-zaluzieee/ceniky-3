@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { submitForm, updateForm } from "@/lib/forms-api";
+import { getPricingFormById } from "@/lib/pricing-forms-api";
 import DynamicProductForm, { buildInitialFormData } from "@/components/forms/DynamicProductForm";
 import type { ProductPayload } from "@/types/json-schema-form.types";
 import type { CustomFormJson, JsonSchemaFormData } from "@/types/json-schema-form.types";
@@ -22,6 +23,8 @@ export interface CustomFormClientProps {
     address?: string;
     city?: string;
   };
+  /** Create from catalog: fetch form by OVT pricing id and use ovt_export_json as schema (skip paste step) */
+  pricingId?: string;
 }
 
 /**
@@ -40,17 +43,48 @@ export default function CustomFormClient({
   formId,
   initialData,
   customerFromOrder,
+  pricingId,
 }: CustomFormClientProps) {
   const router = useRouter();
   const isEditMode = Boolean(formId && initialData);
 
-  /* Create mode: step 1 = paste JSON, step 2 = form */
+  /* Create mode: step 1 = paste JSON or load from pricingId, step 2 = form */
   const [rawJson, setRawJson] = useState<string>("");
   const [schema, setSchema] = useState<ProductPayload | null>(() => initialData?.schema ?? null);
   const [formData, setFormData] = useState<JsonSchemaFormData | null>(() => {
     if (initialData?.data) return initialData.data;
     return null;
   });
+  /** When creating from catalog (pricingId), loading or error state */
+  const [pricingLoadError, setPricingLoadError] = useState<string | null>(null);
+  const [pricingLoading, setPricingLoading] = useState(false);
+
+  /** Create from catalog: fetch OVT form and set schema + formData so we skip paste step */
+  useEffect(() => {
+    if (!pricingId?.trim() || formId || initialData) return;
+    let cancelled = false;
+    setPricingLoadError(null);
+    setPricingLoading(true);
+    (async () => {
+      const res = await getPricingFormById(pricingId.trim());
+      if (cancelled) return;
+      setPricingLoading(false);
+      if (!res.success || !res.data) {
+        setPricingLoadError(res.error ?? "Formulář se nepodařilo načíst.");
+        return;
+      }
+      const payload = res.data.ovt_export_json;
+      if (!validatePayload(payload)) {
+        setPricingLoadError("Export formuláře nemá platnou strukturu (product_code, form_body.Properties).");
+        return;
+      }
+      setSchema(payload as ProductPayload);
+      setFormData(buildInitialFormData(payload as ProductPayload, customerFromOrder));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pricingId, formId, initialData, customerFromOrder]);
 
   /** Setter compatible with DynamicProductForm (only updates when formData is non-null) */
   const setFormDataForForm = useCallback(
@@ -157,6 +191,52 @@ export default function CustomFormClient({
               </button>
             }
           />
+        </div>
+      </div>
+    );
+  }
+
+  /* Create mode: loading from catalog (pricingId) */
+  if (pricingId && pricingLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-50 py-8 px-4 dark:bg-zinc-900">
+        <div className="mx-auto max-w-7xl">
+          <Link
+            href={`/orders/${orderId}`}
+            className="mb-6 inline-flex items-center gap-2 text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Zpět na zakázku
+          </Link>
+          <p className="text-zinc-600 dark:text-zinc-400">Načítám formulář z katalogu…</p>
+        </div>
+      </div>
+    );
+  }
+
+  /* Create mode: error loading from catalog */
+  if (pricingId && pricingLoadError) {
+    return (
+      <div className="min-h-screen bg-zinc-50 py-8 px-4 dark:bg-zinc-900">
+        <div className="mx-auto max-w-7xl">
+          <Link
+            href={`/orders/${orderId}`}
+            className="mb-6 inline-flex items-center gap-2 text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Zpět na zakázku
+          </Link>
+          <p className="mb-4 text-red-600 dark:text-red-400">{pricingLoadError}</p>
+          <Link
+            href={`/orders/${orderId}/forms/create/custom`}
+            className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+          >
+            Vložit JSON ručně
+          </Link>
         </div>
       </div>
     );

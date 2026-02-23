@@ -4,8 +4,9 @@
  */
 
 import { Router, Response } from "express";
-import { getPool } from "../config/database";
+import { getPool, getPricingPool } from "../config/database";
 import * as formsService from "../services/forms.service";
+import * as pricingFormsService from "../services/pricing-forms.service";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { ApiError } from "../utils/errors";
 import { FormType, ListFormsQuery } from "../types/forms.types";
@@ -141,6 +142,118 @@ router.post("/", authenticateToken, async (req: AuthenticatedRequest, res: Respo
     });
   } catch (error: any) {
     handleError(error, res);
+  }
+});
+
+/**
+ * @swagger
+ * /api/forms/pricing:
+ *   get:
+ *     summary: List OVT-available forms from pricing database (manufacturer + product_code search)
+ *     tags: [Forms]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: manufacturer
+ *         schema:
+ *           type: string
+ *         description: Filter by manufacturer
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Fulltext/substring search on product_code
+ *     responses:
+ *       200:
+ *         description: List of { id, manufacturer, product_code }
+ *       401:
+ *         description: Unauthorized
+ *       503:
+ *         description: Pricing database unavailable
+ */
+router.get("/pricing", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPricingPool();
+    const manufacturer = (req.query.manufacturer as string)?.trim() || undefined;
+    const search = (req.query.search as string)?.trim() || undefined;
+    const list = await pricingFormsService.listOvtForms(pool, { manufacturer, search });
+    return res.json({ success: true, data: list });
+  } catch (error: any) {
+    if (error.message?.includes("PRICING_DATABASE_URL")) {
+      return res.status(503).json({ success: false, error: "Pricing database not configured" });
+    }
+    console.error("List pricing forms error:", error);
+    return res.status(500).json({ success: false, error: "Failed to list pricing forms" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/forms/pricing/manufacturers:
+ *   get:
+ *     summary: List distinct manufacturers that have OVT-available forms
+ *     tags: [Forms]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of manufacturer names
+ *       503:
+ *         description: Pricing database unavailable
+ */
+router.get("/pricing/manufacturers", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPricingPool();
+    const manufacturers = await pricingFormsService.listOvtManufacturers(pool);
+    return res.json({ success: true, data: manufacturers });
+  } catch (error: any) {
+    if (error.message?.includes("PRICING_DATABASE_URL")) {
+      return res.status(503).json({ success: false, error: "Pricing database not configured" });
+    }
+    console.error("List manufacturers error:", error);
+    return res.status(500).json({ success: false, error: "Failed to list manufacturers" });
+  }
+});
+
+/**
+ * @swagger
+ * /api/forms/pricing/{id}:
+ *   get:
+ *     summary: Get one OVT form by id (includes ovt_export_json for form generation)
+ *     tags: [Forms]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Form detail with ovt_export_json
+ *       404:
+ *         description: Not found
+ *       503:
+ *         description: Pricing database unavailable
+ */
+router.get("/pricing/:id", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPricingPool();
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const form = await pricingFormsService.getOvtFormById(pool, id);
+    if (!form) {
+      return res.status(404).json({ success: false, error: "Form not found" });
+    }
+    return res.json({ success: true, data: form });
+  } catch (error: any) {
+    if (error.message?.includes("PRICING_DATABASE_URL")) {
+      return res.status(503).json({ success: false, error: "Pricing database not configured" });
+    }
+    console.error("Get pricing form error:", error);
+    return res.status(500).json({ success: false, error: "Failed to get pricing form" });
   }
 });
 

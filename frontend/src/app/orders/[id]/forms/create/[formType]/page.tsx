@@ -46,12 +46,15 @@ export default async function OrderFormCreatePage({
 
   const resolvedSearchParams = await searchParams;
   const formIdsParam = resolvedSearchParams.formIds;
+  const p = (resolvedSearchParams as Record<string, string | string[] | undefined>)["pricingId"];
+  const pricingIdParam = typeof p === "string" ? p : undefined;
 
   if (formType === "custom") {
     return (
       <CustomFormClient
         orderId={orderId}
         customerFromOrder={customerFromOrder}
+        pricingId={pricingIdParam?.trim() || undefined}
       />
     );
   }

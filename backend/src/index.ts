@@ -8,7 +8,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
-import { getPool, testConnection, closePool } from "./config/database";
+import { getPool, testConnection, closePool, closePricingPool } from "./config/database";
 import formsRoutes from "./routes/forms.routes";
 import ordersRoutes from "./routes/orders.routes";
 import raynetRoutes from "./routes/raynet.routes";
@@ -147,11 +147,20 @@ const server = app.listen(PORT, async () => {
 });
 
 // Graceful shutdown
+async function shutdown(): Promise<void> {
+  await closePool();
+  try {
+    await closePricingPool();
+  } catch (e) {
+    console.error("Error closing pricing pool:", e);
+  }
+}
+
 process.on("SIGTERM", async () => {
   console.log("SIGTERM signal received: closing HTTP server");
   server.close(async () => {
     console.log("HTTP server closed");
-    await closePool();
+    await shutdown();
     process.exit(0);
   });
 });
@@ -160,7 +169,7 @@ process.on("SIGINT", async () => {
   console.log("SIGINT signal received: closing HTTP server");
   server.close(async () => {
     console.log("HTTP server closed");
-    await closePool();
+    await shutdown();
     process.exit(0);
   });
 });
