@@ -8,15 +8,7 @@ import { BadRequestError } from "./errors";
 /**
  * Valid form types
  */
-const VALID_FORM_TYPES: FormType[] = [
-  "horizontalni-zaluzie",
-  "plise-zaluzie",
-  "site",
-  "textile-rolety",
-  "universal",
-  "admf",
-  "custom",
-];
+const VALID_FORM_TYPES: FormType[] = ["custom", "admf"];
 
 /**
  * Validate form type

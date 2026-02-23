@@ -27,7 +27,7 @@ const router = Router();
  *           description: User identifier (email)
  *         form_type:
  *           type: string
- *           enum: [horizontalni-zaluzie, plise-zaluzie, site, textile-rolety, universal]
+ *           enum: [custom, admf]
  *           description: Type of form
  *         form_json:
  *           type: object
@@ -53,7 +53,7 @@ const router = Router();
  *       properties:
  *         form_type:
  *           type: string
- *           enum: [horizontalni-zaluzie, plise-zaluzie, site, textile-rolety, universal]
+ *           enum: [custom, admf]
  *         form_json:
  *           type: object
  *     UpdateFormRequest:
@@ -157,7 +157,7 @@ router.post("/", authenticateToken, async (req: AuthenticatedRequest, res: Respo
  *         name: form_type
  *         schema:
  *           type: string
- *           enum: [horizontalni-zaluzie, plise-zaluzie, site, textile-rolety, universal]
+ *           enum: [custom, admf]
  *         description: Filter by form type
  *       - in: query
  *         name: page

@@ -1,9 +1,5 @@
 /**
- * Central export for all form type definitions
+ * Form type definitions (ADMF; custom uses json-schema-form.types)
  */
 
-export * from "./horizontalni-zaluzie.types";
-export * from "./plise-zaluzie.types";
-export * from "./site.types";
-export * from "./textile-rolety.types";
-export * from "./universal.types";
+export * from "./admf.types";

@@ -10,26 +10,12 @@ import { parseForm } from "@/parsers/forms";
 
 /** Form type to display name (Czech) */
 const FORM_TYPE_NAMES: Record<FormType, string> = {
-  "horizontalni-zaluzie": "Horizontální žaluzie",
-  "plise-zaluzie": "Plisé žaluzie",
-  site: "Okenní sítě / Dveřní sítě",
-  "textile-rolety": "Textilní a D/N roletky",
-  universal: "Univerzální list",
-  admf: "Administrativní formulář",
-  custom: "Vlastní formulář (JSON)",
+  custom: "Vlastní formulář",
+  admf: "Administrativní formulář (ADMF)",
 };
 
-/** Step 1 form types (product forms) that can be used for ADMF generation; must match backend STEP1_FORM_TYPES */
-const STEP1_FORM_TYPES: FormType[] = [
-  "horizontalni-zaluzie",
-  "plise-zaluzie",
-  "site",
-  "textile-rolety",
-  "universal",
-];
-
-/** Form types offered when adding a form (step 1 types + custom; custom cannot be used for ADMF) */
-const ADDABLE_FORM_TYPES: FormType[] = [...STEP1_FORM_TYPES, "custom"];
+/** Step 1 form types (product forms) used for ADMF generation; only custom */
+const STEP1_FORM_TYPES: FormType[] = ["custom"];
 
 /** Edit form URL under order: /orders/[orderId]/forms/[formId] */
 function getFormEditUrl(orderId: number, formId: number): string {
@@ -322,7 +308,7 @@ export default function OrderDetailClient({
               </button>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {ADDABLE_FORM_TYPES.map((formType) => (
+                {STEP1_FORM_TYPES.map((formType) => (
                   <Link
                     key={formType}
                     href={getFormCreateUrl(order.id, formType)}
@@ -353,11 +339,9 @@ export default function OrderDetailClient({
           <p className="mb-2 text-sm text-red-600 dark:text-red-400">{duplicateError}</p>
         )}
 
-        {/* Step 1 forms (product forms) + custom forms; only step 1 types can be selected for ADMF */}
+        {/* Step 1 forms (custom product forms); all can be selected for ADMF */}
         {(() => {
           const step1Forms = forms.filter((f) => STEP1_FORM_TYPES.includes(f.form_type as FormType));
-          const customForms = forms.filter((f) => f.form_type === "custom");
-          const productForms = [...step1Forms, ...customForms];
           const sourceFormIdsToHighlight =
             hoveredAdmfFormId != null
               ? (forms.find((f) => f.id === hoveredAdmfFormId)?.form_json as { source_form_ids?: number[] } | undefined)
@@ -366,17 +350,16 @@ export default function OrderDetailClient({
 
           return (
             <>
-              {productForms.length === 0 ? (
+              {step1Forms.length === 0 ? (
                 <div className="rounded-lg border border-zinc-200 bg-white p-8 text-center dark:border-zinc-700 dark:bg-zinc-800">
                   <p className="text-zinc-600 dark:text-zinc-400">
-                    V této zakázce zatím nejsou žádné formuláře (krok 1). Klikněte na „Přidat formulář“ a vyberte typ.
+                    V této zakázce zatím nejsou žádné formuláře. Klikněte na „Přidat formulář“ a vložte JSON schéma.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {productForms.map((form) => {
+                  {step1Forms.map((form) => {
                     const parsedInfo = parseForm(form.form_type, form.form_json);
-                    const isStep1ForAdmf = STEP1_FORM_TYPES.includes(form.form_type as FormType);
                     const isHighlighted = sourceFormIdsToHighlight.includes(form.id);
                     const isSelectedForAdmf = selectedFormIdsForAdmf.has(form.id);
                     const toggleAdmfSelection = () => {
@@ -398,21 +381,15 @@ export default function OrderDetailClient({
                       >
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div className="flex items-start gap-3">
-                            {/* Checkbox: include this form in ADMF (only for step 1 types; custom cannot be used) */}
-                            {isStep1ForAdmf ? (
-                              <label className="mt-0.5 flex cursor-pointer items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelectedForAdmf}
-                                  onChange={toggleAdmfSelection}
-                                  className="h-4 w-4 rounded border-zinc-300 text-amber-600 focus:ring-amber-500 dark:border-zinc-600 dark:bg-zinc-700"
-                                />
-                              </label>
-                            ) : (
-                              <span className="mt-0.5 text-xs text-zinc-400 dark:text-zinc-500" title="Vlastní formulář nelze použít pro generování ADMF">
-                                —
-                              </span>
-                            )}
+                            {/* Checkbox: include this form in ADMF generation */}
+                            <label className="mt-0.5 flex cursor-pointer items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                              <input
+                                type="checkbox"
+                                checked={isSelectedForAdmf}
+                                onChange={toggleAdmfSelection}
+                                className="h-4 w-4 rounded border-zinc-300 text-amber-600 focus:ring-amber-500 dark:border-zinc-600 dark:bg-zinc-700"
+                              />
+                            </label>
                             <div>
                             <div className="mb-2 flex items-center gap-2">
                               <span className="inline-flex rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">

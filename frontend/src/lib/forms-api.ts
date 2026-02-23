@@ -6,14 +6,7 @@
 /**
  * Form type definitions
  */
-export type FormType =
-  | "horizontalni-zaluzie"
-  | "plise-zaluzie"
-  | "site"
-  | "textile-rolety"
-  | "universal"
-  | "admf"
-  | "custom";
+export type FormType = "custom" | "admf";
 
 /**
  * Form submission response

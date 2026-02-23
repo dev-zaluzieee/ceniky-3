@@ -4,26 +4,13 @@
 
 /**
  * Supported form types.
- * Step 1: product forms (horizontalni-zaluzie, plise-zaluzie, site, textile-rolety, universal).
- * Step 2: ADMF (administrativní formulář) – generated from step 1 forms.
+ * custom: product form from JSON schema (step 1).
+ * admf: administrativní formulář – generated from custom forms.
  */
-export type FormType =
-  | "horizontalni-zaluzie"
-  | "plise-zaluzie"
-  | "site"
-  | "textile-rolety"
-  | "universal"
-  | "admf"
-  | "custom";
+export type FormType = "custom" | "admf";
 
-/** Step 1 form types (used for product extraction into ADMF) */
-export const STEP1_FORM_TYPES: FormType[] = [
-  "horizontalni-zaluzie",
-  "plise-zaluzie",
-  "site",
-  "textile-rolety",
-  "universal",
-];
+/** Step 1 form types (used for product extraction into ADMF); only custom now */
+export const STEP1_FORM_TYPES: FormType[] = ["custom"];
 
 /**
  * Form data structure stored in database
