@@ -45,6 +45,8 @@ export interface ProductPayload {
   dependencies?: PayloadDependency[];
   downloaded_at?: string;
   _metadata?: Record<string, unknown>;
+  /** Set when form is created from catalog; used by backend to resolve prices from pricing DB */
+  _product_pricing_id?: string;
 }
 
 export interface FormRow {

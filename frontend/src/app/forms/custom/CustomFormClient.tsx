@@ -78,8 +78,12 @@ export default function CustomFormClient({
         setPricingLoadError("Export formuláře nemá platnou strukturu (product_code, form_body.Properties).");
         return;
       }
-      setSchema(payload as ProductPayload);
-      setFormData(buildInitialFormData(payload as ProductPayload, customerFromOrder));
+      const schemaWithPricingId: ProductPayload = {
+        ...(payload as ProductPayload),
+        _product_pricing_id: pricingId.trim(),
+      };
+      setSchema(schemaWithPricingId);
+      setFormData(buildInitialFormData(schemaWithPricingId, customerFromOrder));
     })();
     return () => {
       cancelled = true;

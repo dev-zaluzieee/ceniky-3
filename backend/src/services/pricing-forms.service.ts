@@ -96,3 +96,83 @@ export async function listOvtManufacturers(pool: Pool): Promise<string[]> {
   );
   return result.rows.map((r) => r.manufacturer);
 }
+
+/** Product pricing row for price resolution (price_affecting_enums only) */
+export interface ProductPricingForResolve {
+  id: string;
+  price_affecting_enums: string[];
+}
+
+/**
+ * Get product_pricing by id for price resolution (price_affecting_enums).
+ * Used to know which row fields to use as selector when resolving variant.
+ */
+export async function getProductPricingForResolve(
+  pool: Pool,
+  id: string
+): Promise<ProductPricingForResolve | null> {
+  const result = await pool.query(
+    `SELECT id, price_affecting_enums FROM product_pricing WHERE id = $1 AND available_for_ovt = true`,
+    [id]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  const enums = row.price_affecting_enums;
+  const priceAffectingEnums: string[] = Array.isArray(enums)
+    ? enums
+    : typeof enums === "string"
+      ? (() => {
+          try {
+            const parsed = JSON.parse(enums);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+  return { id: row.id, price_affecting_enums: priceAffectingEnums };
+}
+
+/** Single pricing_variant row (selector + dimension_pricing for matching and price lookup) */
+export interface PricingVariantRow {
+  id: string;
+  selector: Record<string, string[]>;
+  dimension_pricing: { prices?: Record<string, number> };
+}
+
+/**
+ * Get all pricing_variant rows for a product_pricing id.
+ * Used to find the variant whose selector matches the form row's enum values.
+ */
+export async function getPricingVariantsByProductId(
+  pool: Pool,
+  productPricingId: string
+): Promise<PricingVariantRow[]> {
+  const result = await pool.query(
+    `SELECT id, selector, dimension_pricing FROM pricing_variant WHERE product_pricing_id = $1`,
+    [productPricingId]
+  );
+  return result.rows.map((r) => {
+    let selector: Record<string, string[]> = {};
+    if (r.selector && typeof r.selector === "object") {
+      selector = r.selector as Record<string, string[]>;
+    } else if (typeof r.selector === "string") {
+      try {
+        selector = JSON.parse(r.selector) as Record<string, string[]>;
+      } catch {
+        selector = {};
+      }
+    }
+    let dimension_pricing: { prices?: Record<string, number> } = {};
+    if (r.dimension_pricing && typeof r.dimension_pricing === "object") {
+      dimension_pricing = r.dimension_pricing as { prices?: Record<string, number> };
+    } else if (typeof r.dimension_pricing === "string") {
+      try {
+        dimension_pricing = JSON.parse(r.dimension_pricing) as { prices?: Record<string, number> };
+      } catch {
+        dimension_pricing = {};
+      }
+    }
+    return { id: r.id, selector, dimension_pricing };
+  });
+}

@@ -1,12 +1,13 @@
 /**
  * Service: extract products from step 1 forms for an order (to prefill ADMF).
- * Returns product lines with mocked prices and source form IDs for hover highlight.
+ * Prices are resolved from pricing DB (pricing_variant) when form has product_pricing_id.
  * Optional formIds: if provided, only those forms are used (must belong to order and be step 1).
  */
 
 import { Pool } from "pg";
 import * as formsQueries from "../queries/forms.queries";
 import * as ordersQueries from "../queries/orders.queries";
+import { getPricingPool } from "../config/database";
 import { STEP1_FORM_TYPES } from "../types/forms.types";
 import type { FormType } from "../types/forms.types";
 import type { ExtractProductsResponse, ExtractedProductLine } from "../types/extract-products.types";
@@ -57,9 +58,18 @@ export async function extractProductsForOrder(
   const products: ExtractedProductLine[] = [];
   const sourceFormIds: number[] = [];
 
+  let pricingPool: Pool;
+  try {
+    pricingPool = getPricingPool();
+  } catch (e: unknown) {
+    throw new Error(
+      "Pricing database is not configured (PRICING_DATABASE_URL). Cannot resolve prices for ADMF."
+    );
+  }
+
   for (const form of formsToUse) {
     const formType = form.form_type as FormType;
-    const lines = extractProductsFromForm(formType, form.form_json);
+    const lines = await extractProductsFromForm(formType, form.form_json as Record<string, unknown>, pricingPool);
     if (lines.length > 0) {
       products.push(...lines);
       sourceFormIds.push(form.id);
