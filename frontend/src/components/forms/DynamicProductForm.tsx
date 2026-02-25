@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import type {
   ProductPayload,
   JsonSchemaFormData,
@@ -9,6 +10,12 @@ import type {
   EnumValue,
   EnumEntry,
 } from "@/types/json-schema-form.types";
+import { checkSizeLimits, type SizeLimitsResult } from "@/lib/size-limits-api";
+
+/** Property codes for width/height (same order as backend); first match in form_body is used */
+const WIDTH_CODES = ["ovl_sirka", "width", "Sirka", "sirka", "šířka"];
+const HEIGHT_CODES = ["ovl_vyska", "height", "Vyska", "vyska", "výška"];
+const SIZE_LIMITS_DEBOUNCE_MS = 400;
 
 /** Generate unique ID for rows/rooms */
 function generateId(): string {
@@ -69,6 +76,8 @@ export interface DynamicProductFormProps {
   actionsInRoomsHeader?: React.ReactNode;
   /** Rendered after the zapati section (e.g. Submit button) */
   actionsFooter?: React.ReactNode;
+  /** Called when any row is outside manufacturing range (true = block submit) */
+  onSizeLimitErrorChange?: (hasError: boolean) => void;
 }
 
 export default function DynamicProductForm({
@@ -77,8 +86,87 @@ export default function DynamicProductForm({
   setFormData,
   actionsInRoomsHeader,
   actionsFooter,
+  onSizeLimitErrorChange,
 }: DynamicProductFormProps) {
   const formBodyProperties = (payload.form_body?.Properties ?? []) as PropertyDefinition[];
+  const productPricingId = payload._product_pricing_id;
+
+  const widthCode = formBodyProperties.find((p) => WIDTH_CODES.includes(p.Code))?.Code;
+  const heightCode = formBodyProperties.find((p) => HEIGHT_CODES.includes(p.Code))?.Code;
+
+  const [sizeLimitByRow, setSizeLimitByRow] = useState<Record<string, SizeLimitsResult>>({});
+  const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const getRowValues = useCallback((row: FormRow): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (k === "id") continue;
+      out[k] = v !== undefined && v !== null ? String(v).trim() : "";
+    }
+    return out;
+  }, []);
+
+  const getWidthHeight = useCallback(
+    (row: FormRow): { width: number; height: number } | null => {
+      if (!widthCode || !heightCode) return null;
+      const rawW = row[widthCode];
+      const rawH = row[heightCode];
+      if (rawW === "" || rawH === "" || rawW == null || rawH == null) return null;
+      const w = Number(rawW);
+      const h = Number(rawH);
+      if (Number.isNaN(w) || Number.isNaN(h) || w <= 0 || h <= 0) return null;
+      return { width: w, height: h };
+    },
+    [widthCode, heightCode]
+  );
+
+  useEffect(() => {
+    if (!productPricingId || !widthCode || !heightCode) {
+      setSizeLimitByRow({});
+      onSizeLimitErrorChange?.(false);
+      return;
+    }
+    const timeouts = debounceRef.current;
+    formData.rooms.forEach((room) => {
+      room.rows.forEach((row) => {
+        const dims = getWidthHeight(row);
+        if (!dims) {
+          setSizeLimitByRow((prev) => {
+            const next = { ...prev };
+            delete next[row.id];
+            return next;
+          });
+          return;
+        }
+        if (timeouts[row.id]) clearTimeout(timeouts[row.id]);
+        const rowId = row.id;
+        const width = dims.width;
+        const height = dims.height;
+        const row_values = getRowValues(row);
+        timeouts[rowId] = setTimeout(() => {
+          checkSizeLimits({
+            product_pricing_id: productPricingId,
+            width,
+            height,
+            row_values,
+          }).then((res) => {
+            if (!res.success || !res.data) return;
+            setSizeLimitByRow((prev) => ({ ...prev, [rowId]: res.data! }));
+          });
+          delete timeouts[rowId];
+        }, SIZE_LIMITS_DEBOUNCE_MS);
+      });
+    });
+    return () => {
+      Object.values(timeouts).forEach((t) => clearTimeout(t));
+      Object.keys(timeouts).forEach((k) => delete timeouts[k]);
+    };
+  }, [formData, productPricingId, widthCode, heightCode, getWidthHeight, getRowValues]);
+
+  useEffect(() => {
+    const hasError = Object.values(sizeLimitByRow).some((r) => !r.in_manufacturing_range);
+    onSizeLimitErrorChange?.(hasError);
+  }, [sizeLimitByRow, onSizeLimitErrorChange]);
 
   const getPropertyLabel = (prop: PropertyDefinition): string =>
     prop["label-form"] ?? prop.Name;
@@ -481,11 +569,25 @@ export default function DynamicProductForm({
                       </tr>
                     </thead>
                     <tbody>
-                      {room.rows.map((row, rowIndex) => (
-                        <tr
-                          key={row.id}
-                          className="hover:bg-zinc-50 dark:hover:bg-zinc-700/50"
-                        >
+                      {room.rows.map((row, rowIndex) => {
+                        const limit = sizeLimitByRow[row.id];
+                        const outOfManufacturing = limit && !limit.in_manufacturing_range;
+                        const outOfWarranty = limit && limit.in_manufacturing_range && !limit.in_warranty_range;
+                        const rowClassName = outOfManufacturing
+                          ? "bg-red-50 dark:bg-red-950/30 border-l-4 border-red-500"
+                          : outOfWarranty
+                            ? "bg-amber-50 dark:bg-amber-950/20 border-l-4 border-amber-500"
+                            : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50";
+                        const message =
+                          outOfManufacturing && limit
+                            ? `Mimo výrobní rozsah. Povoleno: šířka ${limit.mezni_sirka_min}–${limit.mezni_sirka_max} mm, výška ${limit.mezni_vyska_min}–${limit.mezni_vyska_max} mm.`
+                            : outOfWarranty && limit
+                              ? `Mimo záruční rozsah. Záruka: šířka ${limit.zarucni_sirka_min}–${limit.zarucni_sirka_max} mm, výška ${limit.zarucni_vyska_min}–${limit.zarucni_vyska_max} mm.`
+                              : null;
+                        const colSpan = formBodyProperties.length + 2;
+                        return (
+                          <React.Fragment key={row.id}>
+                            <tr className={rowClassName}>
                           <td className="border border-zinc-300 px-1 py-1 text-center text-zinc-600 dark:border-zinc-600 dark:text-zinc-400">
                             {rowIndex + 1}
                           </td>
@@ -512,7 +614,23 @@ export default function DynamicProductForm({
                             </button>
                           </td>
                         </tr>
-                      ))}
+                            {message && (
+                              <tr>
+                                <td
+                                  colSpan={colSpan}
+                                  className={`border border-zinc-300 px-2 py-1.5 text-xs dark:border-zinc-600 ${
+                                    outOfManufacturing
+                                      ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200"
+                                      : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+                                  }`}
+                                >
+                                  {message}
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

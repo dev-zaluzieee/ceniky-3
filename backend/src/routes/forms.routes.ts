@@ -7,6 +7,7 @@ import { Router, Response } from "express";
 import { getPool, getPricingPool } from "../config/database";
 import * as formsService from "../services/forms.service";
 import * as pricingFormsService from "../services/pricing-forms.service";
+import * as sizeLimitsService from "../services/size-limits.service";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { ApiError } from "../utils/errors";
 import { FormType, ListFormsQuery } from "../types/forms.types";
@@ -254,6 +255,57 @@ router.get("/pricing/:id", authenticateToken, async (req: AuthenticatedRequest, 
     }
     console.error("Get pricing form error:", error);
     return res.status(500).json({ success: false, error: "Failed to get pricing form" });
+  }
+});
+
+/**
+ * POST /api/forms/size-limits – resolve manufacturing/warranty ranges for a row.
+ * Body: { product_pricing_id, width, height, row_values: Record<string, string> }.
+ * Backend uses price_affecting_enums to build selector from row_values.
+ */
+router.post("/size-limits", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPricingPool();
+    const body = req.body as {
+      product_pricing_id?: string;
+      width?: number;
+      height?: number;
+      row_values?: Record<string, string>;
+    };
+    const productPricingId = body.product_pricing_id;
+    const width = body.width != null ? Number(body.width) : NaN;
+    const height = body.height != null ? Number(body.height) : NaN;
+    const rowValues = body.row_values ?? {};
+    if (!productPricingId || typeof productPricingId !== "string") {
+      return res.status(400).json({ success: false, error: "product_pricing_id is required" });
+    }
+    if (Number.isNaN(width) || Number.isNaN(height)) {
+      return res.status(400).json({ success: false, error: "width and height must be numbers" });
+    }
+    const product = await pricingFormsService.getProductPricingForResolve(pool, productPricingId);
+    const selectorValues: Record<string, string> = {};
+    if (product?.price_affecting_enums?.length) {
+      for (const key of product.price_affecting_enums) {
+        const v = rowValues[key];
+        if (v !== undefined && v !== null && String(v).trim() !== "") {
+          selectorValues[key] = String(v).trim();
+        }
+      }
+    }
+    const data = await sizeLimitsService.resolveSizeLimits(
+      pool,
+      productPricingId,
+      selectorValues,
+      width,
+      height
+    );
+    return res.json({ success: true, data });
+  } catch (error: any) {
+    if (error.message?.includes("PRICING_DATABASE_URL")) {
+      return res.status(503).json({ success: false, error: "Pricing database not configured" });
+    }
+    console.error("Size limits resolve error:", error);
+    return res.status(500).json({ success: false, error: "Failed to resolve size limits" });
   }
 });
 

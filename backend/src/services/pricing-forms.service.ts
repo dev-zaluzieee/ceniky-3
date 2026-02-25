@@ -176,3 +176,56 @@ export async function getPricingVariantsByProductId(
     return { id: r.id, selector, dimension_pricing };
   });
 }
+
+/** Single size_limit_variant row for manufacturing/warranty range check */
+export interface SizeLimitVariantRow {
+  id: string;
+  selector: Record<string, string[]>;
+  mezni_sirka_min: number | null;
+  mezni_sirka_max: number | null;
+  mezni_vyska_min: number | null;
+  mezni_vyska_max: number | null;
+  zarucni_sirka_min: number | null;
+  zarucni_sirka_max: number | null;
+  zarucni_vyska_min: number | null;
+  zarucni_vyska_max: number | null;
+}
+
+/**
+ * Get all size_limit_variant rows for a product_pricing id.
+ */
+export async function getSizeLimitVariantsByProductId(
+  pool: Pool,
+  productPricingId: string
+): Promise<SizeLimitVariantRow[]> {
+  const result = await pool.query(
+    `SELECT id, selector, mezni_sirka_min, mezni_sirka_max, mezni_vyska_min, mezni_vyska_max,
+            zarucni_sirka_min, zarucni_sirka_max, zarucni_vyska_min, zarucni_vyska_max
+     FROM size_limit_variant WHERE product_pricing_id = $1`,
+    [productPricingId]
+  );
+  return result.rows.map((r) => {
+    let selector: Record<string, string[]> = {};
+    if (r.selector && typeof r.selector === "object") {
+      selector = r.selector as Record<string, string[]>;
+    } else if (typeof r.selector === "string") {
+      try {
+        selector = JSON.parse(r.selector) as Record<string, string[]>;
+      } catch {
+        selector = {};
+      }
+    }
+    return {
+      id: r.id,
+      selector,
+      mezni_sirka_min: r.mezni_sirka_min != null ? Number(r.mezni_sirka_min) : null,
+      mezni_sirka_max: r.mezni_sirka_max != null ? Number(r.mezni_sirka_max) : null,
+      mezni_vyska_min: r.mezni_vyska_min != null ? Number(r.mezni_vyska_min) : null,
+      mezni_vyska_max: r.mezni_vyska_max != null ? Number(r.mezni_vyska_max) : null,
+      zarucni_sirka_min: r.zarucni_sirka_min != null ? Number(r.zarucni_sirka_min) : null,
+      zarucni_sirka_max: r.zarucni_sirka_max != null ? Number(r.zarucni_sirka_max) : null,
+      zarucni_vyska_min: r.zarucni_vyska_min != null ? Number(r.zarucni_vyska_min) : null,
+      zarucni_vyska_max: r.zarucni_vyska_max != null ? Number(r.zarucni_vyska_max) : null,
+    };
+  });
+}

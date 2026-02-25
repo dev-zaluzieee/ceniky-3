@@ -127,6 +127,7 @@ export default function CustomFormClient({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [hasSizeLimitError, setHasSizeLimitError] = useState(false);
 
   const handleSubmit = async () => {
     const payload = schema;
@@ -184,14 +185,15 @@ export default function CustomFormClient({
             payload={schema}
             formData={formData}
             setFormData={setFormDataForForm}
+            onSizeLimitErrorChange={setHasSizeLimitError}
             actionsFooter={
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={isSubmitting}
+                disabled={isSubmitting || hasSizeLimitError}
                 className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
               >
-                {isSubmitting ? "Ukládám…" : "Uložit formulář"}
+                {isSubmitting ? "Ukládám…" : hasSizeLimitError ? "Upravte rozměry (mimo výrobní rozsah)" : "Uložit formulář"}
               </button>
             }
           />
@@ -333,6 +335,7 @@ export default function CustomFormClient({
           payload={schema}
           formData={formData}
           setFormData={setFormDataForForm}
+          onSizeLimitErrorChange={setHasSizeLimitError}
           actionsInRoomsHeader={
             <button
               type="button"
@@ -349,10 +352,10 @@ export default function CustomFormClient({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={isSubmitting}
+              disabled={isSubmitting || hasSizeLimitError}
               className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
             >
-              {isSubmitting ? "Ukládám…" : "Uložit formulář"}
+              {isSubmitting ? "Ukládám…" : hasSizeLimitError ? "Upravte rozměry (mimo výrobní rozsah)" : "Uložit formulář"}
             </button>
           }
         />
