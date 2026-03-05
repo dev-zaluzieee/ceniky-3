@@ -189,6 +189,10 @@ export interface SizeLimitVariantRow {
   zarucni_sirka_max: number | null;
   zarucni_vyska_min: number | null;
   zarucni_vyska_max: number | null;
+  mezni_plocha_min: number | null;
+  mezni_plocha_max: number | null;
+  zarucni_plocha_min: number | null;
+  zarucni_plocha_max: number | null;
 }
 
 /**
@@ -199,8 +203,20 @@ export async function getSizeLimitVariantsByProductId(
   productPricingId: string
 ): Promise<SizeLimitVariantRow[]> {
   const result = await pool.query(
-    `SELECT id, selector, mezni_sirka_min, mezni_sirka_max, mezni_vyska_min, mezni_vyska_max,
-            zarucni_sirka_min, zarucni_sirka_max, zarucni_vyska_min, zarucni_vyska_max
+    `SELECT id,
+            selector,
+            mezni_sirka_min,
+            mezni_sirka_max,
+            mezni_vyska_min,
+            mezni_vyska_max,
+            zarucni_sirka_min,
+            zarucni_sirka_max,
+            zarucni_vyska_min,
+            zarucni_vyska_max,
+            mezni_plocha_min,
+            mezni_plocha_max,
+            zarucni_plocha_min,
+            zarucni_plocha_max
      FROM size_limit_variant WHERE product_pricing_id = $1`,
     [productPricingId]
   );
@@ -226,6 +242,10 @@ export async function getSizeLimitVariantsByProductId(
       zarucni_sirka_max: r.zarucni_sirka_max != null ? Number(r.zarucni_sirka_max) : null,
       zarucni_vyska_min: r.zarucni_vyska_min != null ? Number(r.zarucni_vyska_min) : null,
       zarucni_vyska_max: r.zarucni_vyska_max != null ? Number(r.zarucni_vyska_max) : null,
+      mezni_plocha_min: r.mezni_plocha_min != null ? Number(r.mezni_plocha_min) : null,
+      mezni_plocha_max: r.mezni_plocha_max != null ? Number(r.mezni_plocha_max) : null,
+      zarucni_plocha_min: r.zarucni_plocha_min != null ? Number(r.zarucni_plocha_min) : null,
+      zarucni_plocha_max: r.zarucni_plocha_max != null ? Number(r.zarucni_plocha_max) : null,
     };
   });
 }

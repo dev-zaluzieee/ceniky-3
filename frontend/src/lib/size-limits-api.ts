@@ -12,6 +12,10 @@ export interface SizeLimitsResult {
   zarucni_sirka_max: number | null;
   zarucni_vyska_min: number | null;
   zarucni_vyska_max: number | null;
+   mezni_plocha_min: number | null;
+   mezni_plocha_max: number | null;
+   zarucni_plocha_min: number | null;
+   zarucni_plocha_max: number | null;
   in_manufacturing_range: boolean;
   in_warranty_range: boolean;
 }

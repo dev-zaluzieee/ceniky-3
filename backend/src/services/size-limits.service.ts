@@ -44,6 +44,10 @@ export interface ResolveSizeLimitsResult {
   zarucni_sirka_max: number | null;
   zarucni_vyska_min: number | null;
   zarucni_vyska_max: number | null;
+  mezni_plocha_min: number | null;
+  mezni_plocha_max: number | null;
+  zarucni_plocha_min: number | null;
+  zarucni_plocha_max: number | null;
   in_manufacturing_range: boolean;
   in_warranty_range: boolean;
 }
@@ -71,6 +75,10 @@ export async function resolveSizeLimits(
       zarucni_sirka_max: null,
       zarucni_vyska_min: null,
       zarucni_vyska_max: null,
+      mezni_plocha_min: null,
+      mezni_plocha_max: null,
+      zarucni_plocha_min: null,
+      zarucni_plocha_max: null,
       in_manufacturing_range: true,
       in_warranty_range: true,
     };
@@ -87,6 +95,10 @@ export async function resolveSizeLimits(
       zarucni_sirka_max: null,
       zarucni_vyska_min: null,
       zarucni_vyska_max: null,
+      mezni_plocha_min: null,
+      mezni_plocha_max: null,
+      zarucni_plocha_min: null,
+      zarucni_plocha_max: null,
       in_manufacturing_range: true,
       in_warranty_range: true,
     };
@@ -103,6 +115,10 @@ export async function resolveSizeLimits(
       zarucni_sirka_max: null,
       zarucni_vyska_min: null,
       zarucni_vyska_max: null,
+      mezni_plocha_min: null,
+      mezni_plocha_max: null,
+      zarucni_plocha_min: null,
+      zarucni_plocha_max: null,
       in_manufacturing_range: true,
       in_warranty_range: true,
     };
@@ -116,13 +132,30 @@ export async function resolveSizeLimits(
   const zwMax = toNum(variant.zarucni_sirka_max);
   const zhMin = toNum(variant.zarucni_vyska_min);
   const zhMax = toNum(variant.zarucni_vyska_max);
+  const mpMin = toNum(variant.mezni_plocha_min);
+  const mpMax = toNum(variant.mezni_plocha_max);
+  const zpMin = toNum(variant.zarucni_plocha_min);
+  const zpMax = toNum(variant.zarucni_plocha_max);
 
-  const inManufacturing =
-    mwMin != null && mwMax != null && mhMin != null && mhMax != null &&
-    width >= mwMin && width <= mwMax && height >= mhMin && height <= mhMax;
-  const inWarranty =
-    zwMin != null && zwMax != null && zhMin != null && zhMax != null &&
-    width >= zwMin && width <= zwMax && height >= zhMin && height <= zhMax;
+  const areaM2 = (width * height) / 1_000_000;
+
+  let inManufacturing = true;
+  if (mwMin != null && mwMax != null && mhMin != null && mhMax != null) {
+    inManufacturing =
+      width >= mwMin && width <= mwMax && height >= mhMin && height <= mhMax;
+    if (inManufacturing && mpMin != null && mpMax != null) {
+      inManufacturing = areaM2 >= mpMin && areaM2 <= mpMax;
+    }
+  }
+
+  let inWarranty = true;
+  if (zwMin != null && zwMax != null && zhMin != null && zhMax != null) {
+    inWarranty =
+      width >= zwMin && width <= zwMax && height >= zhMin && height <= zhMax;
+    if (inWarranty && zpMin != null && zpMax != null) {
+      inWarranty = areaM2 >= zpMin && areaM2 <= zpMax;
+    }
+  }
 
   return {
     mezni_sirka_min: mwMin,
@@ -133,6 +166,10 @@ export async function resolveSizeLimits(
     zarucni_sirka_max: zwMax,
     zarucni_vyska_min: zhMin,
     zarucni_vyska_max: zhMax,
+    mezni_plocha_min: mpMin,
+    mezni_plocha_max: mpMax,
+    zarucni_plocha_min: zpMin,
+    zarucni_plocha_max: zpMax,
     in_manufacturing_range: inManufacturing,
     in_warranty_range: inWarranty,
   };
