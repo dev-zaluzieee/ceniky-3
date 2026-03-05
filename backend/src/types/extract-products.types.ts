@@ -18,6 +18,16 @@ export interface ExtractedProductLine {
   sleva: number;
   /** Price after discount (cena * (1 - sleva/100)) */
   cenaPoSleve: number;
+  /** Price from dimension grid before surcharges (if available) */
+  baseCena?: number;
+  /** Per-property surcharges applied to this line (optional breakdown) */
+  surcharges?: Array<{
+    code: string;
+    label?: string;
+    amount: number;
+  }>;
+  /** Optional warnings about surcharges (e.g. missing config); shown in ADMF in Czech */
+  surchargeWarnings?: string[];
 }
 
 /** Response of extract-products endpoint */

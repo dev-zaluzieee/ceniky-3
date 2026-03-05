@@ -88,6 +88,9 @@ export default async function OrderFormCreatePage({
       cena: p.cena,
       sleva: p.sleva,
       cenaPoSleve: p.cenaPoSleve,
+      baseCena: p.baseCena,
+      surcharges: p.surcharges,
+      surchargeWarnings: p.surchargeWarnings,
     }));
 
     const today = new Date().toISOString().slice(0, 10);

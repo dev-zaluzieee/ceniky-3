@@ -47,6 +47,8 @@ export interface ProductPayload {
   _metadata?: Record<string, unknown>;
   /** Set when form is created from catalog; used by backend to resolve prices from pricing DB */
   _product_pricing_id?: string;
+  /** Property codes that are configured as surcharges (příplatky) in pricing */
+  surcharge_properties?: string[];
 }
 
 export interface FormRow {

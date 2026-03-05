@@ -97,10 +97,12 @@ export async function listOvtManufacturers(pool: Pool): Promise<string[]> {
   return result.rows.map((r) => r.manufacturer);
 }
 
-/** Product pricing row for price resolution (price_affecting_enums only) */
+/** Product pricing row for price resolution (price_affecting_enums + surcharges) */
 export interface ProductPricingForResolve {
   id: string;
   price_affecting_enums: string[];
+  /** Optional surcharge configuration per property (from product_pricing.surcharges) */
+  surcharges?: Record<string, unknown> | null;
 }
 
 /**
@@ -112,7 +114,9 @@ export async function getProductPricingForResolve(
   id: string
 ): Promise<ProductPricingForResolve | null> {
   const result = await pool.query(
-    `SELECT id, price_affecting_enums FROM product_pricing WHERE id = $1 AND available_for_ovt = true`,
+    `SELECT id, price_affecting_enums, surcharges
+     FROM product_pricing
+     WHERE id = $1 AND available_for_ovt = true`,
     [id]
   );
   const row = result.rows[0];
@@ -130,7 +134,11 @@ export async function getProductPricingForResolve(
           }
         })()
       : [];
-  return { id: row.id, price_affecting_enums: priceAffectingEnums };
+  return {
+    id: row.id,
+    price_affecting_enums: priceAffectingEnums,
+    surcharges: (row.surcharges as Record<string, unknown> | null) ?? null,
+  };
 }
 
 /** Single pricing_variant row (selector + dimension_pricing for matching and price lookup) */

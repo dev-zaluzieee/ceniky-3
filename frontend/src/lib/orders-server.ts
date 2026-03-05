@@ -119,6 +119,13 @@ export interface ExtractedProductLine {
   cena: number;
   sleva: number;
   cenaPoSleve: number;
+  baseCena?: number;
+  surcharges?: Array<{
+    code: string;
+    label?: string;
+    amount: number;
+  }>;
+  surchargeWarnings?: string[];
 }
 
 export interface ServerExtractProductsResponse {

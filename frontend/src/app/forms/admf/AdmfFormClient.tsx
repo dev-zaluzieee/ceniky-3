@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import { generateAdmfPdf } from "@/lib/admf-pdf";
@@ -328,73 +328,148 @@ export default function AdmfFormClient({
                 <tbody>
                   {formData.productRows.map((row) => {
                     const cenaPoSleveSDph = Math.round((row.cenaPoSleve || 0) * (1 + vatRate / 100));
+                    const surchargeSum =
+                      row.surcharges?.reduce((sum, s) => sum + (s.amount || 0), 0) ?? 0;
+                    const baseCena =
+                      row.baseCena != null ? row.baseCena : Math.max(0, (row.cena || 0) - surchargeSum);
+                    const hasSurcharges = (row.surcharges?.length ?? 0) > 0;
                     return (
-                      <tr key={row.id} className="border-b border-zinc-100 dark:border-zinc-700">
-                        <td className="px-4 py-2">
-                          <input
-                            type="text"
-                            value={row.produkt}
-                            onChange={(e) => updateProductRow(row.id, { produkt: e.target.value })}
-                            className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                          />
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          <input
-                            type="number"
-                            min={1}
-                            value={row.ks}
-                            onChange={(e) => updateProductRow(row.id, { ks: parseInt(e.target.value, 10) || 1 })}
-                            className="w-14 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                          />
-                        </td>
-                        <td className="px-4 py-2">
-                          <input
-                            type="text"
-                            value={row.ram}
-                            onChange={(e) => updateProductRow(row.id, { ram: e.target.value })}
-                            className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                          />
-                        </td>
-                        <td className="px-4 py-2">
-                          <input
-                            type="text"
-                            value={row.lamelaLatka}
-                            onChange={(e) => updateProductRow(row.id, { lamelaLatka: e.target.value })}
-                            className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                          />
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          <input
-                            type="number"
-                            min={0}
-                            value={row.cena || ""}
-                            onChange={(e) => updateProductRow(row.id, { cena: parseInt(e.target.value, 10) || 0 })}
-                            className="w-24 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                          />
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={row.sleva || ""}
-                            onChange={(e) => updateProductRow(row.id, { sleva: parseInt(e.target.value, 10) || 0 })}
-                            className="w-20 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                          />
-                        </td>
-                        <td className="px-4 py-2 text-right font-medium">{row.cenaPoSleve}</td>
-                        <td className="px-4 py-2 text-right text-zinc-600 dark:text-zinc-400">{cenaPoSleveSDph}</td>
-                        <td className="px-4 py-2">
-                          <button
-                            type="button"
-                            onClick={() => removeProductRow(row.id)}
-                            className="rounded px-1 py-0.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                            title="Odebrat řádek"
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
+                      <React.Fragment key={row.id}>
+                        <tr className="border-b border-zinc-100 dark:border-zinc-700">
+                          <td className="px-4 py-2">
+                            <input
+                              type="text"
+                              value={row.produkt}
+                              onChange={(e) => updateProductRow(row.id, { produkt: e.target.value })}
+                              className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                            />
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <input
+                              type="number"
+                              min={1}
+                              value={row.ks}
+                              onChange={(e) =>
+                                updateProductRow(row.id, { ks: parseInt(e.target.value, 10) || 1 })
+                              }
+                              className="w-14 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <input
+                              type="text"
+                              value={row.ram}
+                              onChange={(e) => updateProductRow(row.id, { ram: e.target.value })}
+                              className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                            />
+                          </td>
+                          <td className="px-4 py-2">
+                            <input
+                              type="text"
+                              value={row.lamelaLatka}
+                              onChange={(e) => updateProductRow(row.id, { lamelaLatka: e.target.value })}
+                              className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                            />
+                          </td>
+                          <td className="px-4 py-2 text-right align-top">
+                            <input
+                              type="number"
+                              min={0}
+                              value={row.cena || ""}
+                              onChange={(e) =>
+                                updateProductRow(row.id, { cena: parseInt(e.target.value, 10) || 0 })
+                              }
+                              className="w-24 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                            />
+                            {hasSurcharges && (
+                              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                Základ: {baseCena} Kč, příplatky: {surchargeSum} Kč
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={row.sleva || ""}
+                              onChange={(e) =>
+                                updateProductRow(row.id, { sleva: parseInt(e.target.value, 10) || 0 })
+                              }
+                              className="w-20 rounded border border-zinc-300 px-3 py-2 text-right dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                            />
+                          </td>
+                          <td className="px-4 py-2 text-right font-medium align-top">
+                            {row.cenaPoSleve}
+                          </td>
+                          <td className="px-4 py-2 text-right text-zinc-600 dark:text-zinc-400 align-top">
+                            {cenaPoSleveSDph}
+                          </td>
+                          <td className="px-4 py-2 align-top">
+                            <button
+                              type="button"
+                              onClick={() => removeProductRow(row.id)}
+                              className="rounded px-1 py-0.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                              title="Odebrat řádek"
+                            >
+                              ×
+                            </button>
+                          </td>
+                        </tr>
+                        {hasSurcharges && (
+                          <tr className="border-b border-zinc-100 bg-zinc-50/60 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300">
+                            <td className="px-4 py-2" colSpan={3}>
+                              Příplatky:
+                            </td>
+                            <td className="px-4 py-2" colSpan={3}>
+                              <div className="flex flex-wrap gap-3">
+                                {row.surcharges?.map((s, idx) => (
+                                  <div
+                                    key={`${row.id}-s-${s.code}-${idx}`}
+                                    className="flex items-center gap-1"
+                                  >
+                                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                                      {s.label ?? s.code}:
+                                    </span>
+                                    <input
+                                      type="number"
+                                      className="w-20 rounded border border-zinc-300 px-2 py-1 text-right text-[11px] dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                                      value={s.amount}
+                                      onChange={(e) => {
+                                        const next = (row.surcharges ?? []).map((item, j) =>
+                                          j === idx
+                                            ? { ...item, amount: parseInt(e.target.value, 10) || 0 }
+                                            : item
+                                        );
+                                        const newSum = next.reduce(
+                                          (sum, it) => sum + (it.amount || 0),
+                                          0
+                                        );
+                                        const newCena = baseCena + newSum;
+                                        updateProductRow(row.id, {
+                                          surcharges: next,
+                                          cena: newCena,
+                                        });
+                                      }}
+                                    />
+                                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                                      Kč
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                            <td
+                              className="px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400"
+                              colSpan={2}
+                            >
+                              {row.surchargeWarnings?.length
+                                ? row.surchargeWarnings.join(" ")
+                                : null}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

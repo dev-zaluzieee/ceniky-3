@@ -21,6 +21,87 @@ function getDimension(row: Record<string, unknown>, keys: string[]): string {
   return "";
 }
 
+/** Get section properties array from schema (zahlavi, form_body, zapati) */
+function getSectionProperties(schemaSection: unknown): Array<Record<string, unknown>> {
+  const sec = schemaSection as { Properties?: unknown[] } | undefined;
+  if (!sec || !Array.isArray(sec.Properties)) return [];
+  return sec.Properties as Array<Record<string, unknown>>;
+}
+
+/** Find property definition by Code across all sections (zahlavi, form_body, zapati) */
+function findPropertyByCode(schema: Record<string, unknown>, code: string): Record<string, unknown> | null {
+  const allSections = [
+    getSectionProperties(schema.zahlavi),
+    getSectionProperties(schema.form_body),
+    getSectionProperties(schema.zapati),
+  ];
+  for (const props of allSections) {
+    const found = props.find((p) => (p.Code as string) === code);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Compute surcharge for one property based on its config, value, dimensions and quantity. */
+function computeSurchargeForProperty(args: {
+  cfg: Record<string, unknown>;
+  propDef: Record<string, unknown> | null;
+  rawValue: unknown;
+  widthMm: number;
+  heightMm: number;
+  ks: number;
+}): number {
+  const { cfg, propDef, rawValue, widthMm, heightMm, ks } = args;
+  if (!cfg || !propDef) return 0;
+
+  const type = cfg.type as string | undefined;
+  const dataType = propDef.DataType as string | undefined;
+  const basisFrom = (basis: unknown, amount: unknown): number => {
+    if (typeof amount !== "number" || amount === 0) return 0;
+    const b = basis as string | undefined;
+    if (b === "flat") return amount;
+    if (b === "per_piece") return amount * (ks || 1);
+    if (b === "per_m2") {
+      const areaM2 = (widthMm * heightMm) / 1_000_000;
+      if (!Number.isFinite(areaM2) || areaM2 <= 0) return 0;
+      return amount * areaM2;
+    }
+    if (b === "per_width") return amount * widthMm;
+    if (b === "per_height") return amount * heightMm;
+    return 0;
+  };
+
+  if (type === "numeric" && dataType === "numeric") {
+    const amount = cfg.amount as number | undefined;
+    const onlyWhen = cfg.only_when_values as number[] | undefined;
+    const valNum = Number(rawValue);
+    if (Number.isNaN(valNum)) return 0;
+    if (Array.isArray(onlyWhen) && onlyWhen.length > 0 && !onlyWhen.includes(valNum)) {
+      return 0;
+    }
+    return basisFrom(cfg.basis, amount);
+  }
+
+  if (type === "boolean" && dataType === "boolean") {
+    const boolVal = Boolean(rawValue);
+    const branch = boolVal ? (cfg.price_if_true as Record<string, unknown> | null | undefined)
+                           : (cfg.price_if_false as Record<string, unknown> | null | undefined);
+    if (!branch) return 0;
+    return basisFrom(branch.basis, branch.amount);
+  }
+
+  if (type === "enum" && dataType === "enum") {
+    const currentCode = rawValue != null ? String(rawValue) : "";
+    if (!currentCode) return 0;
+    const perValue = cfg.per_value as Record<string, { basis?: string; amount?: number }> | undefined;
+    const valueCfg = perValue ? perValue[currentCode] : undefined;
+    if (!valueCfg || typeof valueCfg.amount !== "number") return 0;
+    return basisFrom(valueCfg.basis, valueCfg.amount);
+  }
+
+  return 0;
+}
+
 /**
  * Build selector values from form row for price_affecting_enums.
  * All enum codes must be present in the row; otherwise throws (price cannot be resolved).
@@ -86,6 +167,8 @@ export async function extractFromCustom(
     (data.productName as string) || (schema.product_code as string) || "Vlastní produkt";
   const lines: ExtractedProductLine[] = [];
   const priceAffectingEnums = product.price_affecting_enums || [];
+  const surchargeConfigMap = (product.surcharges as Record<string, unknown> | null) ?? null;
+  const surchargeProperties = (schema.surcharge_properties as string[] | undefined) ?? [];
 
   for (const room of rooms) {
     const rows = room?.rows;
@@ -102,24 +185,68 @@ export async function extractFromCustom(
         productName,
         dimStr
       );
-      const cena = await resolvePrice(
+      const cenaBase = await resolvePrice(
         pricingPool,
         productPricingId,
         selectorValues,
         width,
         height
       );
+      let surchargeTotal = 0;
+      const surchargeItems: Array<{ code: string; label?: string; amount: number }> = [];
+      const surchargeWarnings: string[] = [];
+      if (surchargeConfigMap && surchargeProperties.length > 0) {
+        const widthMm = Number(width);
+        const heightMm = Number(height);
+        const ks = 1;
+        for (const code of surchargeProperties) {
+          const cfg = surchargeConfigMap[code] as Record<string, unknown> | undefined;
+          if (!cfg) {
+            surchargeWarnings.push(
+              `Příplatek pro pole "${code}" není nakonfigurován v ceníku (surcharges).`
+            );
+            continue;
+          }
+          const propDef = findPropertyByCode(schema, code);
+          if (!propDef) {
+            surchargeWarnings.push(
+              `Příplatek pro pole "${code}" byl nalezen v ceníku, ale pole v JSON schématu chybí.`
+            );
+          }
+          const rawValue = (row as Record<string, unknown>)[code];
+          const amount = computeSurchargeForProperty({
+            cfg,
+            propDef,
+            rawValue,
+            widthMm,
+            heightMm,
+            ks,
+          });
+          if (amount !== 0) {
+            surchargeTotal += amount;
+            surchargeItems.push({
+              code,
+              label: (propDef?.Name as string | undefined) ?? code,
+              amount,
+            });
+          }
+        }
+      }
+      const cenaWithSurcharges = cenaBase + surchargeTotal;
       const sleva = 0;
-      const cenaPoSleve = Math.round(cena * (1 - sleva / 100));
+      const cenaPoSleve = Math.round(cenaWithSurcharges * (1 - sleva / 100));
 
       lines.push({
         produkt,
         ks: 1,
         ram: (row.ram as string) ?? (row.frameColor as string) ?? "",
         lamelaLatka: (row.lamelaLatka as string) ?? (row.latka as string) ?? "",
-        cena,
+        cena: cenaWithSurcharges,
         sleva,
         cenaPoSleve,
+        baseCena: cenaBase,
+        surcharges: surchargeItems.length > 0 ? surchargeItems : undefined,
+        surchargeWarnings: surchargeWarnings.length > 0 ? surchargeWarnings : undefined,
       });
     }
   }

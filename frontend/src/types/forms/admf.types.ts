@@ -16,6 +16,16 @@ export interface AdmfProductRow {
   sleva: number;
   /** Price after discount, without VAT */
   cenaPoSleve: number;
+  /** Price from grid before surcharges (if available) */
+  baseCena?: number;
+  /** Per-property surcharges applied to this line (editable amounts) */
+  surcharges?: Array<{
+    code: string;
+    label?: string;
+    amount: number;
+  }>;
+  /** Optional warnings about příplatky, shown in Czech under the row */
+  surchargeWarnings?: string[];
 }
 
 /** VAT rate in % */
