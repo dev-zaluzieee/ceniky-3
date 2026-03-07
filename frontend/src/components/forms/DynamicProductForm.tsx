@@ -108,6 +108,8 @@ export default function DynamicProductForm({
 
   const [sizeLimitByRow, setSizeLimitByRow] = useState<Record<string, SizeLimitsResult>>({});
   const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  /** Compact = table fits on one row, truncated; Input = horizontal scroll, full value in cells */
+  const [roomsViewMode, setRoomsViewMode] = useState<"compact" | "input">("input");
 
   const getRowValues = useCallback((row: FormRow): Record<string, string> => {
     const out: Record<string, string> = {};
@@ -205,6 +207,7 @@ export default function DynamicProductForm({
   };
 
   const handleRemoveRoom = (roomId: string) => {
+    if (!confirm("Opravdu chcete odstranit celou místnost včetně všech řádků?")) return;
     setFormData((prev) => ({
       ...prev,
       rooms: prev.rooms.filter((r) => r.id !== roomId),
@@ -218,16 +221,33 @@ export default function DynamicProductForm({
     }));
   };
 
+  /** Clone row values (new id, no linkGroupId) for "add row" – new row copies previous row. */
+  const cloneRowForAdd = (sourceRow: FormRow): FormRow => {
+    const row: FormRow = { id: generateId() };
+    formBodyProperties.forEach((prop) => {
+      const v = sourceRow[prop.Code];
+      if (v !== undefined && v !== null) row[prop.Code] = v;
+      else if (prop.DataType === "boolean" || prop.DataType === "link") row[prop.Code] = false;
+      else if (prop.DataType === "numeric") row[prop.Code] = "";
+      else row[prop.Code] = "";
+    });
+    return row;
+  };
+
   const handleAddRow = (roomId: string) => {
     setFormData((prev) => ({
       ...prev,
-      rooms: prev.rooms.map((r) =>
-        r.id === roomId ? { ...r, rows: [...r.rows, createEmptyFormBodyRow()] } : r
-      ),
+      rooms: prev.rooms.map((r) => {
+        if (r.id !== roomId) return r;
+        const lastRow = r.rows[r.rows.length - 1];
+        const newRow = lastRow ? cloneRowForAdd(lastRow) : createEmptyFormBodyRow();
+        return { ...r, rows: [...r.rows, newRow] };
+      }),
     }));
   };
 
   const handleRemoveRow = (roomId: string, rowId: string) => {
+    if (!confirm("Opravdu chcete odstranit tento řádek?")) return;
     setFormData((prev) => ({
       ...prev,
       rooms: prev.rooms.map((r) =>
@@ -335,9 +355,10 @@ export default function DynamicProductForm({
     property: PropertyDefinition,
     value: string | number | boolean,
     onChange: (value: string | number | boolean) => void,
-    context?: { row?: FormRow }
+    context?: { row?: FormRow; compact?: boolean }
   ) => {
     const disabled = context?.row ? isFieldDisabledByDependency(property.Code, context.row) : false;
+    const compact = context?.compact ?? false;
     const disabledClass = disabled
       ? "cursor-not-allowed opacity-60 bg-zinc-100 dark:bg-zinc-800"
       : "";
@@ -353,7 +374,7 @@ export default function DynamicProductForm({
           value={currentCode}
           onChange={(e) => !disabled && onChange(e.target.value)}
           disabled={disabled}
-          className={`w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
+          className={`${compact ? "max-w-[5rem] min-w-0 truncate" : "min-w-[4rem]"} w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 md:text-xs ${disabledClass}`}
         >
           <option value="">-</option>
           {options.map((opt) => (
@@ -386,10 +407,11 @@ export default function DynamicProductForm({
       return (
         <input
           type="number"
+          inputMode="decimal"
           value={String(value)}
           onChange={(e) => !disabled && onChange(e.target.value)}
           disabled={disabled}
-          className={`w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
+          className={`${compact ? "max-w-[4rem] min-w-0" : "min-w-[3rem]"} w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 md:text-xs ${disabledClass}`}
           placeholder="číslo"
         />
       );
@@ -401,8 +423,8 @@ export default function DynamicProductForm({
           value={String(value)}
           onChange={(e) => !disabled && onChange(e.target.value)}
           disabled={disabled}
-          rows={2}
-          className={`w-full resize-y rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
+          rows={compact ? 1 : 2}
+          className={`${compact ? "max-w-[6rem] min-w-0 truncate resize-none" : "min-w-[8rem] resize-y"} w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 md:text-xs ${disabledClass}`}
           placeholder="text"
         />
       );
@@ -414,7 +436,7 @@ export default function DynamicProductForm({
         value={String(value)}
         onChange={(e) => !disabled && onChange(e.target.value)}
         disabled={disabled}
-        className={`w-full rounded border-0 bg-transparent px-1 py-1 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 ${disabledClass}`}
+        className={`${compact ? "max-w-[5rem] min-w-0 truncate" : "min-w-[4rem]"} w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 md:text-xs ${disabledClass}`}
         placeholder="text"
       />
     );
@@ -458,6 +480,7 @@ export default function DynamicProductForm({
             </label>
             <input
               type="tel"
+              inputMode="tel"
               value={formData.phone}
               onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
               className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
@@ -530,11 +553,41 @@ export default function DynamicProductForm({
           <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
             Místnosti (mistnosti)
           </h2>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Compact = one row, truncated; Input = scroll, full value */}
+            <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Zobrazení:</span>
+            <div
+              className="inline-flex rounded-md border border-zinc-300 bg-zinc-100 p-0.5 dark:border-zinc-600 dark:bg-zinc-700"
+              role="group"
+              aria-label="Režim zobrazení tabulky"
+            >
+              <button
+                type="button"
+                onClick={() => setRoomsViewMode("compact")}
+                className={`rounded px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-accent/30 ${
+                  roomsViewMode === "compact"
+                    ? "bg-white text-zinc-900 shadow dark:bg-zinc-600 dark:text-zinc-50"
+                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+                }`}
+              >
+                Kompaktní
+              </button>
+              <button
+                type="button"
+                onClick={() => setRoomsViewMode("input")}
+                className={`rounded px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-accent/30 ${
+                  roomsViewMode === "input"
+                    ? "bg-white text-zinc-900 shadow dark:bg-zinc-600 dark:text-zinc-50"
+                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+                }`}
+              >
+                Vstup
+              </button>
+            </div>
             <button
               type="button"
               onClick={handleAddRoom}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               Přidat místnost
             </button>
@@ -570,37 +623,50 @@ export default function DynamicProductForm({
                       <button
                         type="button"
                         onClick={() => handleAddRow(room.id)}
-                        className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                       >
                         Přidat řádek
                       </button>
                       <button
                         type="button"
                         onClick={() => handleRemoveRoom(room.id)}
-                        className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
+                        className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
                       >
                         Odstranit místnost
                       </button>
                     </div>
                   </div>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-xs">
-                    <thead className="bg-zinc-100 dark:bg-zinc-700">
+                {/* Compact: table fits one row, truncated; Input: horizontal scroll, full value in cells */}
+                <div className={roomsViewMode === "input" ? "overflow-x-auto overflow-y-visible" : "overflow-x-auto"}>
+                  <table
+                    className={`w-full border-collapse text-xs ${roomsViewMode === "input" ? "min-w-max" : "table-fixed"}`}
+                  >
+                    <thead className={roomsViewMode === "input" ? "sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-700" : "bg-zinc-100 dark:bg-zinc-700"}>
                       <tr>
-                        <th className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300">
+                        <th
+                          className={`border border-zinc-300 px-2 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300 ${
+                            roomsViewMode === "input" ? "sticky left-0 z-20 bg-zinc-100 dark:bg-zinc-700 w-10" : "w-10"
+                          }`}
+                        >
                           #
                         </th>
                         {formBodyProperties.map((prop) => (
                           <th
                             key={prop.ID}
-                            className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300"
+                            className={`border border-zinc-300 px-2 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300 ${
+                              roomsViewMode === "compact" ? "truncate" : "whitespace-nowrap"
+                            }`}
                             title={prop.Name}
                           >
                             {getPropertyLabel(prop)}
                           </th>
                         ))}
-                        <th className="border border-zinc-300 px-1 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300">
+                        <th
+                          className={`border border-zinc-300 px-2 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300 ${
+                            roomsViewMode === "input" ? "sticky right-0 z-20 bg-zinc-100 dark:bg-zinc-700" : ""
+                          }`}
+                        >
                           Akce
                         </th>
                       </tr>
@@ -615,6 +681,11 @@ export default function DynamicProductForm({
                           : outOfWarranty
                             ? "bg-amber-50 dark:bg-amber-950/20 border-l-4 border-amber-500"
                             : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50";
+                        const stickyCellBg = outOfManufacturing
+                          ? "bg-red-50 dark:bg-red-950/30"
+                          : outOfWarranty
+                            ? "bg-amber-50 dark:bg-amber-950/20"
+                            : "bg-white dark:bg-zinc-800";
                         const message =
                           outOfManufacturing && limit
                             ? `Mimo výrobní rozsah. Povoleno: šířka ${limit.mezni_sirka_min}–${limit.mezni_sirka_max} mm, výška ${limit.mezni_vyska_min}–${limit.mezni_vyska_max} mm.`
@@ -625,27 +696,37 @@ export default function DynamicProductForm({
                         return (
                           <React.Fragment key={row.id}>
                             <tr className={rowClassName}>
-                          <td className="border border-zinc-300 px-1 py-1 text-center text-zinc-600 dark:border-zinc-600 dark:text-zinc-400">
+                          <td
+                            className={`border border-zinc-300 px-2 py-1 text-center text-zinc-600 dark:border-zinc-600 dark:text-zinc-400 ${stickyCellBg} ${
+                              roomsViewMode === "input" ? "sticky left-0 z-10" : ""
+                            }`}
+                          >
                             {rowIndex + 1}
                           </td>
                           {formBodyProperties.map((prop) => (
                             <td
                               key={prop.ID}
-                              className="border border-zinc-300 px-1 py-1 dark:border-zinc-600"
+                              className={`border border-zinc-300 px-1 py-1 dark:border-zinc-600 ${
+                                roomsViewMode === "compact" ? "overflow-hidden" : ""
+                              }`}
                             >
                               {renderFormField(
                                 prop,
                                 row[prop.Code] ?? "",
                                 (value) => handleRowChange(room.id, row.id, prop.Code, value),
-                                { row }
+                                { row, compact: roomsViewMode === "compact" }
                               )}
                             </td>
                           ))}
-                          <td className="border border-zinc-300 px-1 py-1 dark:border-zinc-600">
+                          <td
+                            className={`border border-zinc-300 px-1 py-1 dark:border-zinc-600 ${stickyCellBg} ${
+                              roomsViewMode === "input" ? "sticky right-0 z-10" : ""
+                            }`}
+                          >
                             <button
                               type="button"
                               onClick={() => handleRemoveRow(room.id, row.id)}
-                              className="rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-1 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
+                              className="min-h-[44px] min-w-[44px] touch-manipulation rounded border border-red-300 bg-white px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-1 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
                             >
                               Odstranit
                             </button>

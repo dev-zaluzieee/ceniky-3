@@ -162,7 +162,7 @@ export default function CustomFormClient({
   /* Edit mode: we have schema + formData from initialData */
   if (isEditMode && schema && formData) {
     return (
-      <div className="min-h-screen bg-zinc-50 py-8 px-4 dark:bg-zinc-900">
+      <div className="min-h-screen bg-zinc-50 pb-24 pt-8 px-4 dark:bg-zinc-900">
         <div className="mx-auto max-w-7xl">
           <div className="mb-6 flex items-center justify-between">
             <Link
@@ -186,17 +186,20 @@ export default function CustomFormClient({
             formData={formData}
             setFormData={setFormDataForForm}
             onSizeLimitErrorChange={setHasSizeLimitError}
-            actionsFooter={
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isSubmitting || hasSizeLimitError}
-                className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-              >
-                {isSubmitting ? "Ukládám…" : hasSizeLimitError ? "Upravte rozměry (mimo výrobní rozsah)" : "Uložit formulář"}
-              </button>
-            }
           />
+        </div>
+        {/* Sticky save bar for tablet: always visible at bottom */}
+        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-zinc-200 bg-white/95 px-4 py-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
+          <div className="mx-auto flex max-w-7xl justify-start">
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isSubmitting || hasSizeLimitError}
+              className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md bg-accent px-6 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {isSubmitting ? "Ukládám…" : hasSizeLimitError ? "Upravte rozměry (mimo výrobní rozsah)" : "Uložit formulář"}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -312,7 +315,7 @@ export default function CustomFormClient({
 
   /* Create mode: step 2 – form */
   return (
-    <div className="min-h-screen bg-zinc-50 py-8 px-4 dark:bg-zinc-900">
+    <div className="min-h-screen bg-zinc-50 pb-24 pt-8 px-4 dark:bg-zinc-900">
       <div className="mx-auto max-w-7xl">
         <div className="mb-6 flex items-center justify-between">
           <Link
@@ -343,22 +346,25 @@ export default function CustomFormClient({
                 setSchema(null);
                 setFormData(null);
               }}
-              className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+              className="min-h-[44px] touch-manipulation rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
             >
               Zpět k JSON
             </button>
           }
-          actionsFooter={
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={isSubmitting || hasSizeLimitError}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-            >
-              {isSubmitting ? "Ukládám…" : hasSizeLimitError ? "Upravte rozměry (mimo výrobní rozsah)" : "Uložit formulář"}
-            </button>
-          }
         />
+      </div>
+      {/* Sticky save bar for tablet: always visible at bottom */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-zinc-200 bg-white/95 px-4 py-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
+        <div className="mx-auto flex max-w-7xl justify-start">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting || hasSizeLimitError}
+            className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md bg-accent px-6 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+          >
+            {isSubmitting ? "Ukládám…" : hasSizeLimitError ? "Upravte rozměry (mimo výrobní rozsah)" : "Uložit formulář"}
+          </button>
+        </div>
       </div>
     </div>
   );
