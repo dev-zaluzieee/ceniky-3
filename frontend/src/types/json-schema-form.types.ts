@@ -7,7 +7,7 @@ export interface PropertyDefinition {
   ID: string;
   Code: string;
   Name: string;
-  DataType: "text" | "numeric" | "boolean" | "enum" | "textarea";
+  DataType: "text" | "numeric" | "boolean" | "enum" | "textarea" | "link";
   Value?: string | number | boolean;
   "label-form"?: string;
 }

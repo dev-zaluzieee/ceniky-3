@@ -91,6 +91,18 @@ export default function DynamicProductForm({
   const formBodyProperties = (payload.form_body?.Properties ?? []) as PropertyDefinition[];
   const productPricingId = payload._product_pricing_id;
 
+  const linkPropertyCodes = React.useMemo(
+    () =>
+      [
+        ...(payload.zahlavi?.Properties ?? []),
+        ...(payload.form_body?.Properties ?? []),
+        ...(payload.zapati?.Properties ?? []),
+      ]
+        .filter((p) => p.DataType === "link")
+        .map((p) => p.Code),
+    [payload]
+  );
+
   const widthCode = formBodyProperties.find((p) => WIDTH_CODES.includes(p.Code))?.Code;
   const heightCode = formBodyProperties.find((p) => HEIGHT_CODES.includes(p.Code))?.Code;
 
@@ -175,7 +187,7 @@ export default function DynamicProductForm({
     const row: FormRow = { id: generateId() };
     formBodyProperties.forEach((prop) => {
       if (prop.Value !== undefined) row[prop.Code] = prop.Value;
-      else if (prop.DataType === "boolean") row[prop.Code] = false;
+      else if (prop.DataType === "boolean" || prop.DataType === "link") row[prop.Code] = false;
       else if (prop.DataType === "numeric") row[prop.Code] = "";
       else row[prop.Code] = "";
     });
@@ -244,19 +256,44 @@ export default function DynamicProductForm({
     propertyCode: string,
     value: string | number | boolean
   ) => {
-    setFormData((prev) => ({
-      ...prev,
-      rooms: prev.rooms.map((room) =>
-        room.id === roomId
-          ? {
-              ...room,
-              rows: room.rows.map((row) =>
-                row.id === rowId ? { ...row, [propertyCode]: value } : row
-              ),
+    setFormData((prev) => {
+      const rooms = prev.rooms.map((room) => {
+        if (room.id !== roomId) return room;
+        const rows: FormRow[] = [];
+        for (let i = 0; i < room.rows.length; i++) {
+          const row = room.rows[i];
+          if (row.id !== rowId) {
+            rows.push(row);
+            continue;
+          }
+          const prevValue = row[propertyCode];
+          const updatedRow: FormRow = { ...row, [propertyCode]: value };
+          rows.push(updatedRow);
+
+          if (linkPropertyCodes.includes(propertyCode)) {
+            const turnedOn = !prevValue && Boolean(value);
+            const turnedOff = Boolean(prevValue) && !value;
+            if (turnedOn) {
+              const groupId = row.linkGroupId || generateId();
+              updatedRow.linkGroupId = groupId as any;
+              const child: FormRow = { ...createEmptyFormBodyRow(), linkGroupId: groupId as any };
+              rows.push(child);
+            } else if (turnedOff && row.linkGroupId) {
+              const groupId = row.linkGroupId;
+              updatedRow.linkGroupId = undefined as any;
+              for (let j = rows.length - 1; j >= 0; j--) {
+                const r = rows[j] as any;
+                if (r.id !== rowId && r.linkGroupId === groupId) {
+                  rows.splice(j, 1);
+                }
+              }
             }
-          : room
-      ),
-    }));
+          }
+        }
+        return { ...room, rows };
+      });
+    return { ...prev, rooms };
+    });
   };
 
   const getEnumOptions = (propertyCode: string, groupKey?: string): EnumValue[] => {
@@ -333,7 +370,7 @@ export default function DynamicProductForm({
       );
     }
 
-    if (property.DataType === "boolean") {
+    if (property.DataType === "boolean" || property.DataType === "link") {
       return (
         <input
           type="checkbox"

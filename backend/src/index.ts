@@ -20,10 +20,10 @@ dotenv.config();
 const app: Express = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
+// Middleware: allow larger JSON bodies (e.g. form_json with surcharges/link subrows)
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "512kb" }));
+app.use(express.urlencoded({ extended: true, limit: "512kb" }));
 
 // Swagger configuration
 const swaggerOptions: swaggerJsdoc.Options = {
