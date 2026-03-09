@@ -219,26 +219,37 @@ export async function extractFromCustom(
       const dimStr = [width, height].filter(Boolean).join("×") || "—";
       const produkt = `${productName} - ${dimStr}`;
 
+      // Quantity (ks) – try common property names, fallback to 1.
+      const ksRaw =
+        (row as Record<string, unknown>).ks ??
+        (row as Record<string, unknown>).kus ??
+        (row as Record<string, unknown>).quantity;
+      const ks = (() => {
+        const n = Number(ksRaw);
+        if (!Number.isFinite(n) || n <= 0) return 1;
+        return Math.round(n);
+      })();
+
       const selectorValues = getSelectorValuesFromRow(
         row,
         priceAffectingEnums,
         productName,
         dimStr
       );
-      const cenaBase = await resolvePrice(
+      const unitCenaBase = await resolvePrice(
         pricingPool,
         productPricingId,
         selectorValues,
         width,
         height
       );
+      const cenaBase = unitCenaBase * ks;
       let surchargeTotal = 0;
       const surchargeItems: Array<{ code: string; label?: string; amount: number }> = [];
       const surchargeWarnings: string[] = [];
       if (surchargeConfigMap && surchargeProperties.length > 0) {
         const widthMm = Number(width);
         const heightMm = Number(height);
-        const ks = 1;
         for (const code of surchargeProperties) {
           const cfg = surchargeConfigMap[code] as Record<string, unknown> | undefined;
           if (!cfg) {
@@ -283,18 +294,16 @@ export async function extractFromCustom(
         const propDef = findPropertyByCode(schema, code);
         const label = getPropertyLabel(propDef, code);
         const value = getDisplayValueFromEnum(propDef, rawValue);
-        if (value !== "") {
-          priceAffectingFields.push({
-            code,
-            label,
-            value,
-          });
-        }
+        priceAffectingFields.push({
+          code,
+          label,
+          value,
+        });
       }
 
       lines.push({
         produkt,
-        ks: 1,
+        ks,
         ram: (row.ram as string) ?? (row.frameColor as string) ?? "",
         lamelaLatka: (row.lamelaLatka as string) ?? (row.latka as string) ?? "",
         cena: cenaWithSurcharges,

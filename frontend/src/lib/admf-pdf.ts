@@ -160,7 +160,7 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
 
   // ---- Product total (bez DPH) ----
   const totalProdukty = (formData.productRows || []).reduce(
-    (sum, r) => sum + (r.cenaPoSleve ?? 0),
+    (sum, r) => sum + (r.cenaPoSleve ?? 0) * (r.ks ?? 1),
     0
   );
   setFont(FONT_SIZE_BODY);

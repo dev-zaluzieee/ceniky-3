@@ -131,7 +131,11 @@ export default function AdmfFormClient({
     setIsSubmitting(true);
     setSubmitError(null);
     setSubmitSuccess(false);
-    const totalB = formData.productRows.reduce((s, r) => s + (r.cenaPoSleve || 0), 0) + (formData.montazCenaBezDph ?? 1339);
+    const totalB =
+      formData.productRows.reduce(
+        (s, r) => s + (r.cenaPoSleve || 0) * (r.ks || 1),
+        0
+      ) + (formData.montazCenaBezDph ?? 1339);
     const vat = (formData.vatRate ?? 12) as AdmfVatRate;
     const totalS = Math.round(totalB * (1 + vat / 100));
     const zaloha = formData.zalohovaFaktura ?? 0;
@@ -169,7 +173,10 @@ export default function AdmfFormClient({
     }
   };
 
-  const totalProduktyBezDph = formData.productRows.reduce((sum, r) => sum + (r.cenaPoSleve || 0), 0);
+  const totalProduktyBezDph = formData.productRows.reduce(
+    (sum, r) => sum + (r.cenaPoSleve || 0) * (r.ks || 1),
+    0
+  );
   const montazBezDph = formData.montazCenaBezDph ?? 1339;
   const totalBezDph = totalProduktyBezDph + montazBezDph;
   const vatRate = (formData.vatRate ?? 12) as AdmfVatRate;
