@@ -11,11 +11,16 @@ import {
   type PricingVariantRow,
 } from "./pricing-forms.service";
 
-/** Build dimension grid key from width/height (e.g. "400_500") */
+/**
+ * Build dimension grid key from width/height.
+ * Note: pricing tool stores prices as prices["height_width"], so we intentionally
+ * flip the order here to match that convention.
+ */
 function dimensionKey(width: string, height: string): string {
   const w = Math.round(Number(width) || 0);
   const h = Math.round(Number(height) || 0);
-  return `${w}_${h}`;
+  // Key format expected by pricing tool: "<height>_<width>"
+  return `${h}_${w}`;
 }
 
 /**
