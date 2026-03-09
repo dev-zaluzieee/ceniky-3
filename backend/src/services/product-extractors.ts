@@ -90,8 +90,13 @@ function computeSurchargeForProperty(args: {
   widthMm: number;
   heightMm: number;
   ks: number;
+  /**
+   * Base price used for percent surcharges.
+   * Interpreted as the current line base before applying this surcharge.
+   */
+  basePrice: number;
 }): number {
-  const { cfg, propDef, rawValue, widthMm, heightMm, ks } = args;
+  const { cfg, propDef, rawValue, widthMm, heightMm, ks, basePrice } = args;
   if (!cfg || !propDef) return 0;
 
   const type = cfg.type as string | undefined;
@@ -99,6 +104,10 @@ function computeSurchargeForProperty(args: {
   const basisFrom = (basis: unknown, amount: unknown): number => {
     if (typeof amount !== "number" || amount === 0) return 0;
     const b = basis as string | undefined;
+    if (b === "percent_base") {
+      if (!Number.isFinite(basePrice)) return 0;
+      return basePrice * (amount / 100);
+    }
     if (b === "flat") return amount;
     if (b === "per_piece") return amount * (ks || 1);
     if (b === "per_m2") {
@@ -265,6 +274,8 @@ export async function extractFromCustom(
             );
           }
           const rawValue = (row as Record<string, unknown>)[code];
+          // Keep percent_base deterministic: each property uses line base before itself.
+          const currentBaseBeforeSurcharge = cenaBase + surchargeTotal;
           const amount = computeSurchargeForProperty({
             cfg,
             propDef,
@@ -272,6 +283,7 @@ export async function extractFromCustom(
             widthMm,
             heightMm,
             ks,
+            basePrice: currentBaseBeforeSurcharge,
           });
           if (amount !== 0) {
             surchargeTotal += amount;
