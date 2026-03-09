@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
     cookieStore.delete("expires_at");
     cookieStore.delete("user_email");
     cookieStore.delete("user_id");
+    cookieStore.delete("user_raynet_id");
 
     return NextResponse.json({ success: true, message: "Signed out successfully" });
   } catch (error: any) {

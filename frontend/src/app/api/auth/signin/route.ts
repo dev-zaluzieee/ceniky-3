@@ -155,6 +155,20 @@ export async function POST(request: NextRequest) {
           maxAge: 60 * 60 * 24 * 7, // 7 days
         });
       }
+
+      // Raynet user identifier (nullable when not paired)
+      const raynetId = data.data.user.raynet_id;
+      if (raynetId == null) {
+        cookieStore.delete("user_raynet_id");
+      } else {
+        cookieStore.set("user_raynet_id", String(raynetId), {
+          httpOnly: false, // Used for UI and for minting downstream tokens
+          secure: isProduction,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 60 * 60 * 24 * 7, // 7 days
+        });
+      }
     }
 
     // Return success response (without sensitive tokens)

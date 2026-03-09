@@ -13,6 +13,11 @@ export interface SignInResponse {
       id: string;
       email: string;
       role?: string | null;
+      /**
+       * Raynet user identifier paired in Supabase metadata.
+       * Null when the user is not paired.
+       */
+      raynet_id?: string | null;
     };
     expires_at: number;
   };
@@ -28,6 +33,11 @@ export interface SessionResponse {
   user?: {
     email: string | null;
     id: string | null;
+    /**
+     * Raynet user identifier paired in Supabase metadata.
+     * Null when the user is not paired.
+     */
+    raynet_id?: string | null;
   };
   expires_at?: number | null;
   message?: string;

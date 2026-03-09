@@ -24,6 +24,7 @@ export async function getMainBackendToken(request?: NextRequest): Promise<string
     }
 
     const email = session.user.email;
+    const raynetId = session.user.raynet_id ?? null;
     const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
 
     if (!secret) {
@@ -32,11 +33,12 @@ export async function getMainBackendToken(request?: NextRequest): Promise<string
     }
 
     // Create JWT token compatible with main backend's jwt.verify
-    // Main backend expects: { email: string, id?: string }
+    // Main backend expects: { email: string, id?: string, raynet_id?: string | null }
     const jwtToken = jwt.sign(
       {
         email: email,
         id: email, // Use email as id (main backend pattern)
+        raynet_id: raynetId,
       },
       secret,
       { expiresIn: "1h" }
@@ -64,6 +66,7 @@ export async function createMainBackendToken(): Promise<string | null> {
     }
 
     const email = session.user.email;
+    const raynetId = session.user.raynet_id ?? null;
     const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
 
     if (!secret) {
@@ -75,6 +78,7 @@ export async function createMainBackendToken(): Promise<string | null> {
       {
         email: email,
         id: email,
+        raynet_id: raynetId,
       },
       secret,
       { expiresIn: "1h" }

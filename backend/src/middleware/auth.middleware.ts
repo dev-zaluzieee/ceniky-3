@@ -13,6 +13,7 @@ import { UnauthorizedError } from "../utils/errors";
 export interface AuthenticatedRequest extends Request {
   userId?: string;
   userEmail?: string;
+  raynetUserId?: string | null;
 }
 
 /**
@@ -21,6 +22,7 @@ export interface AuthenticatedRequest extends Request {
 interface JwtPayload {
   email: string;
   id?: string;
+  raynet_id?: string | null;
   iat?: number;
   exp?: number;
 }
@@ -86,6 +88,7 @@ export function authenticateToken(
     // Attach user information to request
     req.userId = userEmail;
     req.userEmail = userEmail;
+    req.raynetUserId = decoded.raynet_id ?? null;
 
     next();
   } catch (error: any) {

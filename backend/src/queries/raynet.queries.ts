@@ -3,7 +3,7 @@
  * Handles all external API calls to Raynet
  */
 
-import { RaynetApiResponse, RaynetLead } from "../types/raynet.types";
+import { RaynetApiResponse, RaynetLead, RaynetEvent, RaynetEventApiResponse } from "../types/raynet.types";
 import { InternalServerError } from "../utils/errors";
 import * as raynetClient from "../services/raynet.client";
 
@@ -29,6 +29,41 @@ export async function searchCustomersByPhone(phoneNumber: string): Promise<Rayne
     // Otherwise, wrap it as InternalServerError
     throw new InternalServerError(
       `Failed to search customers in Raynet: ${error.message || "Unknown error"}`
+    );
+  }
+}
+
+/**
+ * Fetch Raynet events for a given owner and date.
+ * @param ownerId - Raynet user identifier (string)
+ * @param date - ISO date string in format YYYY-MM-DD
+ * @returns Array of Raynet events
+ */
+export async function getEventsForOwnerAndDate(
+  ownerId: string,
+  date: string
+): Promise<RaynetEvent[]> {
+  try {
+    const from = `${date} 00:00`;
+    const till = `${date} 23:59`;
+
+    const response: RaynetEventApiResponse = await raynetClient.getEvents({
+      ownerId,
+      scheduledFrom: from,
+      scheduledTill: till,
+      categoryIds: [220, 221, 222, 223],
+      status: "SCHEDULED",
+      offset: 0,
+      limit: 200,
+    });
+
+    return response.data || [];
+  } catch (error: any) {
+    if (error.statusCode) {
+      throw error;
+    }
+    throw new InternalServerError(
+      `Failed to fetch events from Raynet: ${error.message || "Unknown error"}`
     );
   }
 }

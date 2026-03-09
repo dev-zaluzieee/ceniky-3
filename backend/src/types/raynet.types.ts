@@ -125,7 +125,7 @@ export interface RaynetLead {
 }
 
 /**
- * Raynet API response structure
+ * Raynet API response structure for leads
  */
 export interface RaynetApiResponse {
   success: boolean;
@@ -146,4 +146,49 @@ export interface SearchCustomerByPhoneRequest {
 export interface CustomerSearchResponse {
   customers: RaynetLead[];
   totalCount: number;
+}
+
+/**
+ * Raynet Event record (simplified subset used by this app)
+ */
+export interface RaynetEvent {
+  _entityName: "Event";
+  id: number;
+  title: string;
+  personal: boolean;
+  status: string;
+  priority: string;
+  category: {
+    id: number;
+    value: string;
+  } | null;
+  company: {
+    id: number;
+    name: string;
+  } | null;
+  scheduledFrom: string;
+  scheduledTill: string;
+  description: string | null;
+  tags: string[];
+  "rowInfo.createdAt": string;
+  "rowInfo.createdBy": string;
+  "rowInfo.updatedAt": string | null;
+  "rowInfo.updatedBy": string | null;
+  meetingPlace: string | null;
+  companyAddress?: {
+    city: string | null;
+    country: string | null;
+    province: string | null;
+    street: string | null;
+    zipCode: string | null;
+  } | null;
+}
+
+/**
+ * Raynet events API response structure
+ */
+export interface RaynetEventApiResponse {
+  success: boolean;
+  totalCount: number;
+  data: RaynetEvent[];
 }

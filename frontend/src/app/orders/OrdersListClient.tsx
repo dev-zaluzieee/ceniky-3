@@ -18,6 +18,10 @@ interface OrdersListClientProps {
   orders: OrderRecord[];
   pagination: OrdersPaginationInfo | null;
   error: string | null;
+  fromRaynetEventId?: string;
+  initialPhone?: string | null;
+  initialAddress?: string | null;
+  initialName?: string | null;
 }
 
 /** Format date to Czech locale */
@@ -40,6 +44,10 @@ export default function OrdersListClient({
   orders: initialOrders,
   pagination: initialPagination,
   error: initialError,
+  fromRaynetEventId,
+  initialPhone,
+  initialAddress,
+  initialName,
 }: OrdersListClientProps) {
   const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
@@ -64,13 +72,23 @@ export default function OrdersListClient({
   const [showConflictForm, setShowConflictForm] = useState(false);
   /** Unified customer form: used for 0, 1, or 2 (conflict) selection; all fields optional */
   const [manualFormData, setManualFormData] = useState({
-    name: "",
+    name: initialName ?? "",
     email: "",
-    phone: "",
-    address: "",
+    phone: initialPhone ?? "",
+    address: initialAddress ?? "",
     city: "",
     zipcode: "",
   });
+
+  // When coming from calendar, auto-open create flow and prefill phone field for search.
+  useEffect(() => {
+    if (fromRaynetEventId) {
+      setShowCreateFlow(true);
+      if (initialPhone) {
+        setPhone(initialPhone);
+      }
+    }
+  }, [fromRaynetEventId, initialPhone]);
 
   /** Prefill form when only Raynet or only ERP is selected (no validation) */
   useEffect(() => {

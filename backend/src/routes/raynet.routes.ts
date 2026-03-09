@@ -108,6 +108,76 @@ router.post(
 );
 
 /**
+ * @swagger
+ * /api/raynet/events:
+ *   get:
+ *     summary: Get Raynet calendar events for the authenticated user
+ *     tags: [Raynet]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: date
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: "2025-08-08"
+ *         description: Day for which to load events (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: List of events for the given day
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     events:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         description: Raynet event record
+ *                     totalCount:
+ *                       type: integer
+ *       400:
+ *         description: Bad request (missing date or raynet_id)
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.get(
+  "/events",
+  authenticateToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const date = (req.query.date as string) || "";
+      const raynetUserId = req.raynetUserId;
+
+      if (!raynetUserId) {
+        return res.status(400).json({
+          success: false,
+          error: "User is not paired with Raynet (missing raynet_id).",
+        });
+      }
+
+      const result = await raynetService.getEventsForOwnerAndDate(raynetUserId, date);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      handleError(error, res);
+    }
+  }
+);
+
+/**
  * Error handler for routes
  * Converts errors to appropriate HTTP responses
  */

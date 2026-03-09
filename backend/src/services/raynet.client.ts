@@ -3,7 +3,7 @@
  * Handles HTTP communication with Raynet external API
  */
 
-import { RaynetApiResponse } from "../types/raynet.types";
+import { RaynetApiResponse, RaynetEventApiResponse } from "../types/raynet.types";
 import { BadRequestError, InternalServerError } from "../utils/errors";
 
 /**
@@ -21,11 +21,12 @@ interface RaynetConfig {
  * @throws BadRequestError if required environment variables are missing
  */
 function getRaynetConfig(): RaynetConfig {
-  const authorization = process.env.RAYNET_AUTHORIZATION;
+  // Support both legacy RAYNET_AUTHORIZATION and new RAYNET_BASIC_AUTH envs
+  const authorization = process.env.RAYNET_AUTHORIZATION || process.env.RAYNET_BASIC_AUTH;
   const instanceName = process.env.RAYNET_INSTANCE_NAME;
 
   if (!authorization) {
-    throw new BadRequestError("RAYNET_AUTHORIZATION environment variable is not set");
+    throw new BadRequestError("RAYNET_AUTHORIZATION or RAYNET_BASIC_AUTH environment variable is not set");
   }
 
   if (!instanceName) {
@@ -102,6 +103,82 @@ export async function searchLeadsByPhone(phoneNumber: string): Promise<RaynetApi
     // Otherwise, wrap it as InternalServerError
     throw new InternalServerError(
       `Failed to search Raynet API: ${error.message || "Unknown error"}`
+    );
+  }
+}
+
+/**
+ * Fetch Raynet calendar events for a given owner and date range.
+ * @param params.ownerId - Raynet user identifier (owner-id[EQ])
+ * @param params.scheduledFrom - Inclusive start datetime (YYYY-MM-DD HH:mm)
+ * @param params.scheduledTill - Exclusive end datetime (YYYY-MM-DD HH:mm)
+ * @param params.categoryIds - Allowed category ids
+ * @param params.status - Event status filter
+ */
+export async function getEvents(params: {
+  ownerId: string;
+  scheduledFrom: string;
+  scheduledTill: string;
+  categoryIds: number[];
+  status: string;
+  offset?: number;
+  limit?: number;
+}): Promise<RaynetEventApiResponse> {
+  const config = getRaynetConfig();
+
+  try {
+    const url = new URL(`${config.baseUrl}/api/v2/event`);
+
+    // Pagination
+    url.searchParams.append("offset", String(params.offset ?? 0));
+    url.searchParams.append("limit", String(params.limit ?? 200));
+
+    // Owner = current user; use equality to fetch only their events
+    url.searchParams.append("owner-id[EQ]", params.ownerId);
+
+    // Date window
+    url.searchParams.append("scheduledFrom[GE]", params.scheduledFrom);
+    url.searchParams.append("scheduledTill[LT]", params.scheduledTill);
+
+    // Status and categories
+    url.searchParams.append("status", params.status);
+    if (params.categoryIds.length > 0) {
+      url.searchParams.append("category-id[IN]", params.categoryIds.join(","));
+    }
+
+    const authHeader = config.authorization.startsWith("Basic ")
+      ? config.authorization
+      : `Basic ${config.authorization}`;
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: authHeader,
+        "X-Instance-Name": config.instanceName,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new InternalServerError(
+        `Raynet events API request failed with status ${response.status}: ${errorText}`
+      );
+    }
+
+    const data = (await response.json()) as RaynetEventApiResponse;
+
+    if (typeof data.success !== "boolean" || !Array.isArray(data.data)) {
+      throw new InternalServerError("Invalid response format from Raynet events API");
+    }
+
+    return data;
+  } catch (error: any) {
+    if (error.statusCode) {
+      throw error;
+    }
+    throw new InternalServerError(
+      `Failed to fetch Raynet events: ${error.message || "Unknown error"}`
     );
   }
 }

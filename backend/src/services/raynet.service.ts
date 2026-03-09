@@ -3,7 +3,11 @@
  * Handles validation and coordinates between routes and queries
  */
 
-import { CustomerSearchResponse, SearchCustomerByPhoneRequest } from "../types/raynet.types";
+import {
+  CustomerSearchResponse,
+  SearchCustomerByPhoneRequest,
+  RaynetEvent,
+} from "../types/raynet.types";
 import * as raynetQueries from "../queries/raynet.queries";
 import { BadRequestError } from "../utils/errors";
 
@@ -58,5 +62,37 @@ export async function searchCustomersByPhone(
   return {
     customers,
     totalCount: customers.length,
+  };
+}
+
+/**
+ * Validate date string in basic YYYY-MM-DD format.
+ * Throws BadRequestError for invalid input.
+ */
+function validateDate(date: string): void {
+  if (!date || typeof date !== "string") {
+    throw new BadRequestError("date query parameter is required");
+  }
+  const trimmed = date.trim();
+  // Simple YYYY-MM-DD check
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw new BadRequestError("date must be in format YYYY-MM-DD");
+  }
+}
+
+/**
+ * Fetch Raynet events for given owner and date.
+ * @param ownerId - Raynet user identifier (string)
+ * @param date - ISO date string YYYY-MM-DD
+ */
+export async function getEventsForOwnerAndDate(
+  ownerId: string,
+  date: string
+): Promise<{ events: RaynetEvent[]; totalCount: number }> {
+  validateDate(date);
+  const events = await raynetQueries.getEventsForOwnerAndDate(ownerId, date);
+  return {
+    events,
+    totalCount: events.length,
   };
 }

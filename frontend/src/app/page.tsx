@@ -154,6 +154,52 @@ export default function Home() {
               />
             </svg>
           </Link>
+
+          <Link
+            href="/calendar"
+            className="group flex items-center justify-between rounded-lg border-2 border-zinc-200 bg-white p-6 shadow-sm transition-all hover:border-primary hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-primary"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/15 text-primary dark:bg-primary/25 dark:text-primary">
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 7V5a2 2 0 114 0v2m0 0h8m-8 0H4m12 0v2m0 10H8a2 2 0 01-2-2V9h12v10a2 2 0 01-2 2z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+                  Kalendář
+                </h2>
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Tabletový přehled událostí z Raynet kalendáře pro zakázky.
+                </p>
+              </div>
+            </div>
+            <svg
+              className="h-5 w-5 text-accent transition-transform group-hover:translate-x-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </Link>
         </div>
       </div>
     </div>
