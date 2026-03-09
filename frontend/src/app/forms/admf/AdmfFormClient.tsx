@@ -327,7 +327,7 @@ export default function AdmfFormClient({
           <div className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-zinc-800">
             <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">Záznam o jednání se zákazníkem</h2>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[780px] border-collapse text-sm">
+              <table className="w-full min-w-[1200px] border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-zinc-200 dark:border-zinc-600">
                     <th className="px-4 py-3 text-left font-medium text-zinc-700 dark:text-zinc-300">produkt</th>
@@ -340,14 +340,19 @@ export default function AdmfFormClient({
                     </th>
                     <th className="w-28 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena (bez DPH)</th>
                     <th className="w-24 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">sleva %</th>
-                    <th className="w-32 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena po slevě (bez DPH)</th>
-                    <th className="w-36 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena po slevě (s DPH)</th>
+                    <th className="w-36 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena / ks (bez DPH)</th>
+                    <th className="w-36 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena / ks (s DPH)</th>
+                    <th className="w-36 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">celkem (bez DPH)</th>
+                    <th className="w-36 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">celkem (s DPH)</th>
                     <th className="w-12 px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody>
                   {formData.productRows.map((row) => {
-                    const cenaPoSleveSDph = Math.round((row.cenaPoSleve || 0) * (1 + vatRate / 100));
+                    const cenaZaKsBezDph = row.cenaPoSleve || 0;
+                    const cenaZaKsSDph = Math.round(cenaZaKsBezDph * (1 + vatRate / 100));
+                    const celkemBezDph = cenaZaKsBezDph * (row.ks || 1);
+                    const celkemSDph = Math.round(celkemBezDph * (1 + vatRate / 100));
                     const surchargeSum =
                       row.surcharges?.reduce((sum, s) => sum + (s.amount || 0), 0) ?? 0;
                     const baseCena =
@@ -439,10 +444,16 @@ export default function AdmfFormClient({
                             />
                           </td>
                           <td className="px-4 py-2 text-right font-medium align-top">
-                            {row.cenaPoSleve}
+                            {cenaZaKsBezDph}
                           </td>
                           <td className="px-4 py-2 text-right text-zinc-600 dark:text-zinc-400 align-top">
-                            {cenaPoSleveSDph}
+                            {cenaZaKsSDph}
+                          </td>
+                          <td className="px-4 py-2 text-right font-medium align-top">
+                            {celkemBezDph}
+                          </td>
+                          <td className="px-4 py-2 text-right text-zinc-600 dark:text-zinc-400 align-top">
+                            {celkemSDph}
                           </td>
                           <td className="px-4 py-2 align-top">
                             <button
@@ -457,10 +468,10 @@ export default function AdmfFormClient({
                         </tr>
                         {hasSurcharges && (
                           <tr className="border-b border-zinc-100 bg-zinc-50/60 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300">
-                            <td className="px-4 py-2" colSpan={3}>
+                            <td className="px-4 py-2" colSpan={4}>
                               Příplatky:
                             </td>
-                            <td className="px-4 py-2" colSpan={3}>
+                            <td className="px-4 py-2" colSpan={4}>
                               <div className="flex flex-wrap gap-3">
                                 {row.surcharges?.map((s, idx) => (
                                   <div
@@ -500,7 +511,7 @@ export default function AdmfFormClient({
                             </td>
                             <td
                               className="px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400"
-                              colSpan={2}
+                              colSpan={3}
                             >
                               {row.surchargeWarnings?.length
                                 ? row.surchargeWarnings.join(" ")
@@ -512,11 +523,22 @@ export default function AdmfFormClient({
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-zinc-200 bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800/70">
+                    <td className="px-4 py-3 font-semibold text-zinc-800 dark:text-zinc-100" colSpan={8}>
+                      Součet produktů
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-zinc-900 dark:text-zinc-50">
+                      {totalProduktyBezDph}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-zinc-900 dark:text-zinc-50">
+                      {Math.round(totalProduktyBezDph * (1 + vatRate / 100))}
+                    </td>
+                    <td className="px-4 py-3" />
+                  </tr>
+                </tfoot>
               </table>
             </div>
-            <p className="mt-2 text-right text-sm text-zinc-600 dark:text-zinc-400">
-              Součet produktů bez DPH: {totalProduktyBezDph} Kč
-            </p>
             <button
               type="button"
               onClick={addProductRow}
