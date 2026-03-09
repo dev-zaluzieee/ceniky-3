@@ -5,7 +5,10 @@
 
 import type { Pool } from "pg";
 import type { FormType } from "../types/forms.types";
-import type { ExtractedProductLine } from "../types/extract-products.types";
+import type {
+  ExtractedPriceAffectingField,
+  ExtractedProductLine,
+} from "../types/extract-products.types";
 import { getProductPricingForResolve } from "./pricing-forms.service";
 import { resolvePrice } from "./pricing.service";
 
@@ -40,6 +43,43 @@ function findPropertyByCode(schema: Record<string, unknown>, code: string): Reco
     if (found) return found;
   }
   return null;
+}
+
+/**
+ * Resolve a human-friendly label for a schema property.
+ * Falls back to the technical code when no name/title is available.
+ */
+function getPropertyLabel(propDef: Record<string, unknown> | null, code: string): string {
+  if (!propDef) return code;
+  const name = (propDef.Name as string | undefined)?.trim();
+  if (name) return name;
+  const title = (propDef.Title as string | undefined)?.trim();
+  if (title) return title;
+  return code;
+}
+
+/**
+ * Resolve a human-friendly display value for a property based on schema enum metadata.
+ * For non-enum or when metadata is missing, falls back to the raw stringified value.
+ */
+function getDisplayValueFromEnum(
+  propDef: Record<string, unknown> | null,
+  rawValue: unknown
+): string {
+  const rawStr = rawValue != null ? String(rawValue).trim() : "";
+  if (!propDef || !rawStr) return rawStr;
+
+  const dataType = propDef.DataType as string | undefined;
+  if (dataType !== "enum") return rawStr;
+
+  const enumValues = (propDef.EnumValues as Array<{ Code?: string; Name?: string }> | undefined) ?? [];
+  if (!Array.isArray(enumValues) || enumValues.length === 0) return rawStr;
+
+  const match = enumValues.find((item) => String(item.Code) === rawStr);
+  if (!match) return rawStr;
+
+  const name = (match.Name as string | undefined)?.trim();
+  return name || rawStr;
 }
 
 /** Compute surcharge for one property based on its config, value, dimensions and quantity. */
@@ -236,6 +276,22 @@ export async function extractFromCustom(
       const sleva = 0;
       const cenaPoSleve = Math.round(cenaWithSurcharges * (1 - sleva / 100));
 
+      // Build human-friendly list of price-affecting fields for display in ADMF.
+      const priceAffectingFields: ExtractedPriceAffectingField[] = [];
+      for (const code of priceAffectingEnums) {
+        const rawValue = (row as Record<string, unknown>)[code];
+        const propDef = findPropertyByCode(schema, code);
+        const label = getPropertyLabel(propDef, code);
+        const value = getDisplayValueFromEnum(propDef, rawValue);
+        if (value !== "") {
+          priceAffectingFields.push({
+            code,
+            label,
+            value,
+          });
+        }
+      }
+
       lines.push({
         produkt,
         ks: 1,
@@ -247,6 +303,7 @@ export async function extractFromCustom(
         baseCena: cenaBase,
         surcharges: surchargeItems.length > 0 ? surchargeItems : undefined,
         surchargeWarnings: surchargeWarnings.length > 0 ? surchargeWarnings : undefined,
+        priceAffectingFields: priceAffectingFields.length > 0 ? priceAffectingFields : undefined,
       });
     }
   }

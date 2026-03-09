@@ -179,6 +179,15 @@ export default function AdmfFormClient({
   const zalohaTooLow = totalSDph > 0 && zalohovaFaktura < minZaloha;
   const doplatek = Math.max(0, totalSDph - zalohovaFaktura);
 
+  // Derive column labels for price-affecting fields from the first row that has them.
+  const firstRowWithPriceFields = formData.productRows.find(
+    (r) => (r.priceAffectingFields?.length ?? 0) > 0
+  );
+  const priceField1Label =
+    firstRowWithPriceFields?.priceAffectingFields?.[0]?.label ?? "rám";
+  const priceField2Label =
+    firstRowWithPriceFields?.priceAffectingFields?.[1]?.label ?? "lamela/látka";
+
   /** Generate PDF (with Czech font) and open in new tab (preview for customer) */
   const handleShowPreview = async () => {
     setPdfError(null);
@@ -316,8 +325,12 @@ export default function AdmfFormClient({
                   <tr className="border-b border-zinc-200 dark:border-zinc-600">
                     <th className="px-4 py-3 text-left font-medium text-zinc-700 dark:text-zinc-300">produkt</th>
                     <th className="w-20 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">ks</th>
-                    <th className="px-4 py-3 text-left font-medium text-zinc-700 dark:text-zinc-300">rám</th>
-                    <th className="px-4 py-3 text-left font-medium text-zinc-700 dark:text-zinc-300">lamela/látka</th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-700 dark:text-zinc-300">
+                      {priceField1Label}
+                    </th>
+                    <th className="px-4 py-3 text-left font-medium text-zinc-700 dark:text-zinc-300">
+                      {priceField2Label}
+                    </th>
                     <th className="w-28 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena (bez DPH)</th>
                     <th className="w-24 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">sleva %</th>
                     <th className="w-32 px-4 py-3 text-right font-medium text-zinc-700 dark:text-zinc-300">cena po slevě (bez DPH)</th>
@@ -333,6 +346,11 @@ export default function AdmfFormClient({
                     const baseCena =
                       row.baseCena != null ? row.baseCena : Math.max(0, (row.cena || 0) - surchargeSum);
                     const hasSurcharges = (row.surcharges?.length ?? 0) > 0;
+                    const hasPriceFields = (row.priceAffectingFields?.length ?? 0) > 0;
+                    const field1Value =
+                      row.priceAffectingFields?.[0]?.value ?? row.ram;
+                    const field2Value =
+                      row.priceAffectingFields?.[1]?.value ?? row.lamelaLatka;
                     return (
                       <React.Fragment key={row.id}>
                         <tr className="border-b border-zinc-100 dark:border-zinc-700">
@@ -356,20 +374,34 @@ export default function AdmfFormClient({
                             />
                           </td>
                           <td className="px-4 py-2">
-                            <input
-                              type="text"
-                              value={row.ram}
-                              onChange={(e) => updateProductRow(row.id, { ram: e.target.value })}
-                              className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                            />
+                            {hasPriceFields ? (
+                              <div className="text-sm text-zinc-800 dark:text-zinc-100">
+                                {field1Value}
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                value={row.ram}
+                                onChange={(e) => updateProductRow(row.id, { ram: e.target.value })}
+                                className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                              />
+                            )}
                           </td>
                           <td className="px-4 py-2">
-                            <input
-                              type="text"
-                              value={row.lamelaLatka}
-                              onChange={(e) => updateProductRow(row.id, { lamelaLatka: e.target.value })}
-                              className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-                            />
+                            {hasPriceFields ? (
+                              <div className="text-sm text-zinc-800 dark:text-zinc-100">
+                                {field2Value}
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                value={row.lamelaLatka}
+                                onChange={(e) =>
+                                  updateProductRow(row.id, { lamelaLatka: e.target.value })
+                                }
+                                className="w-full rounded border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                              />
+                            )}
                           </td>
                           <td className="px-4 py-2 text-right align-top">
                             <input

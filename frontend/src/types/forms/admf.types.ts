@@ -3,6 +3,16 @@
  * Product prices and montáž are stored without VAT; VAT is applied for display and záloha/doplatek.
  */
 
+/** Single price-affecting field used to resolve product price (for display in ADMF). */
+export interface AdmfPriceAffectingField {
+  /** Code of the field as used in schema / price_affecting_enums (e.g. "type", "color"). */
+  code: string;
+  /** Human-friendly label from JSON schema when available (fallback: code). */
+  label: string;
+  /** Human-friendly value (e.g. enum Name) when available (fallback: raw code/value as string). */
+  value: string;
+}
+
 /** Single row in "Záznam o jednání se zákazníkem" table (prices without VAT) */
 export interface AdmfProductRow {
   id: string;
@@ -26,6 +36,11 @@ export interface AdmfProductRow {
   }>;
   /** Optional warnings about příplatky, shown in Czech under the row */
   surchargeWarnings?: string[];
+  /**
+   * Fields that directly affected price resolution (selector for pricing_variant).
+   * Used in UI/PDF instead of hardcoded rám / lamela/látka when available.
+   */
+  priceAffectingFields?: AdmfPriceAffectingField[];
 }
 
 /** VAT rate in % */

@@ -80,6 +80,7 @@ export default async function OrderFormCreatePage({
       ? extractRes.data.products
       : []
     ).map((p, i) => ({
+      // Generate a new stable row id for the client-side form.
       id: `row-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 9)}`,
       produkt: p.produkt,
       ks: p.ks,
@@ -91,6 +92,8 @@ export default async function OrderFormCreatePage({
       baseCena: p.baseCena,
       surcharges: p.surcharges,
       surchargeWarnings: p.surchargeWarnings,
+      // Pass through price-affecting fields so ADMF can render them instead of hardcoded rám/lamela.
+      priceAffectingFields: p.priceAffectingFields,
     }));
 
     const today = new Date().toISOString().slice(0, 10);

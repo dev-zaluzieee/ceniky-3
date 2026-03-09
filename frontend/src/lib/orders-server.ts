@@ -110,7 +110,7 @@ export async function fetchOrderByIdServer(
   }
 }
 
-/** Extracted product line (from backend extract-products; prices are mocked) */
+/** Extracted product line (from backend extract-products; prices are resolved in backend) */
 export interface ExtractedProductLine {
   produkt: string;
   ks: number;
@@ -126,6 +126,15 @@ export interface ExtractedProductLine {
     amount: number;
   }>;
   surchargeWarnings?: string[];
+  /**
+   * Fields that directly affected price resolution (selector for pricing_variant).
+   * Used in ADMF UI/PDF instead of hardcoded rám / lamela/látka when available.
+   */
+  priceAffectingFields?: Array<{
+    code: string;
+    label: string;
+    value: string;
+  }>;
 }
 
 export interface ServerExtractProductsResponse {

@@ -112,24 +112,39 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
   doc.text("Záznam o jednání se zákazníkem", MARGIN, y);
   y += 6;
 
+  const firstRowWithPriceFields = (formData.productRows || []).find(
+    (r) => (r.priceAffectingFields?.length ?? 0) > 0
+  );
+  const priceField1Label =
+    firstRowWithPriceFields?.priceAffectingFields?.[0]?.label ?? "rám";
+  const priceField2Label =
+    firstRowWithPriceFields?.priceAffectingFields?.[1]?.label ?? "lamela/látka";
+
   const head = [
     "produkt",
     "ks",
-    "rám",
-    "lamela/látka",
+    priceField1Label,
+    priceField2Label,
     "cena",
     "sleva %",
     "cena po slevě",
   ];
-  const body: string[][] = (formData.productRows || []).map((r: AdmfProductRow) => [
-    r.produkt ?? "",
-    String(r.ks ?? ""),
-    r.ram ?? "",
-    r.lamelaLatka ?? "",
-    String(r.cena ?? ""),
-    String(r.sleva ?? ""),
-    String(r.cenaPoSleve ?? ""),
-  ]);
+  const body: string[][] = (formData.productRows || []).map((r: AdmfProductRow) => {
+    const hasPriceFields = (r.priceAffectingFields?.length ?? 0) > 0;
+    const field1Value =
+      r.priceAffectingFields?.[0]?.value ?? r.ram ?? "";
+    const field2Value =
+      r.priceAffectingFields?.[1]?.value ?? r.lamelaLatka ?? "";
+    return [
+      r.produkt ?? "",
+      String(r.ks ?? ""),
+      hasPriceFields ? field1Value : r.ram ?? "",
+      hasPriceFields ? field2Value : r.lamelaLatka ?? "",
+      String(r.cena ?? ""),
+      String(r.sleva ?? ""),
+      String(r.cenaPoSleve ?? ""),
+    ];
+  });
 
   autoTable(doc, {
     startY: y,
