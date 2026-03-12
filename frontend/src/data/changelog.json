@@ -1,5 +1,23 @@
 [
   {
+    "date": "2026-03-12",
+    "changes": [
+      "Aplikace je nyní dostupná jako PWA (Progressive Web App) — možnost instalace na plochu a základní offline podpora"
+    ]
+  },
+  {
+    "date": "2026-03-07",
+    "changes": [
+      "Integrace kalendáře"
+    ]
+  },
+  {
+    "date": "2026-03-01",
+    "changes": [
+      "Napojení na ceníkový systém"
+    ]
+  },
+  {
     "date": "2026-02-17",
     "changes": [
       "Náhledový tool pro editaci formuláře pomocí JSONu"
