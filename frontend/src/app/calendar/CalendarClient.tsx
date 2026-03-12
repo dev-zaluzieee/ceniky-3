@@ -119,8 +119,8 @@ export default function CalendarClient() {
   }, [selectedDate]);
 
   return (
-    <div className="min-h-screen bg-zinc-900 text-zinc-50">
-      <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">
+    <div className="h-[calc(100dvh-4rem)] overflow-hidden bg-zinc-900 text-zinc-50">
+      <div className="mx-auto flex h-full max-w-6xl flex-col px-4 py-4 md:px-8">
         {/* Header / back link */}
         <div className="mb-4 flex items-center justify-between">
           <Link
@@ -140,7 +140,7 @@ export default function CalendarClient() {
         </div>
 
         {/* Title + date selector */}
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <h1 className="text-2xl font-semibold md:text-3xl">Kalendář</h1>
           <div className="inline-flex items-center gap-3 rounded-full bg-zinc-800 px-4 py-2 text-sm">
             <button
@@ -179,10 +179,10 @@ export default function CalendarClient() {
         </div>
 
         {/* Main layout */}
-        <div className="flex flex-col gap-4 md:h-[70vh] md:flex-row">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
           {/* Left: events list */}
-          <div className="md:w-1/2">
-            <div className="rounded-2xl bg-zinc-950/60 p-3 md:p-4">
+          <div className="min-h-0 md:w-1/2">
+            <div className="flex h-full min-h-0 flex-col rounded-2xl bg-zinc-950/60 p-3 md:p-4">
               <h2 className="mb-3 text-sm font-medium text-zinc-300">
                 Události v Raynetu ({events.length})
               </h2>
@@ -206,7 +206,7 @@ export default function CalendarClient() {
               )}
 
               {!isLoading && !error && events.length > 0 && (
-                <div className="space-y-2 overflow-y-auto md:max-h-[60vh]">
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
                   {events.map((event) => {
                     const active = selectedEvent?.id === event.id;
                     const address = formatAddress(event);
@@ -256,8 +256,8 @@ export default function CalendarClient() {
           </div>
 
           {/* Right: selected event detail */}
-          <div className="md:w-1/2">
-            <div className="flex h-full flex-col rounded-2xl bg-zinc-950/60 p-4">
+          <div className="min-h-0 md:w-1/2">
+            <div className="flex h-full min-h-0 flex-col rounded-2xl bg-zinc-950/60 p-4">
               {selectedEvent ? (
                 <>
                   <div className="mb-4 flex items-center justify-between gap-2">
