@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import type { OrderRecord } from "@/lib/orders-api";
 import { updateOrder } from "@/lib/orders-api";
 import type { FormRecord, FormType, PaginationInfo } from "@/lib/forms-api";
@@ -22,10 +22,6 @@ const STEP1_FORM_TYPES: FormType[] = ["custom"];
 
 function getFormEditUrl(orderId: number, formId: number): string {
   return `/orders/${orderId}/forms/${formId}`;
-}
-
-function getFormCreateUrl(orderId: number, formType: FormType): string {
-  return `/orders/${orderId}/forms/create/${formType}`;
 }
 
 function formatDate(dateString: string): string {
@@ -126,6 +122,7 @@ export default function OrderDetailClient({
   const [pricingForms, setPricingForms] = useState<PricingFormListItem[] | null>(null);
   const [pricingLoading, setPricingLoading] = useState(false);
   const [pricingError, setPricingError] = useState<string | null>(null);
+  const [modalSearch, setModalSearch] = useState("");
 
   // Customer data
   const [customerData, setCustomerData] = useState({
@@ -630,64 +627,97 @@ export default function OrderDetailClient({
           onClick={() => setShowAddFormModal(false)}
         >
           <div
-            className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl dark:bg-zinc-800"
+            className="flex w-full max-w-lg flex-col rounded-xl bg-white shadow-xl dark:bg-zinc-800"
+            style={{ maxHeight: "80vh" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-5 text-center text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-              Přidat výrobní formulář
-            </h3>
+            <div className="p-6 pb-0">
+              <h3 className="mb-4 text-center text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+                Přidat výrobní formulář
+              </h3>
 
-            {pricingLoading && (
-              <p className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">Načítám formuláře…</p>
-            )}
-
-            {pricingError && (
-              <p className="py-4 text-center text-sm text-red-600 dark:text-red-400">{pricingError}</p>
-            )}
-
-            {pricingForms !== null && (
-              <div className="space-y-2.5 max-h-[60vh] overflow-y-auto">
-                {pricingForms.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-                    Žádné formuláře nejsou k dispozici.
-                  </p>
-                ) : (
-                  pricingForms.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => goToCustomFormWithPricing(item.id)}
-                      className="w-full rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-4 text-center text-sm font-medium text-zinc-800 transition-colors hover:border-primary hover:bg-primary/10 active:bg-primary/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:border-primary dark:hover:bg-primary/20"
-                    >
-                      {item.product_code}
-                      {item.manufacturer && (
-                        <span className="ml-2 font-normal text-zinc-500 dark:text-zinc-400">
-                          ({item.manufacturer})
-                        </span>
-                      )}
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-
-            {/* Fallback: custom JSON */}
-            <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-              <Link
-                href={getFormCreateUrl(order.id, "custom")}
-                className="block w-full rounded-lg border border-zinc-300 px-4 py-3 text-center text-sm text-zinc-600 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-700"
-              >
-                Vlastní formulář (vložit JSON)
-              </Link>
+              {/* Search input */}
+              <input
+                type="text"
+                value={modalSearch}
+                onChange={(e) => setModalSearch(e.target.value)}
+                placeholder="Hledat formulář…"
+                className="w-full rounded-md border border-zinc-300 px-3 py-3 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+                autoFocus={false}
+              />
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowAddFormModal(false)}
-              className="mt-3 w-full rounded-lg px-4 py-3 text-center text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-            >
-              Zavřít
-            </button>
+            <div className="flex-1 overflow-y-auto p-6 pt-4">
+              {pricingLoading && (
+                <p className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">Načítám formuláře…</p>
+              )}
+
+              {pricingError && (
+                <p className="py-4 text-center text-sm text-red-600 dark:text-red-400">{pricingError}</p>
+              )}
+
+              {pricingForms !== null && (() => {
+                const searchLower = modalSearch.toLowerCase().trim();
+                const filtered = searchLower
+                  ? pricingForms.filter(
+                      (item) =>
+                        item.product_code.toLowerCase().includes(searchLower) ||
+                        (item.manufacturer && item.manufacturer.toLowerCase().includes(searchLower))
+                    )
+                  : pricingForms;
+
+                // Group by manufacturer
+                const groups = new Map<string, PricingFormListItem[]>();
+                for (const item of filtered) {
+                  const key = item.manufacturer || "Ostatní";
+                  const list = groups.get(key);
+                  if (list) list.push(item);
+                  else groups.set(key, [item]);
+                }
+
+                if (filtered.length === 0) {
+                  return (
+                    <p className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                      {searchLower ? "Žádné formuláře nevyhovují hledání." : "Žádné formuláře nejsou k dispozici."}
+                    </p>
+                  );
+                }
+
+                return (
+                  <div className="space-y-5">
+                    {Array.from(groups.entries()).map(([manufacturer, items]) => (
+                      <div key={manufacturer}>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                          {manufacturer}
+                        </p>
+                        <div className="space-y-2">
+                          {items.map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => goToCustomFormWithPricing(item.id)}
+                              className="w-full rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-4 text-center text-sm font-medium text-zinc-800 transition-colors hover:border-primary hover:bg-primary/10 active:bg-primary/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:border-primary dark:hover:bg-primary/20"
+                            >
+                              {item.product_code}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="border-t border-zinc-200 p-6 pt-4 dark:border-zinc-700">
+              <button
+                type="button"
+                onClick={() => setShowAddFormModal(false)}
+                className="w-full rounded-lg px-4 py-3 text-center text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+              >
+                Zavřít
+              </button>
+            </div>
           </div>
         </div>
       )}
