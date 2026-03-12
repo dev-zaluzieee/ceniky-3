@@ -95,6 +95,7 @@ export async function updateOrder(
       request.source_raynet_event_id !== undefined
         ? request.source_raynet_event_id
         : existing.source_raynet_event_id,
+    notes: request.notes !== undefined ? request.notes : existing.notes,
   };
   const order = await ordersQueries.updateOrder(pool, id, userId, merged);
   if (!order) {

@@ -14,6 +14,26 @@ interface CreateOrderFromEventModalProps {
   onOrderCreated: (orderId: number) => void;
 }
 
+/**
+ * Convert Raynet event HTML description to plain text notes for the order.
+ * The order detail notes field is plain text, so HTML tags should not be persisted.
+ */
+function extractEventNotes(description: string | null): string | null {
+  if (!description) return null;
+
+  const text = description
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+
+  return text.length > 0 ? text : null;
+}
+
 export default function CreateOrderFromEventModal({
   event,
   prefillPhone,
@@ -119,6 +139,7 @@ export default function CreateOrderFromEventModal({
         raynet_id: event.company?.id ?? undefined,
         erp_customer_id: selectedErp?.id ?? undefined,
         source_raynet_event_id: event.id,
+        notes: extractEventNotes(event.description),
       });
       if (!result.success) {
         if (result.existingOrderId) {

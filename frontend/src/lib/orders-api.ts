@@ -18,6 +18,7 @@ export interface OrderRecord {
   raynet_id: number | null;
   erp_customer_id: number | null;
   source_raynet_event_id: number | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -36,6 +37,7 @@ export interface OrderCustomerData {
   raynet_id?: number | null;
   erp_customer_id?: number | null;
   source_raynet_event_id?: number | null;
+  notes?: string | null;
 }
 
 /**
