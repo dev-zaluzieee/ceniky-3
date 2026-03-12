@@ -31,6 +31,18 @@ function parseFirstPhoneFromDescription(description: string | null): string | nu
   return match ? match[1].trim() : null;
 }
 
+function toTelHref(phone: string): string {
+  // Keep a leading '+' and digits only for better dialer compatibility.
+  const normalized = phone.trim();
+  const hasPlus = normalized.startsWith("+");
+  const digits = normalized.replace(/\D/g, "");
+  return hasPlus ? `tel:+${digits}` : `tel:${digits}`;
+}
+
+function toAppleMapsHref(address: string): string {
+  return `https://maps.apple.com/?q=${encodeURIComponent(address)}`;
+}
+
 function formatAddress(event: RaynetEvent): string | null {
   if (event.meetingPlace) return event.meetingPlace;
   const addr = event.companyAddress;
@@ -168,6 +180,10 @@ export default function CalendarClient() {
   const selectedEventOrderId = selectedEvent
     ? eventOrderMap[selectedEvent.id]
     : undefined;
+  const selectedEventAddress = selectedEvent ? formatAddress(selectedEvent) : null;
+  const selectedEventPhone = selectedEvent
+    ? parseFirstPhoneFromDescription(selectedEvent.description)
+    : null;
 
   return (
     <div className="h-[calc(100dvh-4rem)] overflow-hidden bg-zinc-900 text-zinc-50">
@@ -347,15 +363,27 @@ export default function CalendarClient() {
                     <p className="text-sm">
                       {selectedEvent.company?.name ?? "Neuvedená společnost"}
                     </p>
-                    {formatAddress(selectedEvent) && (
-                      <p className="mt-1 text-xs text-zinc-400">
-                        {formatAddress(selectedEvent)}
+                    {selectedEventAddress && (
+                      <p className="mt-1 text-xs">
+                        <a
+                          href={toAppleMapsHref(selectedEventAddress)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-zinc-400 underline decoration-zinc-600 transition-colors hover:text-zinc-200"
+                        >
+                          {selectedEventAddress}
+                        </a>
                       </p>
                     )}
-                    {parseFirstPhoneFromDescription(selectedEvent.description) && (
-                      <p className="mt-1 text-xs text-zinc-400">
-                        Tel:{" "}
-                        {parseFirstPhoneFromDescription(selectedEvent.description)}
+                    {selectedEventPhone && (
+                      <p className="mt-1 text-xs">
+                        <span className="text-zinc-400">Tel: </span>
+                        <a
+                          href={toTelHref(selectedEventPhone)}
+                          className="text-zinc-300 underline decoration-zinc-600 transition-colors hover:text-zinc-100"
+                        >
+                          {selectedEventPhone}
+                        </a>
                       </p>
                     )}
                   </div>
