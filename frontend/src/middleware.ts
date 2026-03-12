@@ -11,6 +11,7 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/sw\.js(\.map)?$/,
   /^\/swe-worker-.*\.js(\.map)?$/,
   /^\/icons\//,
+  /^\/.*\.(?:png|jpe?g|gif|webp|svg|ico|json|txt|xml|webmanifest)$/i,
 ];
 
 function isPublic(pathname: string): boolean {
