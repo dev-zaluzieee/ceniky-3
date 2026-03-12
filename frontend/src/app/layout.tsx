@@ -14,14 +14,23 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const APP_NAME = "OVT";
-const APP_TITLE = "Výrobní dokumentace — OVT";
+const APP_NAME = "Žaluzieee OVT";
+const APP_TITLE = "Výrobní dokumentace — Žaluzieee OVT";
 const APP_DESCRIPTION = "Portál pro výrobní dokumentaci OVT";
 
 export const metadata: Metadata = {
   applicationName: APP_NAME,
   title: APP_TITLE,
   description: APP_DESCRIPTION,
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icons/icon-192-maskable.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512-maskable.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
