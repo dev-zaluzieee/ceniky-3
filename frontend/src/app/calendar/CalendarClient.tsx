@@ -43,6 +43,24 @@ function toDateString(date: Date): string {
 }
 
 /**
+ * Sort events chronologically for stable rendering order.
+ * Primary key: scheduledFrom, secondary: scheduledTill, tertiary: id.
+ */
+function sortEventsByTime(events: RaynetEvent[]): RaynetEvent[] {
+  return [...events].sort((a, b) => {
+    const fromA = new Date(a.scheduledFrom.replace(" ", "T")).getTime();
+    const fromB = new Date(b.scheduledFrom.replace(" ", "T")).getTime();
+    if (fromA !== fromB) return fromA - fromB;
+
+    const tillA = new Date(a.scheduledTill.replace(" ", "T")).getTime();
+    const tillB = new Date(b.scheduledTill.replace(" ", "T")).getTime();
+    if (tillA !== tillB) return tillA - tillB;
+
+    return a.id - b.id;
+  });
+}
+
+/**
  * Tablet-optimised calendar client for Raynet events.
  * Left: list of events for selected day, Right: event detail & action.
  */
@@ -71,8 +89,9 @@ export default function CalendarClient() {
           setEvents([]);
           return;
         }
-        setEvents(result.data.events);
-        setSelectedEventId(result.data.events[0]?.id ?? null);
+        const sortedEvents = sortEventsByTime(result.data.events);
+        setEvents(sortedEvents);
+        setSelectedEventId(sortedEvents[0]?.id ?? null);
       } catch (e: any) {
         setError("Došlo k chybě při načítání kalendáře. Zkuste to prosím znovu.");
         setEvents([]);
