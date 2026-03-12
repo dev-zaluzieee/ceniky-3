@@ -182,7 +182,7 @@ export default function DebugJsonFormPage() {
                 payload={payload}
                 formData={formData}
                 setFormData={setFormDataForForm}
-                actionsInRoomsHeader={
+                actionsFooter={
                   <>
                     <button
                       type="button"

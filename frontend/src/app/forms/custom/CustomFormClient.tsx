@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { submitForm, updateForm } from "@/lib/forms-api";
@@ -128,6 +128,26 @@ export default function CustomFormClient({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [hasSizeLimitError, setHasSizeLimitError] = useState(false);
+  const [hasWarrantyError, setHasWarrantyError] = useState(false);
+
+  /** Track unsaved changes: set true on any formData change after initial load */
+  const [isDirty, setIsDirty] = useState(false);
+  const initialFormDataRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (formData && initialFormDataRef.current === null) {
+      initialFormDataRef.current = JSON.stringify(formData);
+    }
+  }, [formData]);
+
+  useEffect(() => {
+    if (!formData || initialFormDataRef.current === null) return;
+    setIsDirty(JSON.stringify(formData) !== initialFormDataRef.current);
+  }, [formData]);
+
+  const handleSizeLimitErrorChange = useCallback((hasError: boolean) => {
+    setHasSizeLimitError(hasError);
+  }, []);
 
   const handleSubmit = async () => {
     const payload = schema;
@@ -159,25 +179,74 @@ export default function CustomFormClient({
     }
   };
 
+  /** Product title for header */
+  const productTitle = formData?.productName || formData?.productCode || schema?.product_code || "";
+
+  /** Back link element (reused) */
+  const backLink = (
+    <Link
+      href={`/orders/${orderId}`}
+      className="inline-flex items-center gap-2 py-2 text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+      </svg>
+      Zpět do zakázky
+    </Link>
+  );
+
+  /** Bottom save bar content */
+  const saveBar = (
+    <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-zinc-200 bg-white/95 px-4 py-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
+      <div className="mx-auto flex max-w-7xl items-center justify-center">
+        {hasSizeLimitError ? (
+          <div className="rounded-md bg-red-500 px-6 py-3 text-center text-sm font-medium text-white">
+            Některé položky z formuláře nelze vyrobit
+          </div>
+        ) : hasWarrantyError ? (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="min-h-[44px] touch-manipulation rounded-md bg-amber-600 px-6 py-3 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+          >
+            {isSubmitting ? "Ukládám…" : "Uložit formulář i s produkty bez záruky"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="min-h-[44px] touch-manipulation rounded-md bg-accent px-6 py-3 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+          >
+            {isSubmitting ? "Ukládám…" : "Uložit formulář"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  /** Title with unsaved changes badge */
+  const titleSection = (
+    <div className="mb-5 flex flex-wrap items-center gap-3">
+      <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+        {productTitle ? `VÝROBNÍ DOKUMENTACE - ${productTitle}` : "VÝROBNÍ DOKUMENTACE"}
+      </h1>
+      {isDirty && (
+        <span className="rounded-md border border-amber-400 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 dark:border-amber-500 dark:bg-amber-900/30 dark:text-amber-400">
+          některé změny nejsou uloženy
+        </span>
+      )}
+    </div>
+  );
+
   /* Edit mode: we have schema + formData from initialData */
   if (isEditMode && schema && formData) {
     return (
-      <div className="min-h-screen bg-zinc-50 pb-24 pt-8 px-4 dark:bg-zinc-900">
+      <div className="min-h-screen bg-zinc-50 pb-24 pt-6 px-4 dark:bg-zinc-900">
         <div className="mx-auto max-w-7xl">
-          <div className="mb-6 flex items-center justify-between">
-            <Link
-              href={`/orders/${orderId}`}
-              className="flex items-center gap-2 text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Zpět na zakázku
-            </Link>
-          </div>
-          <h1 className="mb-6 text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-            Upravit vlastní formulář
-          </h1>
+          <div className="mb-3">{backLink}</div>
+          {titleSection}
           {submitError && (
             <p className="mb-4 text-sm text-red-600 dark:text-red-400">{submitError}</p>
           )}
@@ -185,22 +254,11 @@ export default function CustomFormClient({
             payload={schema}
             formData={formData}
             setFormData={setFormDataForForm}
-            onSizeLimitErrorChange={setHasSizeLimitError}
+            onSizeLimitErrorChange={handleSizeLimitErrorChange}
+            onWarrantyErrorChange={setHasWarrantyError}
           />
         </div>
-        {/* Sticky save bar for tablet: always visible at bottom */}
-        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-zinc-200 bg-white/95 px-4 py-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
-          <div className="mx-auto flex max-w-7xl justify-start">
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={isSubmitting || hasSizeLimitError}
-              className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md bg-accent px-6 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-            >
-              {isSubmitting ? "Ukládám…" : hasSizeLimitError ? "Upravte rozměry (mimo výrobní rozsah)" : "Uložit formulář"}
-            </button>
-          </div>
-        </div>
+        {saveBar}
       </div>
     );
   }
@@ -210,15 +268,7 @@ export default function CustomFormClient({
     return (
       <div className="min-h-screen bg-zinc-50 py-8 px-4 dark:bg-zinc-900">
         <div className="mx-auto max-w-7xl">
-          <Link
-            href={`/orders/${orderId}`}
-            className="mb-6 inline-flex items-center gap-2 text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Zpět na zakázku
-          </Link>
+          <div className="mb-3">{backLink}</div>
           <p className="text-zinc-600 dark:text-zinc-400">Načítám formulář z katalogu…</p>
         </div>
       </div>
@@ -230,22 +280,8 @@ export default function CustomFormClient({
     return (
       <div className="min-h-screen bg-zinc-50 py-8 px-4 dark:bg-zinc-900">
         <div className="mx-auto max-w-7xl">
-          <Link
-            href={`/orders/${orderId}`}
-            className="mb-6 inline-flex items-center gap-2 text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Zpět na zakázku
-          </Link>
+          <div className="mb-3">{backLink}</div>
           <p className="mb-4 text-red-600 dark:text-red-400">{pricingLoadError}</p>
-          <Link
-            href={`/orders/${orderId}/forms/create/custom`}
-            className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-          >
-            Vložit JSON ručně
-          </Link>
         </div>
       </div>
     );
@@ -256,19 +292,9 @@ export default function CustomFormClient({
     return (
       <div className="min-h-screen bg-zinc-50 py-8 px-4 dark:bg-zinc-900">
         <div className="mx-auto max-w-7xl">
-          <div className="mb-6 flex items-center justify-between">
-            <Link
-              href={`/orders/${orderId}`}
-              className="flex items-center gap-2 text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
-            >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Zpět na zakázku
-            </Link>
-          </div>
+          <div className="mb-3">{backLink}</div>
           <h1 className="mb-6 text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-            Vlastní formulář (JSON)
+            Výrobní dokumentace (JSON)
           </h1>
           <p className="mb-4 text-sm text-zinc-600 dark:text-zinc-400">
             Vložte JSON schéma produktu (stejné jako v debug nástroji). Po validaci vygenerujete
@@ -281,7 +307,7 @@ export default function CustomFormClient({
                 {!rawJson.trim() ? (
                   "Čekám na vložení…"
                 ) : parsed.ok && payloadFromPaste ? (
-                  <span className="text-green-600 dark:text-green-400">✓ Validní</span>
+                  <span className="text-green-600 dark:text-green-400">Validní</span>
                 ) : parsed.ok ? (
                   <span className="text-amber-600 dark:text-amber-400">Chybí form_body.Properties</span>
                 ) : (
@@ -315,22 +341,10 @@ export default function CustomFormClient({
 
   /* Create mode: step 2 – form */
   return (
-    <div className="min-h-screen bg-zinc-50 pb-24 pt-8 px-4 dark:bg-zinc-900">
+    <div className="min-h-screen bg-zinc-50 pb-24 pt-6 px-4 dark:bg-zinc-900">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex items-center justify-between">
-          <Link
-            href={`/orders/${orderId}`}
-            className="flex items-center gap-2 text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Zpět na zakázku
-          </Link>
-        </div>
-        <h1 className="mb-6 text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-          Vlastní formulář – vyplnění
-        </h1>
+        <div className="mb-3">{backLink}</div>
+        {titleSection}
         {submitError && (
           <p className="mb-4 text-sm text-red-600 dark:text-red-400">{submitError}</p>
         )}
@@ -338,34 +352,11 @@ export default function CustomFormClient({
           payload={schema}
           formData={formData}
           setFormData={setFormDataForForm}
-          onSizeLimitErrorChange={setHasSizeLimitError}
-          actionsInRoomsHeader={
-            <button
-              type="button"
-              onClick={() => {
-                setSchema(null);
-                setFormData(null);
-              }}
-              className="min-h-[44px] touch-manipulation rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-            >
-              Zpět k JSON
-            </button>
-          }
+          onSizeLimitErrorChange={handleSizeLimitErrorChange}
+          onWarrantyErrorChange={setHasWarrantyError}
         />
       </div>
-      {/* Sticky save bar for tablet: always visible at bottom */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-zinc-200 bg-white/95 px-4 py-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
-        <div className="mx-auto flex max-w-7xl justify-start">
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isSubmitting || hasSizeLimitError}
-            className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md bg-accent px-6 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-          >
-            {isSubmitting ? "Ukládám…" : hasSizeLimitError ? "Upravte rozměry (mimo výrobní rozsah)" : "Uložit formulář"}
-          </button>
-        </div>
-      </div>
+      {saveBar}
     </div>
   );
 }
