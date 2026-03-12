@@ -25,9 +25,9 @@ export async function createOrder(
   data: CreateOrderRequest
 ): Promise<OrderRecord> {
   const query = `
-    INSERT INTO orders (user_id, name, email, phone, address, city, zipcode, raynet_id, erp_customer_id)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    RETURNING id, user_id, name, email, phone, address, city, zipcode, raynet_id, erp_customer_id, created_at, updated_at, deleted_at
+    INSERT INTO orders (user_id, name, email, phone, address, city, zipcode, raynet_id, erp_customer_id, source_raynet_event_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    RETURNING id, user_id, name, email, phone, address, city, zipcode, raynet_id, erp_customer_id, source_raynet_event_id, created_at, updated_at, deleted_at
   `;
 
   const params = [
@@ -40,6 +40,7 @@ export async function createOrder(
     data.zipcode ?? null,
     data.raynet_id ?? null,
     data.erp_customer_id ?? null,
+    data.source_raynet_event_id ?? null,
   ];
 
   try {
@@ -59,7 +60,7 @@ export async function getOrderById(
   userId: string
 ): Promise<OrderRecord | null> {
   const query = `
-    SELECT id, user_id, name, email, phone, address, city, zipcode, raynet_id, erp_customer_id, created_at, updated_at, deleted_at
+    SELECT id, user_id, name, email, phone, address, city, zipcode, raynet_id, erp_customer_id, source_raynet_event_id, created_at, updated_at, deleted_at
     FROM orders
     WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
   `;
@@ -91,7 +92,7 @@ export async function getOrdersByUserId(
   const total = parseInt(countResult.rows[0].total, 10);
 
   const dataQuery = `
-    SELECT id, user_id, name, email, phone, address, city, zipcode, raynet_id, erp_customer_id, created_at, updated_at, deleted_at
+    SELECT id, user_id, name, email, phone, address, city, zipcode, raynet_id, erp_customer_id, source_raynet_event_id, created_at, updated_at, deleted_at
     FROM orders
     WHERE ${whereClause}
     ORDER BY created_at DESC
@@ -116,7 +117,7 @@ export async function updateOrder(
   userId: string,
   data: UpdateOrderRequest
 ): Promise<OrderRecord | null> {
-  /* raynet_id and erp_customer_id use direct assignment so null can clear the reference */
+  /* raynet_id, erp_customer_id and source_raynet_event_id use direct assignment so null can clear the reference */
   const query = `
     UPDATE orders
     SET name = COALESCE($1, name),
@@ -127,9 +128,10 @@ export async function updateOrder(
         zipcode = COALESCE($6, zipcode),
         raynet_id = $7,
         erp_customer_id = $8,
+        source_raynet_event_id = $9,
         updated_at = CURRENT_TIMESTAMP
-    WHERE id = $9 AND user_id = $10 AND deleted_at IS NULL
-    RETURNING id, user_id, name, email, phone, address, city, zipcode, raynet_id, erp_customer_id, created_at, updated_at, deleted_at
+    WHERE id = $10 AND user_id = $11 AND deleted_at IS NULL
+    RETURNING id, user_id, name, email, phone, address, city, zipcode, raynet_id, erp_customer_id, source_raynet_event_id, created_at, updated_at, deleted_at
   `;
 
   const params = [
@@ -141,6 +143,7 @@ export async function updateOrder(
     data.zipcode ?? null,
     data.raynet_id,
     data.erp_customer_id,
+    data.source_raynet_event_id,
     id,
     userId,
   ];
@@ -178,6 +181,38 @@ export async function deleteOrder(
 }
 
 /**
+ * Find existing orders linked to Raynet events for one user.
+ */
+export async function findOrdersByRaynetEventIds(
+  pool: Pool,
+  userId: string,
+  eventIds: number[]
+): Promise<Array<{ eventId: number; orderId: number }>> {
+  if (eventIds.length === 0) return [];
+
+  const query = `
+    SELECT source_raynet_event_id, id
+    FROM orders
+    WHERE user_id = $1
+      AND deleted_at IS NULL
+      AND source_raynet_event_id = ANY($2::int[])
+  `;
+
+  try {
+    const result = await pool.query(query, [userId, eventIds]);
+    return result.rows.map((row) => ({
+      eventId: row.source_raynet_event_id,
+      orderId: row.id,
+    }));
+  } catch (error: any) {
+    throw new DatabaseError(
+      `Failed to lookup orders by Raynet event ids: ${error.message}`,
+      error
+    );
+  }
+}
+
+/**
  * Map database row to OrderRecord
  */
 function mapRowToOrderRecord(row: any): OrderRecord {
@@ -192,6 +227,7 @@ function mapRowToOrderRecord(row: any): OrderRecord {
     zipcode: row.zipcode,
     raynet_id: row.raynet_id,
     erp_customer_id: row.erp_customer_id,
+    source_raynet_event_id: row.source_raynet_event_id,
     created_at: new Date(row.created_at),
     updated_at: new Date(row.updated_at),
     deleted_at: row.deleted_at ? new Date(row.deleted_at) : null,

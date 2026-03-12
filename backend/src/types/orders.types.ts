@@ -17,6 +17,7 @@ export interface OrderRecord {
   zipcode: string | null;
   raynet_id: number | null;
   erp_customer_id: number | null;
+  source_raynet_event_id: number | null;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
@@ -34,6 +35,7 @@ export interface CreateOrderRequest {
   zipcode?: string;
   raynet_id?: number;
   erp_customer_id?: number;
+  source_raynet_event_id?: number;
 }
 
 /**
@@ -49,6 +51,7 @@ export interface UpdateOrderRequest {
   zipcode?: string;
   raynet_id?: number | null;
   erp_customer_id?: number | null;
+  source_raynet_event_id?: number | null;
 }
 
 /**
@@ -57,4 +60,15 @@ export interface UpdateOrderRequest {
 export interface ListOrdersQuery {
   page?: number;
   limit?: number;
+}
+
+/** Input for bulk lookup of orders by Raynet event ids. */
+export interface FindOrdersByRaynetEventsRequest {
+  eventIds: number[];
+}
+
+/** Mapping entry returned for a linked Raynet event. */
+export interface RaynetEventOrderLink {
+  eventId: number;
+  orderId: number;
 }

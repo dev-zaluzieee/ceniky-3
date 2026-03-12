@@ -17,6 +17,7 @@ export interface OrderRecord {
   zipcode: string | null;
   raynet_id: number | null;
   erp_customer_id: number | null;
+  source_raynet_event_id: number | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -34,6 +35,7 @@ export interface OrderCustomerData {
   zipcode?: string;
   raynet_id?: number | null;
   erp_customer_id?: number | null;
+  source_raynet_event_id?: number | null;
 }
 
 /**
@@ -63,6 +65,22 @@ export interface ListOrdersResponse {
 export interface OrderResponse {
   success: boolean;
   data?: OrderRecord;
+  error?: string;
+  message?: string;
+  existingOrderId?: number;
+  raynetEventId?: number;
+}
+
+/** Mapping for existing order links by Raynet event id. */
+export interface RaynetEventOrderLink {
+  eventId: number;
+  orderId: number;
+}
+
+/** Response from bulk Raynet event -> order lookup API. */
+export interface RaynetEventOrderLinksResponse {
+  success: boolean;
+  data?: { links: RaynetEventOrderLink[] };
   error?: string;
   message?: string;
 }
@@ -225,6 +243,38 @@ export async function deleteOrder(orderId: number): Promise<OrderResponse> {
     return { success: true, data: data.data };
   } catch (error: any) {
     console.error("Error deleting order:", error);
+    return {
+      success: false,
+      error: "Network error. Please check your connection and try again.",
+    };
+  }
+}
+
+/**
+ * Get existing order links for Raynet event IDs.
+ */
+export async function getOrdersByRaynetEventIds(
+  eventIds: number[]
+): Promise<RaynetEventOrderLinksResponse> {
+  try {
+    const response = await fetch("/api/orders/by-raynet-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventIds }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || "Failed to resolve existing orders for Raynet events",
+        message: data.message,
+      };
+    }
+
+    return { success: true, data: data.data };
+  } catch (error: any) {
+    console.error("Error resolving orders by Raynet event ids:", error);
     return {
       success: false,
       error: "Network error. Please check your connection and try again.",

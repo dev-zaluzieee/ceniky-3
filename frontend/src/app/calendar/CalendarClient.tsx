@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchRaynetEvents, RaynetEvent } from "@/lib/raynet-events";
+import { getOrdersByRaynetEventIds } from "@/lib/orders-api";
 
 function formatCzechDate(date: Date): string {
   return new Intl.DateTimeFormat("cs-CZ", {
@@ -68,6 +69,7 @@ export default function CalendarClient() {
   const router = useRouter();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [events, setEvents] = useState<RaynetEvent[]>([]);
+  const [eventOrderMap, setEventOrderMap] = useState<Record<number, number>>({});
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,14 +89,34 @@ export default function CalendarClient() {
         if (!result.success || !result.data) {
           setError(result.error || "Nepodařilo se načíst události z Raynetu.");
           setEvents([]);
+          setEventOrderMap({});
           return;
         }
         const sortedEvents = sortEventsByTime(result.data.events);
         setEvents(sortedEvents);
         setSelectedEventId(sortedEvents[0]?.id ?? null);
+        if (sortedEvents.length > 0) {
+          const eventIds = sortedEvents.map((event) => event.id);
+          const linksResult = await getOrdersByRaynetEventIds(eventIds);
+          if (linksResult.success && linksResult.data?.links) {
+            const nextMap = linksResult.data.links.reduce<Record<number, number>>(
+              (acc, link) => {
+                acc[link.eventId] = link.orderId;
+                return acc;
+              },
+              {}
+            );
+            setEventOrderMap(nextMap);
+          } else {
+            setEventOrderMap({});
+          }
+        } else {
+          setEventOrderMap({});
+        }
       } catch (e: any) {
         setError("Došlo k chybě při načítání kalendáře. Zkuste to prosím znovu.");
         setEvents([]);
+        setEventOrderMap({});
       } finally {
         setIsLoading(false);
       }
@@ -112,6 +134,12 @@ export default function CalendarClient() {
 
   const handleCreateOrderFromEvent = () => {
     if (!selectedEvent) return;
+    const existingOrderId = eventOrderMap[selectedEvent.id];
+    if (existingOrderId) {
+      router.push(`/orders/${existingOrderId}`);
+      return;
+    }
+
     const phone = parseFirstPhoneFromDescription(selectedEvent.description) || "";
     const address = formatAddress(selectedEvent) || "";
     const query = new URLSearchParams();
@@ -136,6 +164,10 @@ export default function CalendarClient() {
     }
     return formatCzechDate(selectedDate);
   }, [selectedDate]);
+
+  const selectedEventOrderId = selectedEvent
+    ? eventOrderMap[selectedEvent.id]
+    : undefined;
 
   return (
     <div className="h-[calc(100dvh-4rem)] overflow-hidden bg-zinc-900 text-zinc-50">
@@ -244,8 +276,15 @@ export default function CalendarClient() {
                           <div className="text-sm font-semibold">
                             {event.title || "Bez názvu"}
                           </div>
-                          <div className="text-xs text-zinc-400">
-                            {formatTimeRange(event.scheduledFrom, event.scheduledTill)}
+                          <div className="flex items-center gap-2">
+                            {eventOrderMap[event.id] ? (
+                              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
+                                Zakázka #{eventOrderMap[event.id]}
+                              </span>
+                            ) : null}
+                            <div className="text-xs text-zinc-400">
+                              {formatTimeRange(event.scheduledFrom, event.scheduledTill)}
+                            </div>
                           </div>
                         </div>
                         <div className="mt-1 text-xs text-zinc-400">
@@ -341,11 +380,14 @@ export default function CalendarClient() {
                       onClick={handleCreateOrderFromEvent}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-emerald-950 transition-colors hover:bg-emerald-400"
                     >
-                      Vytvořit zakázku z této události
+                      {selectedEventOrderId
+                        ? `Přejít na existující zakázku #${selectedEventOrderId}`
+                        : "Vytvořit zakázku z této události"}
                     </button>
                     <p className="text-xs text-zinc-500">
-                      V dalším kroku vyberete odpovídající ERP zakázku a pokračujete ve
-                      workflow na stránce zakázky.
+                      {selectedEventOrderId
+                        ? "Zakázka pro tuto událost už existuje."
+                        : "V dalším kroku vyberete odpovídající ERP zakázku a pokračujete ve workflow na stránce zakázky."}
                     </p>
                   </div>
                 </>

@@ -41,6 +41,27 @@ router.post("/", authenticateToken, async (req: AuthenticatedRequest, res: Respo
     const order = await ordersService.createOrder(pool, userId, req.body);
     res.status(201).json({ success: true, data: order });
   } catch (error: any) {
+    const constraint = typeof error?.constraint === "string" ? error.constraint : "";
+    const isRaynetEventUniqueViolation =
+      error?.code === "23505" && constraint.includes("idx_orders_unique_source_raynet_event_user");
+
+    if (isRaynetEventUniqueViolation) {
+      const sourceRaynetEventId = Number(req.body?.source_raynet_event_id);
+      if (Number.isInteger(sourceRaynetEventId) && sourceRaynetEventId > 0) {
+        const pool = getPool();
+        const userId = req.userId!;
+        const links = await ordersService.findOrdersByRaynetEventIds(pool, userId, [
+          sourceRaynetEventId,
+        ]);
+        const existingOrderId = links[0]?.orderId;
+        return res.status(409).json({
+          success: false,
+          error: "Order for this Raynet event already exists",
+          existingOrderId,
+          raynetEventId: sourceRaynetEventId,
+        });
+      }
+    }
     handleError(error, res);
   }
 });
@@ -62,6 +83,36 @@ router.get("/", authenticateToken, async (req: AuthenticatedRequest, res: Respon
     handleError(error, res);
   }
 });
+
+/**
+ * POST /api/orders/by-raynet-events - Resolve existing orders for Raynet event IDs
+ */
+router.post(
+  "/by-raynet-events",
+  authenticateToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const pool = getPool();
+      const userId = req.userId!;
+      const eventIdsRaw = req.body?.eventIds;
+      const eventIds = Array.isArray(eventIdsRaw)
+        ? eventIdsRaw.map((v: unknown) => Number(v)).filter((v: number) => Number.isInteger(v) && v > 0)
+        : [];
+
+      if (!Array.isArray(eventIdsRaw)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid request. 'eventIds' must be an array of positive integers.",
+        });
+      }
+
+      const links = await ordersService.findOrdersByRaynetEventIds(pool, userId, eventIds);
+      res.json({ success: true, data: { links } });
+    } catch (error: any) {
+      handleError(error, res);
+    }
+  }
+);
 
 /**
  * GET /api/orders/:id/extract-products - Extract products from step 1 forms for ADMF prefill

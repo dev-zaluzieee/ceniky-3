@@ -210,9 +210,14 @@ export default function OrdersListClient({
         zipcode: prefill.zipcode,
         raynet_id: prefill.raynet_id,
         erp_customer_id: prefill.erp_customer_id,
+        source_raynet_event_id: fromRaynetEventId ? Number(fromRaynetEventId) : undefined,
       });
 
       if (!createResult.success) {
+        if (createResult.existingOrderId) {
+          router.push(`/orders/${createResult.existingOrderId}`);
+          return;
+        }
         setCreateError(
           createResult.error || "Nepodařilo se vytvořit zakázku."
         );
@@ -245,8 +250,13 @@ export default function OrdersListClient({
         zipcode: manualFormData.zipcode || undefined,
         raynet_id: selectedRaynet?.id,
         erp_customer_id: selectedErp?.id,
+        source_raynet_event_id: fromRaynetEventId ? Number(fromRaynetEventId) : undefined,
       });
       if (!createResult.success) {
+        if (createResult.existingOrderId) {
+          router.push(`/orders/${createResult.existingOrderId}`);
+          return;
+        }
         setCreateError(createResult.error || "Nepodařilo se vytvořit zakázku.");
         return;
       }

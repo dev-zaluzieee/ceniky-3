@@ -9,6 +9,7 @@ import {
   CreateOrderRequest,
   UpdateOrderRequest,
   ListOrdersQuery,
+  RaynetEventOrderLink,
 } from "../types/orders.types";
 import { PaginatedResponse } from "../types/forms.types"; // reuse pagination shape
 import * as ordersQueries from "../queries/orders.queries";
@@ -90,6 +91,10 @@ export async function updateOrder(
     ...request,
     raynet_id: request.raynet_id !== undefined ? request.raynet_id : existing.raynet_id,
     erp_customer_id: request.erp_customer_id !== undefined ? request.erp_customer_id : existing.erp_customer_id,
+    source_raynet_event_id:
+      request.source_raynet_event_id !== undefined
+        ? request.source_raynet_event_id
+        : existing.source_raynet_event_id,
   };
   const order = await ordersQueries.updateOrder(pool, id, userId, merged);
   if (!order) {
@@ -111,4 +116,18 @@ export async function deleteOrder(
   if (!deleted) {
     throw new NotFoundError("Order not found");
   }
+}
+
+/**
+ * Resolve existing order links for provided Raynet event ids.
+ */
+export async function findOrdersByRaynetEventIds(
+  pool: Pool,
+  userId: string,
+  eventIds: number[]
+): Promise<RaynetEventOrderLink[]> {
+  const safeEventIds = eventIds.filter((id) => Number.isInteger(id) && id > 0);
+  if (safeEventIds.length === 0) return [];
+
+  return ordersQueries.findOrdersByRaynetEventIds(pool, userId, safeEventIds);
 }
