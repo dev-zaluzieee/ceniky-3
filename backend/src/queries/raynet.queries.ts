@@ -48,11 +48,11 @@ export async function getEventsForOwnerAndDate(
     const till = `${date} 23:59`;
 
     const response: RaynetEventApiResponse = await raynetClient.getEvents({
-      ownerId,
+      personFilter: ownerId,
       scheduledFrom: from,
       scheduledTill: till,
       categoryIds: [220, 221, 222, 223],
-      status: "SCHEDULED",
+      statusNotEquals: "CANCELLED",
       offset: 0,
       limit: 200,
     });

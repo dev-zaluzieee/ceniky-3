@@ -109,18 +109,18 @@ export async function searchLeadsByPhone(phoneNumber: string): Promise<RaynetApi
 
 /**
  * Fetch Raynet calendar events for a given owner and date range.
- * @param params.ownerId - Raynet user identifier (owner-id[EQ])
+ * @param params.personFilter - Raynet person identifier (personFilter)
  * @param params.scheduledFrom - Inclusive start datetime (YYYY-MM-DD HH:mm)
  * @param params.scheduledTill - Exclusive end datetime (YYYY-MM-DD HH:mm)
  * @param params.categoryIds - Allowed category ids
- * @param params.status - Event status filter
+ * @param params.statusNotEquals - Excluded event status value
  */
 export async function getEvents(params: {
-  ownerId: string;
+  personFilter: string;
   scheduledFrom: string;
   scheduledTill: string;
   categoryIds: number[];
-  status: string;
+  statusNotEquals: string;
   offset?: number;
   limit?: number;
 }): Promise<RaynetEventApiResponse> {
@@ -133,15 +133,15 @@ export async function getEvents(params: {
     url.searchParams.append("offset", String(params.offset ?? 0));
     url.searchParams.append("limit", String(params.limit ?? 200));
 
-    // Owner = current user; use equality to fetch only their events
-    url.searchParams.append("owner-id[EQ]", params.ownerId);
+    // Raynet person filter binds events to the currently paired Raynet user.
+    url.searchParams.append("personFilter", params.personFilter);
 
     // Date window
     url.searchParams.append("scheduledFrom[GE]", params.scheduledFrom);
     url.searchParams.append("scheduledTill[LT]", params.scheduledTill);
 
-    // Status and categories
-    url.searchParams.append("status", params.status);
+    // Exclude cancelled events and include allowed categories.
+    url.searchParams.append("status[NE]", params.statusNotEquals);
     if (params.categoryIds.length > 0) {
       url.searchParams.append("category-id[IN]", params.categoryIds.join(","));
     }
