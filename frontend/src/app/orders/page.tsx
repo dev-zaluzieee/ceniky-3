@@ -7,17 +7,7 @@ import OrdersListClient from "./OrdersListClient";
  * Orders list page (zakázky) - Server Component.
  * Fetches orders on the server and passes to Client Component.
  */
-export default async function OrdersPage({
-  searchParams,
-}: {
-  searchParams?: Promise<{
-    fromRaynetEventId?: string;
-    prefillPhone?: string;
-    prefillAddress?: string;
-    prefillName?: string;
-  }>;
-}) {
-  const resolvedSearchParams = await searchParams;
+export default async function OrdersPage() {
   const session = await getServerSession();
   if (!session) {
     redirect("/login");
@@ -31,10 +21,6 @@ export default async function OrdersPage({
         orders={[]}
         pagination={null}
         error={result.error || "Nepodařilo se načíst zakázky"}
-        fromRaynetEventId={resolvedSearchParams?.fromRaynetEventId}
-        initialPhone={resolvedSearchParams?.prefillPhone}
-        initialAddress={resolvedSearchParams?.prefillAddress}
-        initialName={resolvedSearchParams?.prefillName}
       />
     );
   }
@@ -44,10 +30,6 @@ export default async function OrdersPage({
       orders={result.data || []}
       pagination={result.pagination || null}
       error={null}
-      fromRaynetEventId={resolvedSearchParams?.fromRaynetEventId}
-      initialPhone={resolvedSearchParams?.prefillPhone}
-      initialAddress={resolvedSearchParams?.prefillAddress}
-      initialName={resolvedSearchParams?.prefillName}
     />
   );
 }

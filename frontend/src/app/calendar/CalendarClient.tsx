@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchRaynetEvents, RaynetEvent } from "@/lib/raynet-events";
 import { getOrdersByRaynetEventIds } from "@/lib/orders-api";
+import CreateOrderFromEventModal from "./CreateOrderFromEventModal";
 
 function formatCzechDate(date: Date): string {
   return new Intl.DateTimeFormat("cs-CZ", {
@@ -85,6 +86,7 @@ export default function CalendarClient() {
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const selectedEvent = useMemo(
     () => events.find((e) => e.id === selectedEventId) || events[0] || null,
@@ -151,16 +153,7 @@ export default function CalendarClient() {
       router.push(`/orders/${existingOrderId}`);
       return;
     }
-
-    const phone = parseFirstPhoneFromDescription(selectedEvent.description) || "";
-    const address = formatAddress(selectedEvent) || "";
-    const query = new URLSearchParams();
-    query.set("fromRaynetEventId", String(selectedEvent.id));
-    if (phone) query.set("prefillPhone", phone);
-    if (address) query.set("prefillAddress", address);
-    if (selectedEvent.company?.name) query.set("prefillName", selectedEvent.company.name);
-
-    router.push(`/orders?${query.toString()}`);
+    setShowCreateModal(true);
   };
 
   const friendlyDateLabel = useMemo(() => {
@@ -428,6 +421,16 @@ export default function CalendarClient() {
           </div>
         </div>
       </div>
+
+      {showCreateModal && selectedEvent && (
+        <CreateOrderFromEventModal
+          event={selectedEvent}
+          prefillPhone={selectedEventPhone}
+          prefillAddress={selectedEventAddress}
+          onClose={() => setShowCreateModal(false)}
+          onOrderCreated={(orderId) => router.push(`/orders/${orderId}`)}
+        />
+      )}
     </div>
   );
 }
