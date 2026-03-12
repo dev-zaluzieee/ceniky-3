@@ -6,10 +6,10 @@ import Link from "next/link";
  */
 export default function Home() {
   return (
-    <div className="min-h-screen bg-brand-mint/20 py-16 px-4 dark:bg-zinc-900">
-      <div className="mx-auto max-w-4xl">
+    <div className="h-[calc(100dvh-4rem)] overflow-hidden bg-brand-mint/20 px-4 py-4 dark:bg-zinc-900">
+      <div className="mx-auto flex h-full max-w-4xl flex-col justify-center">
         {/* Page Header */}
-        <div className="mb-12 text-center">
+        <div className="mb-8 text-center">
           <h1 className="mb-4 text-4xl font-bold text-zinc-900 dark:text-zinc-50">
             Ceníky
           </h1>
@@ -19,7 +19,7 @@ export default function Home() {
         </div>
 
         {/* Orders and Forms list cards - icons use brand primary/accent only */}
-        <div className="mb-8 space-y-4">
+        <div className="space-y-3">
           <Link
             href="/calendar"
             className="group flex items-center justify-between rounded-lg border-2 border-zinc-200 bg-white p-6 shadow-sm transition-all hover:border-primary hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-primary"

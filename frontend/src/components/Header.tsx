@@ -12,7 +12,7 @@ export default function Header() {
   const { isAuthenticated, user, signOut, isLoading } = useAuth();
 
   return (
-    <header className="border-b border-primary-hover/30 bg-primary shadow-sm dark:border-primary/50">
+    <header className="sticky top-0 z-40 border-b border-primary-hover/30 bg-primary shadow-sm dark:border-primary/50">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Logo and title */}
