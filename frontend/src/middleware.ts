@@ -3,10 +3,14 @@ import type { NextRequest } from "next/server";
 
 const PUBLIC_PATHS: RegExp[] = [
   /^\/login$/,
+  /^\/offline$/,
   /^\/api\/auth(\/.*)?$/,
   /^\/api(\/.*)?$/,
   /^\/_next(\/.*)?$/,
   /^\/favicon\.ico$/,
+  /^\/sw\.js(\.map)?$/,
+  /^\/swe-worker-.*\.js(\.map)?$/,
+  /^\/icons\//,
 ];
 
 function isPublic(pathname: string): boolean {

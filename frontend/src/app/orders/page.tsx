@@ -10,13 +10,14 @@ import OrdersListClient from "./OrdersListClient";
 export default async function OrdersPage({
   searchParams,
 }: {
-  searchParams?: {
+  searchParams?: Promise<{
     fromRaynetEventId?: string;
     prefillPhone?: string;
     prefillAddress?: string;
     prefillName?: string;
-  };
+  }>;
 }) {
+  const resolvedSearchParams = await searchParams;
   const session = await getServerSession();
   if (!session) {
     redirect("/login");
@@ -30,10 +31,10 @@ export default async function OrdersPage({
         orders={[]}
         pagination={null}
         error={result.error || "Nepodařilo se načíst zakázky"}
-        fromRaynetEventId={searchParams?.fromRaynetEventId}
-        initialPhone={searchParams?.prefillPhone}
-        initialAddress={searchParams?.prefillAddress}
-        initialName={searchParams?.prefillName}
+        fromRaynetEventId={resolvedSearchParams?.fromRaynetEventId}
+        initialPhone={resolvedSearchParams?.prefillPhone}
+        initialAddress={resolvedSearchParams?.prefillAddress}
+        initialName={resolvedSearchParams?.prefillName}
       />
     );
   }
@@ -43,10 +44,10 @@ export default async function OrdersPage({
       orders={result.data || []}
       pagination={result.pagination || null}
       error={null}
-      fromRaynetEventId={searchParams?.fromRaynetEventId}
-      initialPhone={searchParams?.prefillPhone}
-      initialAddress={searchParams?.prefillAddress}
-      initialName={searchParams?.prefillName}
+      fromRaynetEventId={resolvedSearchParams?.fromRaynetEventId}
+      initialPhone={resolvedSearchParams?.prefillPhone}
+      initialAddress={resolvedSearchParams?.prefillAddress}
+      initialName={resolvedSearchParams?.prefillName}
     />
   );
 }

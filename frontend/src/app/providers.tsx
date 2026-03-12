@@ -1,8 +1,14 @@
-/**
- * Providers component
- * No longer needed since we're using Supabase Auth via cookies
- * Kept for compatibility in case we need to add other providers later
- */
+"use client";
+
+import NetworkStatusBanner from "@/components/pwa/NetworkStatusBanner";
+import ServiceWorkerRegister from "@/components/pwa/ServiceWorkerRegister";
+
 export default function Providers({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <ServiceWorkerRegister />
+      <NetworkStatusBanner />
+      {children}
+    </>
+  );
 }

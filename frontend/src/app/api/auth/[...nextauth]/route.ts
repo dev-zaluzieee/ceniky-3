@@ -1,9 +1,8 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { NextRequest } from "next/server";
 
-export const authOptions: NextAuthOptions = {
+const authOptions: NextAuthOptions = {
   cookies: {
     sessionToken: {
       name: process.env.NODE_ENV === "production" ? "__Secure-next-auth.session-token" : "next-auth.session-token",

@@ -85,5 +85,11 @@ logs
 # Sentry
 .sentryclirc
 
+# Serwist (generated service worker)
+frontend/public/sw.js
+frontend/public/sw.js.map
+frontend/public/swe-worker-*.js
+frontend/public/swe-worker-*.js.map
+
 # Ignore everything in /temp folder
 temp/
