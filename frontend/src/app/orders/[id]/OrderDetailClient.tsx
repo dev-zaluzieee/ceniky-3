@@ -170,6 +170,16 @@ export default function OrderDetailClient({
     return () => { cancelled = true; };
   }, [showAddFormModal, pricingForms]);
 
+  /**
+   * Reset modal-local search state whenever the add-form modal closes.
+   * This keeps each modal open as a fresh view with the full forms list visible.
+   */
+  useEffect(() => {
+    if (!showAddFormModal) {
+      setModalSearch("");
+    }
+  }, [showAddFormModal]);
+
   const handleSaveCustomer = async () => {
     setIsSavingCustomer(true);
     setCustomerSaveError(null);
