@@ -16,9 +16,13 @@ import {
  * Note: pricing tool stores prices as prices["height_width"], so we intentionally
  * flip the order here to match that convention.
  */
+function ceilTo100(value: number): number {
+  return Math.ceil(value / 100) * 100;
+}
+
 function dimensionKey(width: string, height: string): string {
-  const w = Math.round(Number(width) || 0);
-  const h = Math.round(Number(height) || 0);
+  const w = ceilTo100(Math.round(Number(width) || 0));
+  const h = ceilTo100(Math.round(Number(height) || 0));
   // Key format expected by pricing tool: "<height>_<width>"
   return `${h}_${w}`;
 }
