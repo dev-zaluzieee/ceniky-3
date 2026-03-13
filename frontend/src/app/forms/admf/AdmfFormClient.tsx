@@ -149,7 +149,7 @@ function ToggleButton({
 
 /** Standard form input styling */
 const inputCls =
-  "w-full rounded-lg border border-zinc-600 bg-zinc-700 px-3 py-2.5 text-sm text-zinc-50 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20";
+  "w-full max-w-full appearance-none rounded-lg border border-zinc-600 bg-zinc-700 px-3 py-2.5 text-sm text-zinc-50 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20";
 const selectCls =
   "w-full rounded-lg border border-zinc-600 bg-zinc-700 px-3 py-2.5 text-sm text-zinc-50 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20";
 const labelCls = "mb-1.5 block text-sm font-medium text-zinc-200";
@@ -873,7 +873,7 @@ export default function AdmfFormClient({
             <div className="space-y-5">
               {/* General payment & delivery fields – 2-column grid for iPad */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="min-w-0">
                   <label className={labelCls}>K objednání</label>
                   <select
                     value={formData.kObjednani ?? "Celá zakázka"}
@@ -884,7 +884,7 @@ export default function AdmfFormClient({
                     <option value="Část zakázky">Část zakázky</option>
                   </select>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className={labelCls}>Záloha zaplacena</label>
                   <select
                     value={formData.zalohaZaplacena ?? "Hotově"}
@@ -910,8 +910,8 @@ export default function AdmfFormClient({
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelCls}>Zálohová faktura (s DPH)</label>
+                  <div className="min-w-0">
+                    <label className={labelCls}>Záloha (s DPH)</label>
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1">
                         <input
@@ -941,7 +941,7 @@ export default function AdmfFormClient({
                       </p>
                     )}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className={labelCls}>Doplatek</label>
                     <div className="relative">
                       <input
@@ -960,8 +960,8 @@ export default function AdmfFormClient({
 
               {/* Delivery & assembly fields */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelCls}>Předpokládaná dodací doba</label>
+                <div className="min-w-0">
+                  <label className={labelCls}>Dodací doba</label>
                   <input
                     type="date"
                     value={formData.predpokladanaDodaciDoba ?? ""}
@@ -969,8 +969,8 @@ export default function AdmfFormClient({
                     className={inputCls}
                   />
                 </div>
-                <div>
-                  <label className={labelCls}>Předpokládaná doba montáže</label>
+                <div className="min-w-0">
+                  <label className={labelCls}>Doba montáže</label>
                   <input
                     type="text"
                     value={formData.predpokladanaDobaMontaze ?? ""}
@@ -982,7 +982,7 @@ export default function AdmfFormClient({
 
               {/* Date, signature, mediator */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="min-w-0">
                   <label className={labelCls}>Datum</label>
                   <input
                     type="date"
@@ -991,8 +991,8 @@ export default function AdmfFormClient({
                     className={inputCls}
                   />
                 </div>
-                <div>
-                  <label className={labelCls}>Jméno zprostředkovatele</label>
+                <div className="min-w-0">
+                  <label className={labelCls}>Zprostředkovatel</label>
                   <input
                     type="text"
                     value={formData.jmenoPodpisZprostredkovatele ?? ""}
