@@ -1,5 +1,12 @@
 [
   {
+    "date": "2026-03-13",
+    "changes": [
+      "Vizuální přepracování administrativního formuláře (ADMF)",
+      "Opravy různých chyb"
+    ]
+  },
+  {
     "date": "2026-03-12",
     "changes": [
       "Aplikace je nyní dostupná jako PWA (Progressive Web App) — možnost instalace na plochu a základní offline podpora"
