@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import { generateAdmfPdf } from "@/lib/admf-pdf";
@@ -97,18 +97,15 @@ export default function AdmfFormClient({
   /** Loading PDF (font + generate); error message if PDF generation fails */
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
-  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const openedPdfUrlsRef = useRef<Set<string>>(new Set());
 
-  /**
-   * Revoke active PDF blob URL on unmount (or when URL changes) to avoid leaking memory.
-   */
+  /** Revoke any remaining PDF blob URLs on component unmount */
   useEffect(() => {
     return () => {
-      if (pdfPreviewUrl) {
-        URL.revokeObjectURL(pdfPreviewUrl);
-      }
+      openedPdfUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      openedPdfUrlsRef.current.clear();
     };
-  }, [pdfPreviewUrl]);
+  }, []);
 
   const updateProductRow = (id: string, upd: Partial<AdmfProductRow>) => {
     setFormData((prev) => ({
@@ -215,8 +212,32 @@ export default function AdmfFormClient({
       const doc = await generateAdmfPdf(formData);
       const blob = doc.output("blob");
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      openedPdfUrlsRef.current.add(url);
+
+      const popup = window.open(url, "_blank", "noopener,noreferrer");
+      const revokeUrl = () => {
+        if (openedPdfUrlsRef.current.delete(url)) {
+          URL.revokeObjectURL(url);
+        }
+      };
+
+      if (popup) {
+        const pollClosedTimer = window.setInterval(() => {
+          if (popup.closed) {
+            window.clearInterval(pollClosedTimer);
+            revokeUrl();
+          }
+        }, 1000);
+
+        // Fallback cleanup in case close detection fails.
+        window.setTimeout(() => {
+          window.clearInterval(pollClosedTimer);
+          revokeUrl();
+        }, 10 * 60 * 1000);
+      } else {
+        // Popup blocked: keep URL briefly so manual open can still succeed.
+        window.setTimeout(revokeUrl, 60 * 1000);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Nepodařilo se vygenerovat PDF.";
       setPdfError(message);

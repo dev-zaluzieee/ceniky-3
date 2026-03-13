@@ -79,6 +79,9 @@ export interface AdmfFormData {
   /** Poznámky */
   poznamkyVyroba?: string;
   poznamkyMontaz?: string;
+  /** Legacy field names still used in current ADMF UI/PDF */
+  doplnujiciInformaceObjednavky?: string;
+  doplnujiciInformaceMontaz?: string;
 
   /** VAT logic */
   platceDph?: boolean;
