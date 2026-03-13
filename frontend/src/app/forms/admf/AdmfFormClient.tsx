@@ -98,10 +98,38 @@ export default function AdmfFormClient({
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const openedPdfUrlsRef = useRef<Set<string>>(new Set());
+  const previewIntervalIdsRef = useRef<Set<number>>(new Set());
+  const previewTimeoutIdsRef = useRef<Set<number>>(new Set());
 
-  /** Revoke any remaining PDF blob URLs on component unmount */
+  const clearTrackedInterval = (id: number) => {
+    window.clearInterval(id);
+    previewIntervalIdsRef.current.delete(id);
+  };
+
+  const clearTrackedTimeout = (id: number) => {
+    window.clearTimeout(id);
+    previewTimeoutIdsRef.current.delete(id);
+  };
+
+  const setTrackedTimeout = (callback: () => void, delayMs: number): number => {
+    const timeoutId = window.setTimeout(() => {
+      previewTimeoutIdsRef.current.delete(timeoutId);
+      callback();
+    }, delayMs);
+    previewTimeoutIdsRef.current.add(timeoutId);
+    return timeoutId;
+  };
+
+  /**
+   * Cleanup all preview resources on unmount.
+   * Prevents orphaned timers and unreleased blob URLs.
+   */
   useEffect(() => {
     return () => {
+      previewIntervalIdsRef.current.forEach((id) => window.clearInterval(id));
+      previewIntervalIdsRef.current.clear();
+      previewTimeoutIdsRef.current.forEach((id) => window.clearTimeout(id));
+      previewTimeoutIdsRef.current.clear();
       openedPdfUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
       openedPdfUrlsRef.current.clear();
     };
@@ -214,29 +242,33 @@ export default function AdmfFormClient({
       const url = URL.createObjectURL(blob);
       openedPdfUrlsRef.current.add(url);
 
-      const popup = window.open(url, "_blank", "noopener,noreferrer");
       const revokeUrl = () => {
         if (openedPdfUrlsRef.current.delete(url)) {
           URL.revokeObjectURL(url);
         }
       };
 
+      const popup = window.open(url, "_blank", "noopener,noreferrer");
+
       if (popup) {
         const pollClosedTimer = window.setInterval(() => {
           if (popup.closed) {
-            window.clearInterval(pollClosedTimer);
+            clearTrackedInterval(pollClosedTimer);
+            clearTrackedTimeout(fallbackCleanupTimer);
             revokeUrl();
           }
         }, 1000);
+        previewIntervalIdsRef.current.add(pollClosedTimer);
 
-        // Fallback cleanup in case close detection fails.
-        window.setTimeout(() => {
-          window.clearInterval(pollClosedTimer);
+        const fallbackCleanupTimer = setTrackedTimeout(() => {
+          clearTrackedInterval(pollClosedTimer);
           revokeUrl();
         }, 10 * 60 * 1000);
       } else {
-        // Popup blocked: keep URL briefly so manual open can still succeed.
-        window.setTimeout(revokeUrl, 60 * 1000);
+        // Popup blocked: keep URL shortly for potential manual open.
+        setTrackedTimeout(() => {
+          revokeUrl();
+        }, 60 * 1000);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Nepodařilo se vygenerovat PDF.";
