@@ -67,6 +67,12 @@ function recalcCenaPoSleve(row: AdmfProductRow): number {
   return Math.round(row.cena * (1 - row.sleva / 100));
 }
 
+/** Clamp discount to allowed integer range (0-100). */
+function sanitizeDiscountInteger(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
 /**
  * Compute doplatek exactly the same way as submit/save path so dirty-state comparison
  * uses a stable payload shape (including computed-only fields).
@@ -229,6 +235,7 @@ export default function AdmfFormClient({
   const [showSignModal, setShowSignModal] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [bulkSlevaInput, setBulkSlevaInput] = useState<string>("0");
   const openedPdfUrlsRef = useRef<Set<string>>(new Set());
   const previewIntervalIdsRef = useRef<Set<ReturnType<typeof setInterval>>>(new Set());
   const previewTimeoutIdsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
@@ -284,6 +291,19 @@ export default function AdmfFormClient({
       productRows: prev.productRows.filter((r) => r.id !== id),
     }));
   };
+
+  /** Apply one integer discount value to every product row. */
+  const applyDiscountToAllRows = useCallback((discount: number) => {
+    const sanitizedDiscount = sanitizeDiscountInteger(discount);
+    setFormData((prev) => ({
+      ...prev,
+      productRows: prev.productRows.map((row) => {
+        const next = { ...row, sleva: sanitizedDiscount };
+        next.cenaPoSleve = recalcCenaPoSleve(next);
+        return next;
+      }),
+    }));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -435,8 +455,6 @@ export default function AdmfFormClient({
       setPdfLoading(false);
     }
   };
-
-  const SLEVA_OPTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
 
   return (
     <div className="min-h-screen bg-zinc-900 pb-24 pt-6 px-4">
@@ -758,6 +776,47 @@ export default function AdmfFormClient({
               </button>
             }
           >
+            <div className="mb-4 flex flex-wrap items-end gap-3">
+              <div className="w-full max-w-[240px]">
+                <label className={labelCls}>Sleva pro všechny produkty (%)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={bulkSlevaInput}
+                  onChange={(e) => {
+                    const nextRaw = e.target.value;
+                    if (nextRaw === "") {
+                      setBulkSlevaInput("");
+                      return;
+                    }
+                    const parsed = parseInt(nextRaw, 10);
+                    setBulkSlevaInput(
+                      Number.isNaN(parsed) ? "0" : String(sanitizeDiscountInteger(parsed))
+                    );
+                  }}
+                  onBlur={() => {
+                    const parsed = parseInt(bulkSlevaInput, 10);
+                    setBulkSlevaInput(String(sanitizeDiscountInteger(parsed)));
+                  }}
+                  className={`${inputCls} text-right`}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const parsed = parseInt(bulkSlevaInput, 10);
+                  const discount = sanitizeDiscountInteger(parsed);
+                  setBulkSlevaInput(String(discount));
+                  applyDiscountToAllRows(discount);
+                }}
+                disabled={formData.productRows.length === 0}
+                className="min-h-[44px] rounded-lg border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Nastavit slevu všem
+              </button>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse text-sm">
                 <thead>
@@ -852,19 +911,19 @@ export default function AdmfFormClient({
                             )}
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <select
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={1}
                               value={row.sleva || 0}
                               onChange={(e) =>
-                                updateProductRow(row.id, { sleva: parseInt(e.target.value, 10) || 0 })
+                                updateProductRow(row.id, {
+                                  sleva: sanitizeDiscountInteger(parseInt(e.target.value, 10)),
+                                })
                               }
-                              className={`${selectCls} w-20 text-right`}
-                            >
-                              {SLEVA_OPTIONS.map((v) => (
-                                <option key={v} value={v}>
-                                  {v}
-                                </option>
-                              ))}
-                            </select>
+                              className={`${inputCls} w-20 text-right`}
+                            />
                           </td>
                           <td className="px-3 py-2 text-right font-medium text-zinc-100 align-top">
                             {cenaZaKsBezDph}
