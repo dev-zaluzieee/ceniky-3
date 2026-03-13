@@ -198,6 +198,10 @@ export default function AdmfFormClient({
   /** Dirty state tracking */
   const [isDirty, setIsDirty] = useState(false);
   const initialFormDataRef = useRef<string | null>(null);
+  const latestFormDataRef = useRef(formData);
+  useEffect(() => {
+    latestFormDataRef.current = formData;
+  }, [formData]);
   useEffect(() => {
     if (formData && initialFormDataRef.current === null) {
       initialFormDataRef.current = JSON.stringify(formData);
@@ -268,8 +272,10 @@ export default function AdmfFormClient({
           return;
         }
         setSubmitSuccess(true);
-        initialFormDataRef.current = JSON.stringify(formData);
-        setIsDirty(false);
+        const submittedSnapshot = JSON.stringify(formData);
+        initialFormDataRef.current = submittedSnapshot;
+        // Preserve dirty=true when user changed fields while save was in flight.
+        setIsDirty(JSON.stringify(latestFormDataRef.current) !== submittedSnapshot);
       } else {
         if (orderId == null) {
           setSubmitError("Zakázka není vybrána.");

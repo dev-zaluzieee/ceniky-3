@@ -584,7 +584,23 @@ export default function OrderDetailClient({
                       className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-800"
                     >
                       <div className="flex items-start justify-between gap-4">
-                        <div>
+                        <div className="flex items-start gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setHoveredAdmfFormId((prev) => prev === form.id ? null : form.id)}
+                            className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
+                              hoveredAdmfFormId === form.id
+                                ? "bg-amber-500/20 text-amber-500"
+                                : "bg-zinc-100 text-zinc-400 hover:bg-zinc-200 dark:bg-zinc-700 dark:text-zinc-500 dark:hover:bg-zinc-600"
+                            }`}
+                            title="Zobrazit zdrojové formuláře"
+                          >
+                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
+                          <div>
                           <div className="mb-1 flex items-center gap-2">
                             <span className="inline-flex rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
                               {FORM_TYPE_NAMES.admf}
@@ -595,6 +611,7 @@ export default function OrderDetailClient({
                           <p className="text-xs text-zinc-500 dark:text-zinc-500">
                             Vytvořeno: {formatDate(form.created_at)}
                           </p>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <Link
