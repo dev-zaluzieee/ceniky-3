@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
-import { generateAdmfPdf } from "@/lib/admf-pdf";
 import type { AdmfFormData, AdmfProductRow, AdmfVatRate } from "@/types/forms/admf.types";
 
 /** Today in YYYY-MM-DD for date input default */
@@ -236,9 +235,6 @@ export default function AdmfFormClient({
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [bulkSlevaInput, setBulkSlevaInput] = useState<string>("0");
-  const openedPdfUrlsRef = useRef<Set<string>>(new Set());
-  const previewIntervalIdsRef = useRef<Set<ReturnType<typeof setInterval>>>(new Set());
-  const previewTimeoutIdsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   /** Dirty state tracking */
   const [isDirty, setIsDirty] = useState(false);
@@ -370,87 +366,40 @@ export default function AdmfFormClient({
   const priceField2Label =
     firstRowWithPriceFields?.priceAffectingFields?.[1]?.label ?? "Lamela/Látka";
 
-  const clearTrackedInterval = useCallback((intervalId: ReturnType<typeof setInterval>) => {
-    clearInterval(intervalId);
-    previewIntervalIdsRef.current.delete(intervalId);
-  }, []);
-
-  const clearTrackedTimeout = useCallback((timeoutId: ReturnType<typeof setTimeout>) => {
-    clearTimeout(timeoutId);
-    previewTimeoutIdsRef.current.delete(timeoutId);
-  }, []);
-
-  const setTrackedTimeout = useCallback((callback: () => void, delayMs: number) => {
-    const timeoutId = setTimeout(() => {
-      previewTimeoutIdsRef.current.delete(timeoutId);
-      callback();
-    }, delayMs);
-    previewTimeoutIdsRef.current.add(timeoutId);
-    return timeoutId;
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      for (const intervalId of previewIntervalIdsRef.current) {
-        clearTrackedInterval(intervalId);
-      }
-      previewIntervalIdsRef.current.clear();
-
-      for (const timeoutId of previewTimeoutIdsRef.current) {
-        clearTrackedTimeout(timeoutId);
-      }
-      previewTimeoutIdsRef.current.clear();
-
-      for (const url of openedPdfUrlsRef.current) {
-        URL.revokeObjectURL(url);
-      }
-      openedPdfUrlsRef.current.clear();
-    };
-  }, [clearTrackedInterval, clearTrackedTimeout]);
-
-  /** Generate PDF and open in new tab */
+  /**
+   * Open persisted ADMF PDF generated on backend.
+   * Blocks when form has unsaved changes because backend renders from stored form_json.
+   */
   const handleShowPreview = async () => {
     setPdfError(null);
+    if (!formId || !isEditMode) {
+      setPdfError("Nejdříve formulář uložte. PDF lze otevřít až po uložení.");
+      return;
+    }
+    if (isDirty) {
+      setPdfError("Máte neuložené změny. Nejdříve formulář uložte.");
+      return;
+    }
+
     setPdfLoading(true);
     try {
-      const doc = await generateAdmfPdf(formData);
-      const blob = doc.output("blob");
-      const url = URL.createObjectURL(blob);
-      openedPdfUrlsRef.current.add(url);
-      const popup = window.open(url, "_blank", "noopener,noreferrer");
+      const pdfUrl = `/api/forms/${formId}/pdf`;
+      const iosStandalone =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        ("standalone" in window.navigator &&
+          Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone));
 
-      if (popup) {
-        const intervalId = setInterval(() => {
-          if (popup.closed) {
-            clearTrackedInterval(intervalId);
-            setTrackedTimeout(() => {
-              if (openedPdfUrlsRef.current.has(url)) {
-                URL.revokeObjectURL(url);
-                openedPdfUrlsRef.current.delete(url);
-              }
-            }, 1500);
-          }
-        }, 1000);
-        previewIntervalIdsRef.current.add(intervalId);
-
-        setTrackedTimeout(() => {
-          clearTrackedInterval(intervalId);
-          if (openedPdfUrlsRef.current.has(url)) {
-            URL.revokeObjectURL(url);
-            openedPdfUrlsRef.current.delete(url);
-          }
-        }, 10 * 60 * 1000);
+      if (iosStandalone) {
+        // iPad/iOS standalone app handles same-window PDF navigation more reliably.
+        window.location.href = pdfUrl;
       } else {
-        setTrackedTimeout(() => {
-          if (openedPdfUrlsRef.current.has(url)) {
-            URL.revokeObjectURL(url);
-            openedPdfUrlsRef.current.delete(url);
-          }
-        }, 60 * 1000);
+        const popup = window.open(pdfUrl, "_blank", "noopener,noreferrer");
+        if (!popup) {
+          window.location.href = pdfUrl;
+        }
       }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Nepodařilo se vygenerovat PDF.";
-      setPdfError(message);
+    } catch {
+      setPdfError("Nepodařilo se otevřít PDF.");
     } finally {
       setPdfLoading(false);
     }

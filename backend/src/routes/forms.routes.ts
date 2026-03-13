@@ -8,6 +8,7 @@ import { getPool, getPricingPool } from "../config/database";
 import * as formsService from "../services/forms.service";
 import * as pricingFormsService from "../services/pricing-forms.service";
 import * as sizeLimitsService from "../services/size-limits.service";
+import * as admfPdfService from "../services/admf-pdf.service";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { ApiError } from "../utils/errors";
 import { FormType, ListFormsQuery } from "../types/forms.types";
@@ -443,6 +444,44 @@ router.get("/:id", authenticateToken, async (req: AuthenticatedRequest, res: Res
       success: true,
       data: form,
     });
+  } catch (error: any) {
+    handleError(error, res);
+  }
+});
+
+/**
+ * GET /api/forms/:id/pdf
+ * Generate PDF for a persisted ADMF form and return binary content.
+ */
+router.get("/:id/pdf", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const userId = req.userId!;
+    const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const id = parseInt(idParam, 10);
+
+    if (isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid form ID",
+      });
+    }
+
+    const form = await formsService.getFormById(pool, id, userId);
+    if (form.form_type !== "admf") {
+      return res.status(400).json({
+        success: false,
+        error: "PDF generation is supported only for ADMF forms",
+      });
+    }
+
+    const pdfBuffer = await admfPdfService.generateAdmfPdfBuffer(form.form_json);
+    const safeName = `admf-${form.id}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
+    res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
+    return res.status(200).send(pdfBuffer);
   } catch (error: any) {
     handleError(error, res);
   }
