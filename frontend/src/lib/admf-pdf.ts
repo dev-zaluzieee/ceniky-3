@@ -15,22 +15,34 @@ const FONT_SIZE_BODY = 10;
 /** Font name used for all text (Czech-capable); registered by loadCzechFont */
 const CZECH_FONT_NAME = "Roboto";
 
+/** Module-level font cache so we fetch the TTF only once. */
+let cachedFontBase64: string | null = null;
+let fontLoadPromise: Promise<string> | null = null;
+
 /**
- * Load Roboto TTF (supports Czech) and register it on the doc.
- * Tries /fonts/Roboto-Regular.ttf first, then CDN fallback.
+ * Pre-load Roboto TTF and cache the base64 data.
+ * Safe to call multiple times – deduplicates concurrent calls.
+ * Call this on component mount so PDF generation is instant on button click.
  */
-async function loadCzechFont(doc: jsPDF): Promise<void> {
+export async function preloadCzechFont(): Promise<void> {
+  if (cachedFontBase64) return;
+  if (!fontLoadPromise) {
+    fontLoadPromise = fetchFontBase64();
+  }
+  cachedFontBase64 = await fontLoadPromise;
+}
+
+async function fetchFontBase64(): Promise<string> {
   const urls = [
     "/fonts/Roboto-Regular.ttf",
     "https://cdn.jsdelivr.net/gh/google/fonts@main/apache/roboto/static/Roboto-Regular.ttf",
   ];
-  let base64: string | null = null;
   for (const url of urls) {
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
       const blob = await res.blob();
-      base64 = await new Promise<string>((resolve, reject) => {
+      const base64 = await new Promise<string>((resolve, reject) => {
         const r = new FileReader();
         r.onload = () => {
           const dataUrl = r.result as string;
@@ -39,16 +51,24 @@ async function loadCzechFont(doc: jsPDF): Promise<void> {
         r.onerror = reject;
         r.readAsDataURL(blob);
       });
-      break;
+      return base64;
     } catch {
       continue;
     }
   }
-  if (!base64) {
-    throw new Error("Nepodařilo se načíst font pro české znaky. Přidejte Roboto-Regular.ttf do složky public/fonts.");
+  throw new Error("Nepodařilo se načíst font pro české znaky. Přidejte Roboto-Regular.ttf do složky public/fonts.");
+}
+
+/**
+ * Register the cached font on a jsPDF doc instance.
+ * Falls back to fetching if not yet pre-loaded.
+ */
+async function loadCzechFont(doc: jsPDF): Promise<void> {
+  if (!cachedFontBase64) {
+    await preloadCzechFont();
   }
   const fileName = "Roboto-Regular.ttf";
-  doc.addFileToVFS(fileName, base64);
+  doc.addFileToVFS(fileName, cachedFontBase64!);
   doc.addFont(fileName, CZECH_FONT_NAME, "normal");
 }
 

@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
-import { generateAdmfPdf } from "@/lib/admf-pdf";
+import { generateAdmfPdf, preloadCzechFont } from "@/lib/admf-pdf";
 import type { AdmfFormData, AdmfProductRow, AdmfVatRate } from "@/types/forms/admf.types";
 
 /** Today in YYYY-MM-DD for date input default */
@@ -165,15 +165,23 @@ export default function AdmfFormClient({
   const isEditMode = !!formId && !!initialData;
   const [formData, setFormData] = useState<AdmfFormData>(() => {
     if (initialData) {
-      return {
+      const mergedInitialData: AdmfFormData = {
         ...getDefaultFormData(),
         ...initialData,
+        // Keep order customer prefill as fallback when initialData omits any field.
+        jmenoPrijmeni: initialData.jmenoPrijmeni ?? customerFromOrder?.name ?? "",
+        email: initialData.email ?? customerFromOrder?.email ?? "",
+        telefon: initialData.telefon ?? customerFromOrder?.phone ?? "",
+        ulice: initialData.ulice ?? customerFromOrder?.address ?? "",
+        mesto: initialData.mesto ?? customerFromOrder?.city ?? "",
+        psc: initialData.psc ?? customerFromOrder?.zipcode ?? "",
         productRows: (initialData.productRows || []).map((r) => ({
           ...defaultProductRow(),
           ...r,
           id: r.id || defaultProductRow().id,
         })),
       };
+      return mergedInitialData;
     }
     const d = getDefaultFormData();
     if (customerFromOrder) {
@@ -194,6 +202,12 @@ export default function AdmfFormClient({
   const [showSignModal, setShowSignModal] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+
+  /** Pre-load Czech font on mount so PDF generation is instant on click */
+  useEffect(() => {
+    preloadCzechFont().catch(() => {});
+  }, []);
 
   /** Dirty state tracking */
   const [isDirty, setIsDirty] = useState(false);
@@ -321,16 +335,17 @@ export default function AdmfFormClient({
   const priceField2Label =
     firstRowWithPriceFields?.priceAffectingFields?.[1]?.label ?? "Lamela/Látka";
 
-  /** Generate PDF and open in new tab */
+  /** Generate PDF and show in-app preview modal (works in PWA / iPad Safari) */
   const handleShowPreview = async () => {
     setPdfError(null);
     setPdfLoading(true);
     try {
       const doc = await generateAdmfPdf(formData);
       const blob = doc.output("blob");
+      // Revoke previous URL if any
+      if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setPdfPreviewUrl(url);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Nepodařilo se vygenerovat PDF.";
       setPdfError(message);
@@ -338,6 +353,13 @@ export default function AdmfFormClient({
       setPdfLoading(false);
     }
   };
+
+  const closePdfPreview = useCallback(() => {
+    if (pdfPreviewUrl) {
+      URL.revokeObjectURL(pdfPreviewUrl);
+    }
+    setPdfPreviewUrl(null);
+  }, [pdfPreviewUrl]);
 
   const SLEVA_OPTIONS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
 
@@ -456,6 +478,51 @@ export default function AdmfFormClient({
                   Zavřít
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: fullscreen PDF preview (works in PWA / iPad Safari) */}
+        {pdfPreviewUrl && (
+          <div
+            className="fixed inset-0 z-50 flex flex-col bg-black/80"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pdf-preview-title"
+          >
+            <div className="flex items-center justify-between border-b border-zinc-700 bg-zinc-900 px-4 py-3">
+              <h2 id="pdf-preview-title" className="text-sm font-semibold text-zinc-50">
+                Náhled PDF
+              </h2>
+              <div className="flex items-center gap-2">
+                <a
+                  href={pdfPreviewUrl}
+                  download="admf.pdf"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-600"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3" />
+                  </svg>
+                  Stáhnout
+                </a>
+                <button
+                  type="button"
+                  onClick={closePdfPreview}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-500"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Zavřít
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <iframe
+                src={pdfPreviewUrl}
+                title="Náhled ADMF PDF"
+                className="h-full w-full border-0"
+              />
             </div>
           </div>
         )}

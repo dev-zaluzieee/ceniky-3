@@ -107,6 +107,7 @@ export default async function OrderFormCreatePage({
       telefon: order.phone ?? undefined,
       ulice: order.address ?? undefined,
       mesto: order.city ?? undefined,
+      psc: order.zipcode ?? undefined,
       poznamkyVyroba: "",
       poznamkyMontaz: "",
       montazCenaBezDph: 1339,
