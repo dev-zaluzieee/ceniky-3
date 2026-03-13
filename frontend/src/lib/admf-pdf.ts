@@ -1,6 +1,6 @@
 /**
- * Generate ADMF (administrativní formulář) as PDF for preview / customer.
- * Uses a Czech-capable font (Roboto) so diacritics (ě, š, č, ř, ž, ý, á, í, é, ú, ů, …) display correctly.
+ * Generate ADMF (administrativni formular) as PDF for preview / customer.
+ * Uses a Czech-capable font (Roboto) so diacritics display correctly.
  */
 
 import { jsPDF } from "jspdf";
@@ -53,10 +53,7 @@ async function loadCzechFont(doc: jsPDF): Promise<void> {
 }
 
 /**
- * Builds a PDF document from ADMF form data (document-style layout).
- * Uses a Czech-capable font so diacritics render correctly.
- * @param formData - Current ADMF form data
- * @returns jsPDF instance (call .save() or .output('blob') from client)
+ * Builds a PDF document from ADMF form data.
  */
 export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -64,7 +61,6 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
 
   let y = MARGIN;
 
-  /** Use only "normal" so Czech works everywhere (we did not register Roboto-Bold) */
   const setFont = (size: number) => {
     doc.setFontSize(size);
     doc.setFont(CZECH_FONT_NAME, "normal");
@@ -111,7 +107,42 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
     y += 4;
   }
 
-  // ---- Záznam o jednání se zákazníkem (product table) ----
+  // ---- Další informace ----
+  setFont(FONT_SIZE_HEADING);
+  doc.text("Další informace", MARGIN, y);
+  y += 6;
+  setFont(FONT_SIZE_BODY);
+  if (formData.typZarizeni) {
+    doc.text(`Typ zařízení: ${formData.typZarizeni}`, MARGIN, y);
+    y += 5;
+  }
+  doc.text(`Parkování: ${formData.parkovani ? "OK" : "Špatné"}`, MARGIN, y);
+  y += 5;
+  if (formData.zv) {
+    doc.text(`ZV: ${formData.zv}`, MARGIN, y);
+    y += 5;
+  }
+  doc.text(`Plátce DPH: ${formData.platceDph ? "Ano" : "Ne"}`, MARGIN, y);
+  y += 5;
+  doc.text(`Nebytový prostor: ${formData.nebytovyProstor ? "Ano" : "Ne"}`, MARGIN, y);
+  y += 5;
+  doc.text(`Bytový prostor: ${formData.bytovyProstor ? "Ano" : "Ne"}`, MARGIN, y);
+  y += 5;
+  doc.text(`Vyfocená lamela: ${formData.maZakaznikVyfocenouLamelu ? "Ano" : "Ne"}`, MARGIN, y);
+  y += 8;
+
+  // ---- DPH ----
+  setFont(FONT_SIZE_HEADING);
+  doc.text("DPH", MARGIN, y);
+  y += 6;
+  setFont(FONT_SIZE_BODY);
+  const vatRate = formData.vatRate ?? 12;
+  doc.text(`Plátce DPH: ${formData.platceDph ? "Ano" : "Ne"}`, MARGIN, y);
+  y += 5;
+  doc.text(`Sazba DPH: ${vatRate} %`, MARGIN, y);
+  y += 8;
+
+  // ---- Záznam o jednání (product table) ----
   setFont(FONT_SIZE_HEADING);
   doc.text("Záznam o jednání se zákazníkem", MARGIN, y);
   y += 6;
@@ -162,7 +193,7 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
 
   y = ((doc as unknown) as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
 
-  // ---- Product total (bez DPH) ----
+  // ---- Product total ----
   const totalProdukty = (formData.productRows || []).reduce(
     (sum, r) => sum + (r.cenaPoSleve ?? 0) * (r.ks ?? 1),
     0
@@ -173,7 +204,6 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
 
   // ---- Montáž ----
   const montazBezDph = formData.montazCenaBezDph ?? 1339;
-  const vatRate = formData.vatRate ?? 12;
   const montazSDph = Math.round(montazBezDph * (1 + vatRate / 100));
   doc.text(`Montáž: ${montazBezDph} Kč (bez DPH), ${montazSDph} Kč (s DPH ${vatRate}%)`, MARGIN, y);
   y += 6;
@@ -186,52 +216,19 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
   doc.text(`Celkem s DPH (${vatRate}%): ${totalSDph} Kč`, MARGIN, y);
   y += 10;
 
-  // ---- DPH (VAT) ----
-  setFont(FONT_SIZE_HEADING);
-  doc.text("DPH", MARGIN, y);
-  y += 6;
-  setFont(FONT_SIZE_BODY);
-  doc.text(`Plátce DPH: ${formData.platceDph ? "Ano" : "Ne"}`, MARGIN, y);
-  y += 5;
-  doc.text(`Faktura: ${formData.faktura ? "Ano" : "Ne"}`, MARGIN, y);
-  y += 5;
-  doc.text(`Nebytový prostor: ${formData.nebytovyProstor ? "Ano" : "Ne"}`, MARGIN, y);
-  y += 5;
-  doc.text(`Bytový prostor: ${formData.bytovyProstor ? "Ano" : "Ne"}`, MARGIN, y);
-  y += 5;
-  doc.text(`Sazba DPH: ${vatRate} %`, MARGIN, y);
-  y += 10;
-
-  // ---- K OBJEDNÁNÍ: záloha, doplatek, datum ----
-  setFont(FONT_SIZE_HEADING);
-  doc.text("K OBJEDNÁNÍ", MARGIN, y);
-  y += 6;
-  setFont(FONT_SIZE_BODY);
-  doc.text(`Zálohová faktura: ${formData.zalohovaFaktura ?? 0} Kč`, MARGIN, y);
-  y += 5;
-  const doplatek = formData.doplatek ?? Math.max(0, totalSDph - (formData.zalohovaFaktura ?? 0));
-  doc.text(`Doplatek: ${doplatek} Kč`, MARGIN, y);
-  y += 5;
-  if (formData.datum) {
-    doc.text(`Datum: ${formData.datum}`, MARGIN, y);
-    y += 5;
-  }
-  y += 6;
-
-  // ---- Doplňující informace ----
-  if (
-    (formData.doplnujiciInformaceObjednavky ?? "").trim() ||
-    (formData.doplnujiciInformaceMontaz ?? "").trim()
-  ) {
+  // ---- Poznámky ----
+  const poznamkyVyroba = (formData.poznamkyVyroba ?? "").trim();
+  const poznamkyMontaz = (formData.poznamkyMontaz ?? "").trim();
+  if (poznamkyVyroba || poznamkyMontaz) {
     setFont(FONT_SIZE_HEADING);
-    doc.text("Doplňující informace", MARGIN, y);
+    doc.text("Poznámky", MARGIN, y);
     y += 6;
     setFont(FONT_SIZE_BODY);
-    if ((formData.doplnujiciInformaceObjednavky ?? "").trim()) {
-      doc.text("Doplňující informace pro objednávky:", MARGIN, y);
+    if (poznamkyVyroba) {
+      doc.text("Poznámky pro výrobu:", MARGIN, y);
       y += 5;
       const split = doc.splitTextToSize(
-        formData.doplnujiciInformaceObjednavky!.trim(),
+        poznamkyVyroba,
         doc.internal.pageSize.getWidth() - 2 * MARGIN
       );
       split.forEach((line: string) => {
@@ -240,11 +237,11 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
       });
       y += 3;
     }
-    if ((formData.doplnujiciInformaceMontaz ?? "").trim()) {
-      doc.text("Doplňující informace pro montáž:", MARGIN, y);
+    if (poznamkyMontaz) {
+      doc.text("Poznámky pro montáž:", MARGIN, y);
       y += 5;
       const split = doc.splitTextToSize(
-        formData.doplnujiciInformaceMontaz!.trim(),
+        poznamkyMontaz,
         doc.internal.pageSize.getWidth() - 2 * MARGIN
       );
       split.forEach((line: string) => {
@@ -252,6 +249,46 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
         y += 5;
       });
     }
+    y += 6;
+  }
+
+  // ---- Platba a montáž ----
+  setFont(FONT_SIZE_HEADING);
+  doc.text("Platba a montáž", MARGIN, y);
+  y += 6;
+  setFont(FONT_SIZE_BODY);
+  if (formData.kObjednani) {
+    doc.text(`K objednání: ${formData.kObjednani}`, MARGIN, y);
+    y += 5;
+  }
+  if (formData.zalohaZaplacena) {
+    doc.text(`Záloha zaplacena: ${formData.zalohaZaplacena}`, MARGIN, y);
+    y += 5;
+  }
+  doc.text(`Vybraná částka: ${formData.zalohovaFaktura ?? 0} Kč`, MARGIN, y);
+  y += 5;
+  const doplatek = formData.doplatek ?? Math.max(0, totalSDph - (formData.zalohovaFaktura ?? 0));
+  doc.text(`Částka doplatku: ${doplatek} Kč`, MARGIN, y);
+  y += 5;
+  if (formData.predpokladanaDodaciDoba) {
+    doc.text(`Předpokládaná dodací doba: ${formData.predpokladanaDodaciDoba}`, MARGIN, y);
+    y += 5;
+  }
+  if (formData.predpokladanaDobaMontaze) {
+    doc.text(`Předpokládaná doba montáže: ${formData.predpokladanaDobaMontaze}`, MARGIN, y);
+    y += 5;
+  }
+  if (formData.datum) {
+    doc.text(`Datum: ${formData.datum}`, MARGIN, y);
+    y += 5;
+  }
+  if (formData.podpisZakaznika) {
+    doc.text(`Podpis zákazníka: ${formData.podpisZakaznika}`, MARGIN, y);
+    y += 5;
+  }
+  if (formData.jmenoPodpisZprostredkovatele) {
+    doc.text(`Zprostředkovatel: ${formData.jmenoPodpisZprostredkovatele}`, MARGIN, y);
+    y += 5;
   }
 
   return doc;
