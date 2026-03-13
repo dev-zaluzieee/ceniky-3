@@ -67,6 +67,28 @@ function recalcCenaPoSleve(row: AdmfProductRow): number {
   return Math.round(row.cena * (1 - row.sleva / 100));
 }
 
+/**
+ * Compute doplatek exactly the same way as submit/save path so dirty-state comparison
+ * uses a stable payload shape (including computed-only fields).
+ */
+function withComputedDoplatek(data: AdmfFormData): AdmfFormData {
+  const totalBezDph =
+    data.productRows.reduce((sum, row) => sum + (row.cenaPoSleve || 0) * (row.ks || 1), 0) +
+    (data.montazCenaBezDph ?? 1339);
+  const vatRate = (data.vatRate ?? 12) as AdmfVatRate;
+  const totalSDph = Math.round(totalBezDph * (1 + vatRate / 100));
+  const zaloha = data.zalohovaFaktura ?? 0;
+  return {
+    ...data,
+    doplatek: Math.max(0, totalSDph - zaloha),
+  };
+}
+
+/** Normalize ADMF data into a stable snapshot for dirty checks. */
+function serializeForDirtyCheck(data: AdmfFormData): string {
+  return JSON.stringify(withComputedDoplatek(data));
+}
+
 /* ── Reusable UI helpers ──────────────────────────────────── */
 
 /** Collapsible section card matching DynamicProductForm pattern */
@@ -217,7 +239,7 @@ export default function AdmfFormClient({
   const latestFormDataRef = useRef<AdmfFormData | null>(null);
   useEffect(() => {
     if (formData && initialFormDataRef.current === null) {
-      initialFormDataRef.current = JSON.stringify(formData);
+      initialFormDataRef.current = serializeForDirtyCheck(formData);
     }
   }, [formData]);
   useEffect(() => {
@@ -225,7 +247,7 @@ export default function AdmfFormClient({
   }, [formData]);
   useEffect(() => {
     if (!formData || initialFormDataRef.current === null) return;
-    setIsDirty(JSON.stringify(formData) !== initialFormDataRef.current);
+    setIsDirty(serializeForDirtyCheck(formData) !== initialFormDataRef.current);
   }, [formData]);
 
   const updateField = useCallback(
@@ -268,18 +290,7 @@ export default function AdmfFormClient({
     setIsSubmitting(true);
     setSubmitError(null);
     setSubmitSuccess(false);
-    const totalB =
-      formData.productRows.reduce(
-        (s, r) => s + (r.cenaPoSleve || 0) * (r.ks || 1),
-        0
-      ) + (formData.montazCenaBezDph ?? 1339);
-    const vat = (formData.vatRate ?? 12) as AdmfVatRate;
-    const totalS = Math.round(totalB * (1 + vat / 100));
-    const zaloha = formData.zalohovaFaktura ?? 0;
-    const dataToSave: AdmfFormData = {
-      ...formData,
-      doplatek: Math.max(0, totalS - zaloha),
-    };
+    const dataToSave: AdmfFormData = withComputedDoplatek(formData);
     try {
       if (isEditMode && formId) {
         const res = await updateForm(formId, dataToSave);
@@ -288,11 +299,11 @@ export default function AdmfFormClient({
           return;
         }
         setSubmitSuccess(true);
-        const savedSnapshot = JSON.stringify(dataToSave);
+        const savedSnapshot = serializeForDirtyCheck(dataToSave);
         initialFormDataRef.current = savedSnapshot;
         const latestFormData = latestFormDataRef.current;
         setIsDirty(
-          latestFormData ? JSON.stringify(latestFormData) !== savedSnapshot : false
+          latestFormData ? serializeForDirtyCheck(latestFormData) !== savedSnapshot : false
         );
       } else {
         if (orderId == null) {
