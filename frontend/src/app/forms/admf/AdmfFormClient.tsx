@@ -209,7 +209,7 @@ export default function AdmfFormClient({
   }, [formData]);
 
   const updateField = useCallback(
-    <K extends keyof AdmfFormData>(key: K, value: AdmfFormData[K]) => {
+    <K extends keyof AdmfFormData,>(key: K, value: AdmfFormData[K]) => {
       setFormData((p) => ({ ...p, [key]: value }));
     },
     []
