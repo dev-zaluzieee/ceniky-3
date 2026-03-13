@@ -42,6 +42,7 @@ export default async function OrderFormCreatePage({
     phone: order.phone ?? undefined,
     address: order.address ?? undefined,
     city: order.city ?? undefined,
+    zipcode: order.zipcode ?? undefined,
   };
 
   const resolvedSearchParams = await searchParams;
@@ -106,8 +107,8 @@ export default async function OrderFormCreatePage({
       telefon: order.phone ?? undefined,
       ulice: order.address ?? undefined,
       mesto: order.city ?? undefined,
-      doplnujiciInformaceObjednavky: "",
-      doplnujiciInformaceMontaz: "",
+      poznamkyVyroba: "",
+      poznamkyMontaz: "",
       montazCenaBezDph: 1339,
       platceDph: false,
       faktura: true,

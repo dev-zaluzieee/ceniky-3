@@ -51,6 +51,7 @@ export default async function OrderFormEditPage({
     phone: order.phone ?? undefined,
     address: order.address ?? undefined,
     city: order.city ?? undefined,
+    zipcode: order.zipcode ?? undefined,
   };
 
   const formType = form.form_type as FormType;

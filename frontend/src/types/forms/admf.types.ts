@@ -54,12 +54,14 @@ export interface AdmfFormData {
   source_form_ids: number[];
 
   /** Customer block (from order) */
-  mesto?: string;
-  castMesta?: string;
-  ulice?: string;
   jmenoPrijmeni?: string;
-  telefon?: string;
+  ico?: string;
   email?: string;
+  telefon?: string;
+  ulice?: string;
+  mesto?: string;
+  psc?: string;
+  castMesta?: string;
   bytRdFirma?: string;
 
   /** Product table (prices without VAT) */
@@ -68,11 +70,17 @@ export interface AdmfFormData {
   /** Montáž: price without VAT (default 1339 → 1500 with 12% VAT) */
   montazCenaBezDph?: number;
 
-  /** Doplňující informace */
-  doplnujiciInformaceObjednavky?: string;
-  doplnujiciInformaceMontaz?: string;
+  /** Další informace */
+  typZarizeni?: string;
+  parkovani?: boolean;
+  zv?: string;
+  maZakaznikVyfocenouLamelu?: boolean;
 
-  /** VAT logic – booleans (A/N on paper) */
+  /** Poznámky */
+  poznamkyVyroba?: string;
+  poznamkyMontaz?: string;
+
+  /** VAT logic */
   platceDph?: boolean;
   faktura?: boolean;
   nebytovyProstor?: boolean;
@@ -80,15 +88,19 @@ export interface AdmfFormData {
   /** Selected VAT rate % (default 12) */
   vatRate?: AdmfVatRate;
 
+  /** Platba a montáž */
+  kObjednani?: string;
+  zalohaZaplacena?: string;
+  vybranaCastka?: number;
+  castkaDoplatku?: number;
   /** K OBJEDNÁNÍ – zálohová faktura (amount with VAT, what customer pays as deposit) */
   zalohovaFaktura?: number;
   /** Doplatek = celkem s DPH − zálohová faktura (computed, can be stored for PDF) */
   doplatek?: number;
-
   predpokladanaDodaciDoba?: string;
+  predpokladanaDobaMontaze?: string;
   kodTerminalu?: string;
   dobaMontaze?: string;
-  maZakaznikVyfocenouLamelu?: string;
 
   /** Datum (default today, editable) */
   datum?: string;
