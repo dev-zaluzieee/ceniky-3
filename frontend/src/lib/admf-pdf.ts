@@ -112,6 +112,23 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
     y += 4;
   }
 
+  // ---- Delivery address (when different) ----
+  if (formData.jinaAdresaDodani && (formData.dodaciUlice || formData.dodaciMesto || formData.dodaciPsc)) {
+    setFont(FONT_SIZE_HEADING);
+    doc.text("Adresa dodání", MARGIN, y);
+    y += 6;
+    setFont(FONT_SIZE_BODY);
+    const dLines: string[] = [];
+    if (formData.dodaciUlice) dLines.push(`Adresa: ${formData.dodaciUlice}`);
+    if (formData.dodaciMesto) dLines.push(`Město: ${formData.dodaciMesto}`);
+    if (formData.dodaciPsc) dLines.push(`PSČ: ${formData.dodaciPsc}`);
+    dLines.forEach((line) => {
+      doc.text(line, MARGIN, y);
+      y += 5;
+    });
+    y += 4;
+  }
+
   // ---- Další informace ----
   setFont(FONT_SIZE_HEADING);
   doc.text("Další informace", MARGIN, y);

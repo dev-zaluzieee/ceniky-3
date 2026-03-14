@@ -71,6 +71,12 @@ export interface AdmfFormData {
   /** Person type for invoice: "soukroma" (default) or "pravnicka" */
   typOsoby?: "soukroma" | "pravnicka";
 
+  /** Delivery address override – when true, delivery address differs from customer address */
+  jinaAdresaDodani?: boolean;
+  dodaciUlice?: string;
+  dodaciMesto?: string;
+  dodaciPsc?: string;
+
   /** Product table (prices without VAT) */
   productRows: AdmfProductRow[];
 

@@ -42,6 +42,10 @@ interface AdmfPdfData {
   mesto?: string;
   psc?: string;
   typOsoby?: "soukroma" | "pravnicka";
+  jinaAdresaDodani?: boolean;
+  dodaciUlice?: string;
+  dodaciMesto?: string;
+  dodaciPsc?: string;
   typZarizeni?: string;
   parkovani?: boolean;
   zv?: string;
@@ -146,6 +150,23 @@ export async function generateAdmfPdfBuffer(raw: Record<string, unknown>): Promi
     if (formData.mesto) lines.push(`Město: ${formData.mesto}`);
     if (formData.psc) lines.push(`PSČ: ${formData.psc}`);
     lines.forEach((line) => {
+      doc.text(line, MARGIN, y);
+      y += 5;
+    });
+    y += 4;
+  }
+
+  // ---- Delivery address (when different) ----
+  if (formData.jinaAdresaDodani && (formData.dodaciUlice || formData.dodaciMesto || formData.dodaciPsc)) {
+    setFont(FONT_SIZE_HEADING);
+    doc.text("Adresa dodání", MARGIN, y);
+    y += 6;
+    setFont(FONT_SIZE_BODY);
+    const dLines: string[] = [];
+    if (formData.dodaciUlice) dLines.push(`Adresa: ${formData.dodaciUlice}`);
+    if (formData.dodaciMesto) dLines.push(`Město: ${formData.dodaciMesto}`);
+    if (formData.dodaciPsc) dLines.push(`PSČ: ${formData.dodaciPsc}`);
+    dLines.forEach((line) => {
       doc.text(line, MARGIN, y);
       y += 5;
     });

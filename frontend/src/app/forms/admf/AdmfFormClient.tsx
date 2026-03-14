@@ -239,6 +239,8 @@ export default function AdmfFormClient({
   const [bulkSlevaInput, setBulkSlevaInput] = useState<string>("0");
   const [aresLoading, setAresLoading] = useState(false);
   const [aresError, setAresError] = useState<string | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
 
   /** Dirty state tracking */
   const [isDirty, setIsDirty] = useState(false);
@@ -397,6 +399,54 @@ export default function AdmfFormClient({
       setAresError("Nepodařilo se spojit se serverem.");
     } finally {
       setAresLoading(false);
+    }
+  };
+
+  /** Use device GPS to get current location and reverse-geocode into delivery address. */
+  const handleGeolocation = async () => {
+    setGeoError(null);
+    if (!navigator.geolocation) {
+      setGeoError("Geolokace není v tomto prohlížeči podporována.");
+      return;
+    }
+    setGeoLoading(true);
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15_000,
+        });
+      });
+      const { latitude, longitude } = pos.coords;
+      const res = await fetch(
+        `/api/geocode/reverse?lat=${latitude}&lon=${longitude}`,
+        { credentials: "include" },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setGeoError(json.error || "Nepodařilo se získat adresu.");
+        return;
+      }
+      const d = json.data as { ulice: string; mesto: string; psc: string };
+      setFormData((prev) => ({
+        ...prev,
+        dodaciUlice: d.ulice || prev.dodaciUlice,
+        dodaciMesto: d.mesto || prev.dodaciMesto,
+        dodaciPsc: d.psc || prev.dodaciPsc,
+      }));
+    } catch (err: unknown) {
+      if (err instanceof GeolocationPositionError) {
+        const msgs: Record<number, string> = {
+          1: "Přístup k poloze byl zamítnut. Povolte polohu v nastavení.",
+          2: "Polohu se nepodařilo zjistit.",
+          3: "Zjištění polohy trvalo příliš dlouho.",
+        };
+        setGeoError(msgs[err.code] || "Nepodařilo se zjistit polohu.");
+      } else {
+        setGeoError("Nepodařilo se získat adresu z polohy.");
+      }
+    } finally {
+      setGeoLoading(false);
     }
   };
 
@@ -807,6 +857,69 @@ export default function AdmfFormClient({
                         type="text"
                         value={formData.psc ?? ""}
                         onChange={(e) => updateField("psc", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CollapsibleSection>
+
+          {/* ── Adresa dodání ── */}
+          <CollapsibleSection title="Adresa dodání">
+            <div className="space-y-4">
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={formData.jinaAdresaDodani ?? false}
+                  onChange={(e) => updateField("jinaAdresaDodani", e.target.checked)}
+                  className="h-5 w-5 rounded border-zinc-600 bg-zinc-700 text-primary focus:ring-primary"
+                />
+                <span className="text-sm font-medium text-zinc-200">Jiná adresa dodání</span>
+              </label>
+
+              {formData.jinaAdresaDodani && (
+                <div className="space-y-4">
+                  <button
+                    type="button"
+                    onClick={handleGeolocation}
+                    disabled={geoLoading}
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-500 disabled:opacity-50"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {geoLoading ? "Zjišťuji polohu…" : "Použít aktuální polohu"}
+                  </button>
+                  {geoError && <p className="text-sm text-red-400">{geoError}</p>}
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className={labelCls}>Adresa</label>
+                      <input
+                        type="text"
+                        value={formData.dodaciUlice ?? ""}
+                        onChange={(e) => updateField("dodaciUlice", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Město</label>
+                      <input
+                        type="text"
+                        value={formData.dodaciMesto ?? ""}
+                        onChange={(e) => updateField("dodaciMesto", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>PSČ</label>
+                      <input
+                        type="text"
+                        value={formData.dodaciPsc ?? ""}
+                        onChange={(e) => updateField("dodaciPsc", e.target.value)}
                         className={inputCls}
                       />
                     </div>

@@ -1,6 +1,5 @@
 /**
  * API routes for ARES (Administrativní registr ekonomických subjektů) lookups.
- * Proxies requests to the Czech government ARES API.
  */
 
 import { Router, Response } from "express";

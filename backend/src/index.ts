@@ -14,6 +14,7 @@ import ordersRoutes from "./routes/orders.routes";
 import raynetRoutes from "./routes/raynet.routes";
 import customersRoutes from "./routes/customers.routes";
 import aresRoutes from "./routes/ares.routes";
+import geocodeRoutes from "./routes/geocode.routes";
 
 // Load environment variables
 dotenv.config();
@@ -104,6 +105,7 @@ app.use("/api/orders", ordersRoutes);
 app.use("/api/raynet", raynetRoutes);
 app.use("/api/customers", customersRoutes);
 app.use("/api/ares", aresRoutes);
+app.use("/api/geocode", geocodeRoutes);
 
 // Root endpoint
 app.get("/", (req: Request, res: Response) => {
