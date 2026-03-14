@@ -323,6 +323,26 @@ export default function DynamicProductForm({
           }
           const prevValue = row[propertyCode];
           const updatedRow: FormRow = { ...row, [propertyCode]: value };
+
+          // Auto-select dependent enum fields that are narrowed to a single option
+          const affectedDeps = (payload.dependencies ?? []).filter(
+            (d) => d.source_enum === propertyCode
+          );
+          for (const dep of affectedDeps) {
+            const targetProp = formBodyProperties.find((p) => p.Code === dep.target_property);
+            if (!targetProp || targetProp.DataType !== "enum") continue;
+            const opts = getEnumOptionsForRow(dep.target_property, updatedRow);
+            if (opts.length === 1) {
+              updatedRow[dep.target_property] = opts[0].code;
+            } else {
+              // If the current value is no longer valid, clear it
+              const currentVal = String(updatedRow[dep.target_property] ?? "");
+              if (currentVal && !opts.some((o) => o.code === currentVal)) {
+                updatedRow[dep.target_property] = "";
+              }
+            }
+          }
+
           rows.push(updatedRow);
 
           if (linkPropertyCodes.includes(propertyCode)) {

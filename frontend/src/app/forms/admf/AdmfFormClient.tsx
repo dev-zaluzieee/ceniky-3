@@ -389,9 +389,10 @@ export default function AdmfFormClient({
         ico: d.ico,
         dic: d.dic ?? prev.dic,
         nazevFirmy: d.obchodniJmeno,
-        ulice: d.ulice || prev.ulice,
-        mesto: d.mesto || prev.mesto,
-        psc: d.psc || prev.psc,
+        // Use ?? so empty string from ARES clears the field; only null/undefined keep prev
+        ulice: d.ulice ?? prev.ulice,
+        mesto: d.mesto ?? prev.mesto,
+        psc: d.psc ?? prev.psc,
       }));
     } catch {
       setAresError("Nepodařilo se spojit se serverem.");
