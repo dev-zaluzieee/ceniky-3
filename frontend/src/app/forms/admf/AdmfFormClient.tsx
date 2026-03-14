@@ -234,6 +234,8 @@ export default function AdmfFormClient({
   const [showSignModal, setShowSignModal] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  /** Blob URL for PDF viewer modal; when set, modal is open. Revoke on close. */
+  const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
   const [bulkSlevaInput, setBulkSlevaInput] = useState<string>("0");
 
   /** Dirty state tracking */
@@ -367,13 +369,13 @@ export default function AdmfFormClient({
     firstRowWithPriceFields?.priceAffectingFields?.[1]?.label ?? "Lamela/Látka";
 
   /**
-   * Open persisted ADMF PDF generated on backend.
+   * Fetch PDF and open it in a modal; user can view and download from there.
    * Blocks when form has unsaved changes because backend renders from stored form_json.
    */
-  const handleShowPreview = async () => {
+  const handleOpenPdfModal = async () => {
     setPdfError(null);
     if (!formId || !isEditMode) {
-      setPdfError("Nejdříve formulář uložte. PDF lze otevřít až po uložení.");
+      setPdfError("Nejdříve formulář uložte. PDF lze zobrazit až po uložení.");
       return;
     }
     if (isDirty) {
@@ -384,25 +386,35 @@ export default function AdmfFormClient({
     setPdfLoading(true);
     try {
       const pdfUrl = `/api/forms/${formId}/pdf`;
-      const iosStandalone =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        ("standalone" in window.navigator &&
-          Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone));
-
-      if (iosStandalone) {
-        // iPad/iOS standalone app handles same-window PDF navigation more reliably.
-        window.location.href = pdfUrl;
-      } else {
-        const popup = window.open(pdfUrl, "_blank", "noopener,noreferrer");
-        if (!popup) {
-          window.location.href = pdfUrl;
-        }
+      const res = await fetch(pdfUrl, { credentials: "include" });
+      if (!res.ok) {
+        throw new Error(res.statusText);
       }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setPdfViewerUrl(url);
     } catch {
-      setPdfError("Nepodařilo se otevřít PDF.");
+      setPdfError("Nepodařilo se načíst PDF.");
     } finally {
       setPdfLoading(false);
     }
+  };
+
+  /** Close PDF modal and revoke blob URL to free memory. */
+  const handleClosePdfModal = () => {
+    if (pdfViewerUrl) {
+      URL.revokeObjectURL(pdfViewerUrl);
+      setPdfViewerUrl(null);
+    }
+  };
+
+  /** Trigger download of the currently shown PDF (same blob as in modal). */
+  const handleDownloadPdfFromModal = () => {
+    if (!pdfViewerUrl || !formId) return;
+    const a = document.createElement("a");
+    a.href = pdfViewerUrl;
+    a.download = `admf-${formId}.pdf`;
+    a.click();
   };
 
   return (
@@ -442,14 +454,14 @@ export default function AdmfFormClient({
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
-              onClick={handleShowPreview}
+              onClick={handleOpenPdfModal}
               disabled={pdfLoading}
               className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
-              {pdfLoading ? "Generuji PDF…" : "Otevřít PDF"}
+              {pdfLoading ? "Načítám PDF…" : "Zobrazit PDF"}
             </button>
             {pdfError && (
               <p className="text-sm text-red-400">{pdfError}</p>
@@ -520,6 +532,48 @@ export default function AdmfFormClient({
                   Zavřít
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: PDF viewer with download */}
+        {pdfViewerUrl && (
+          <div
+            className="fixed inset-0 z-50 flex flex-col bg-black/90 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pdf-modal-title"
+          >
+            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-zinc-700 pb-3">
+              <h2 id="pdf-modal-title" className="text-lg font-semibold text-zinc-50">
+                Náhled PDF
+              </h2>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadPdfFromModal}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Stáhnout
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClosePdfModal}
+                  className="min-h-[44px] rounded-lg bg-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-500"
+                >
+                  Zavřít
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 pt-3">
+              <iframe
+                src={pdfViewerUrl}
+                title="Náhled administrativního formuláře"
+                className="h-full w-full rounded border border-zinc-700 bg-white"
+              />
             </div>
           </div>
         )}
