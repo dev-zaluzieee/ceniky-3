@@ -62,12 +62,11 @@ interface AdmfPdfData {
   jmenoPodpisZprostredkovatele?: string;
 }
 
+/** Font ships with backend in backend/fonts/; at runtime __dirname is dist/services so ../../fonts is alongside dist. */
 function fontCandidates(): string[] {
   return [
-    path.resolve(process.cwd(), "../frontend/public/fonts/Roboto-Regular.ttf"),
-    path.resolve(process.cwd(), "frontend/public/fonts/Roboto-Regular.ttf"),
-    path.resolve(__dirname, "../../../frontend/public/fonts/Roboto-Regular.ttf"),
-    path.resolve(__dirname, "../../../../frontend/public/fonts/Roboto-Regular.ttf"),
+    path.resolve(__dirname, "../../fonts/Roboto-Regular.ttf"),
+    path.resolve(process.cwd(), "fonts/Roboto-Regular.ttf"),
   ];
 }
 
