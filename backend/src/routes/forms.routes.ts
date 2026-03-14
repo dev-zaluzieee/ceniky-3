@@ -479,7 +479,7 @@ router.get("/:id/pdf", authenticateToken, async (req: AuthenticatedRequest, res:
     const safeName = `admf-${form.id}.pdf`;
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+    res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
     res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
     return res.status(200).send(pdfBuffer);
   } catch (error: any) {

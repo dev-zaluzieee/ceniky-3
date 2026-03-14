@@ -401,20 +401,42 @@ export default function AdmfFormClient({
   };
 
   /** Close PDF modal and revoke blob URL to free memory. */
-  const handleClosePdfModal = () => {
-    if (pdfViewerUrl) {
-      URL.revokeObjectURL(pdfViewerUrl);
-      setPdfViewerUrl(null);
-    }
-  };
+  const handleClosePdfModal = useCallback(() => {
+    if (pdfViewerUrl) URL.revokeObjectURL(pdfViewerUrl);
+    setPdfViewerUrl(null);
+  }, [pdfViewerUrl]);
 
-  /** Trigger download of the currently shown PDF (same blob as in modal). */
-  const handleDownloadPdfFromModal = () => {
+  /** Close PDF modal on Escape key */
+  useEffect(() => {
+    if (!pdfViewerUrl) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleClosePdfModal();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [pdfViewerUrl, handleClosePdfModal]);
+
+  /** Save the currently shown PDF via native share sheet (iPad) or download fallback. */
+  const handleDownloadPdfFromModal = async () => {
     if (!pdfViewerUrl || !formId) return;
+    const fileName = `admf-${formId}.pdf`;
+    try {
+      const res = await fetch(pdfViewerUrl);
+      const blob = await res.blob();
+      const file = new File([blob], fileName, { type: "application/pdf" });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        return;
+      }
+    } catch {
+      // share cancelled or unsupported – fall through to <a> fallback
+    }
     const a = document.createElement("a");
     a.href = pdfViewerUrl;
-    a.download = `admf-${formId}.pdf`;
+    a.download = fileName;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
   };
 
   return (
@@ -543,6 +565,7 @@ export default function AdmfFormClient({
             role="dialog"
             aria-modal="true"
             aria-labelledby="pdf-modal-title"
+            onClick={(e) => { if (e.target === e.currentTarget) handleClosePdfModal(); }}
           >
             <div className="flex shrink-0 items-center justify-between gap-4 border-b border-zinc-700 pb-3">
               <h2 id="pdf-modal-title" className="text-lg font-semibold text-zinc-50">
