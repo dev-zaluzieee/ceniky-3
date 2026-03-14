@@ -237,6 +237,8 @@ export default function AdmfFormClient({
   /** Blob URL for PDF viewer modal; when set, modal is open. Revoke on close. */
   const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
   const [bulkSlevaInput, setBulkSlevaInput] = useState<string>("0");
+  const [aresLoading, setAresLoading] = useState(false);
+  const [aresError, setAresError] = useState<string | null>(null);
 
   /** Dirty state tracking */
   const [isDirty, setIsDirty] = useState(false);
@@ -367,6 +369,36 @@ export default function AdmfFormClient({
     firstRowWithPriceFields?.priceAffectingFields?.[0]?.label ?? "Rám";
   const priceField2Label =
     firstRowWithPriceFields?.priceAffectingFields?.[1]?.label ?? "Lamela/Látka";
+
+  /** Look up company data by IČO via ARES and auto-fill fields. */
+  const handleAresLookup = async () => {
+    const ico = (formData.ico ?? "").trim();
+    if (!ico) return;
+    setAresLoading(true);
+    setAresError(null);
+    try {
+      const res = await fetch(`/api/ares/${encodeURIComponent(ico)}`, { credentials: "include" });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setAresError(json.error || "Nepodařilo se vyhledat IČO.");
+        return;
+      }
+      const d = json.data as { ico: string; dic?: string; obchodniJmeno: string; ulice: string; mesto: string; psc: string };
+      setFormData((prev) => ({
+        ...prev,
+        ico: d.ico,
+        dic: d.dic ?? prev.dic,
+        nazevFirmy: d.obchodniJmeno,
+        ulice: d.ulice || prev.ulice,
+        mesto: d.mesto || prev.mesto,
+        psc: d.psc || prev.psc,
+      }));
+    } catch {
+      setAresError("Nepodařilo se spojit se serverem.");
+    } finally {
+      setAresLoading(false);
+    }
+  };
 
   /**
    * Fetch PDF and open it in a modal; user can view and download from there.
@@ -614,77 +646,173 @@ export default function AdmfFormClient({
             />
           </div>
 
-          {/* ── Údaje zákazníka (ze zakázky) ── */}
-          <CollapsibleSection title="Údaje zákazníka (ze zakázky)">
+          {/* ── Údaje zákazníka / fakturační údaje ── */}
+          <CollapsibleSection title="Údaje zákazníka">
             <div className="space-y-4">
-              <div>
-                <label className={labelCls}>Jméno zákazníka / Název firmy</label>
+              {/* Read-only display when override is off */}
+              {!formData.fakturaOverride && (
+                <div className="space-y-2 text-sm text-zinc-300">
+                  {formData.jmenoPrijmeni && <p><span className="text-zinc-500">Jméno:</span> {formData.jmenoPrijmeni}</p>}
+                  {formData.email && <p><span className="text-zinc-500">E-mail:</span> {formData.email}</p>}
+                  {formData.telefon && <p><span className="text-zinc-500">Telefon:</span> {formData.telefon}</p>}
+                  {formData.ulice && <p><span className="text-zinc-500">Adresa:</span> {formData.ulice}</p>}
+                  {formData.mesto && <p><span className="text-zinc-500">Město:</span> {formData.mesto}</p>}
+                  {formData.psc && <p><span className="text-zinc-500">PSČ:</span> {formData.psc}</p>}
+                  {!formData.jmenoPrijmeni && !formData.email && !formData.telefon && (
+                    <p className="text-zinc-500">Žádné údaje zákazníka.</p>
+                  )}
+                </div>
+              )}
+
+              {/* Override checkbox */}
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
                 <input
-                  type="text"
-                  value={formData.jmenoPrijmeni ?? ""}
-                  onChange={(e) => updateField("jmenoPrijmeni", e.target.value)}
-                  className={`${inputCls} max-w-md`}
+                  type="checkbox"
+                  checked={formData.fakturaOverride ?? false}
+                  onChange={(e) => updateField("fakturaOverride", e.target.checked)}
+                  className="h-5 w-5 rounded border-zinc-600 bg-zinc-700 text-primary focus:ring-primary"
                 />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className={labelCls}>IČO</label>
-                  <input
-                    type="text"
-                    value={formData.ico ?? ""}
-                    onChange={(e) => updateField("ico", e.target.value)}
-                    className={inputCls}
-                    placeholder="-"
-                  />
+                <span className="text-sm font-medium text-zinc-200">Změnit údaje na faktuře</span>
+              </label>
+
+              {/* Editable fields when override is active */}
+              {formData.fakturaOverride && (
+                <div className="space-y-4">
+                  {/* Person type toggle */}
+                  <div className="flex gap-1 rounded-lg bg-zinc-700 p-1 max-w-xs">
+                    <button
+                      type="button"
+                      onClick={() => updateField("typOsoby", "soukroma")}
+                      className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        (formData.typOsoby ?? "soukroma") === "soukroma"
+                          ? "bg-primary text-white"
+                          : "text-zinc-300 hover:text-white"
+                      }`}
+                    >
+                      Soukromá osoba
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateField("typOsoby", "pravnicka")}
+                      className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        formData.typOsoby === "pravnicka"
+                          ? "bg-primary text-white"
+                          : "text-zinc-300 hover:text-white"
+                      }`}
+                    >
+                      Právnická osoba
+                    </button>
+                  </div>
+
+                  {/* Právnická osoba: IČO search + extra fields */}
+                  {formData.typOsoby === "pravnicka" && (
+                    <>
+                      <div>
+                        <label className={labelCls}>IČO</label>
+                        <div className="flex gap-2 max-w-md">
+                          <input
+                            type="text"
+                            value={formData.ico ?? ""}
+                            onChange={(e) => updateField("ico", e.target.value)}
+                            className={`${inputCls} flex-1`}
+                            placeholder="Např. 07664681"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAresLookup}
+                            disabled={aresLoading || !(formData.ico ?? "").trim()}
+                            className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-500 disabled:opacity-50"
+                          >
+                            {aresLoading ? "Hledám…" : "Vyhledat"}
+                          </button>
+                        </div>
+                        {aresError && <p className="mt-1 text-sm text-red-400">{aresError}</p>}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className={labelCls}>Název firmy</label>
+                          <input
+                            type="text"
+                            value={formData.nazevFirmy ?? ""}
+                            onChange={(e) => updateField("nazevFirmy", e.target.value)}
+                            className={inputCls}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelCls}>DIČ</label>
+                          <input
+                            type="text"
+                            value={formData.dic ?? ""}
+                            onChange={(e) => updateField("dic", e.target.value)}
+                            className={inputCls}
+                            placeholder="CZ..."
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Common fields */}
+                  <div>
+                    <label className={labelCls}>Jméno {formData.typOsoby === "pravnicka" ? "kontaktní osoby" : "zákazníka"}</label>
+                    <input
+                      type="text"
+                      value={formData.jmenoPrijmeni ?? ""}
+                      onChange={(e) => updateField("jmenoPrijmeni", e.target.value)}
+                      className={`${inputCls} max-w-md`}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelCls}>E-mail</label>
+                      <input
+                        type="email"
+                        value={formData.email ?? ""}
+                        onChange={(e) => updateField("email", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Telefon</label>
+                      <input
+                        type="tel"
+                        value={formData.telefon ?? ""}
+                        onChange={(e) => updateField("telefon", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className={labelCls}>Adresa</label>
+                      <input
+                        type="text"
+                        value={formData.ulice ?? ""}
+                        onChange={(e) => updateField("ulice", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Město</label>
+                      <input
+                        type="text"
+                        value={formData.mesto ?? ""}
+                        onChange={(e) => updateField("mesto", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>PSČ</label>
+                      <input
+                        type="text"
+                        value={formData.psc ?? ""}
+                        onChange={(e) => updateField("psc", e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className={labelCls}>E-mail</label>
-                  <input
-                    type="email"
-                    value={formData.email ?? ""}
-                    onChange={(e) => updateField("email", e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Telefon</label>
-                  <input
-                    type="tel"
-                    value={formData.telefon ?? ""}
-                    onChange={(e) => updateField("telefon", e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className={labelCls}>Adresa</label>
-                  <input
-                    type="text"
-                    value={formData.ulice ?? ""}
-                    onChange={(e) => updateField("ulice", e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Město</label>
-                  <input
-                    type="text"
-                    value={formData.mesto ?? ""}
-                    onChange={(e) => updateField("mesto", e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>PSČ</label>
-                  <input
-                    type="text"
-                    value={formData.psc ?? ""}
-                    onChange={(e) => updateField("psc", e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </CollapsibleSection>
 

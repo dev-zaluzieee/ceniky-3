@@ -34,11 +34,14 @@ interface AdmfPdfData {
   name?: string;
   jmenoPrijmeni?: string;
   ico?: string;
+  dic?: string;
+  nazevFirmy?: string;
   email?: string;
   telefon?: string;
   ulice?: string;
   mesto?: string;
   psc?: string;
+  typOsoby?: "soukroma" | "pravnicka";
   typZarizeni?: string;
   parkovani?: boolean;
   zv?: string;
@@ -118,7 +121,9 @@ export async function generateAdmfPdfBuffer(raw: Record<string, unknown>): Promi
 
   const hasCustomer =
     formData.jmenoPrijmeni ||
+    formData.nazevFirmy ||
     formData.ico ||
+    formData.dic ||
     formData.email ||
     formData.telefon ||
     formData.ulice ||
@@ -126,12 +131,15 @@ export async function generateAdmfPdfBuffer(raw: Record<string, unknown>): Promi
     formData.psc;
   if (hasCustomer) {
     setFont(FONT_SIZE_HEADING);
-    doc.text("Údaje zákazníka", MARGIN, y);
+    const isPravnicka = formData.typOsoby === "pravnicka";
+    doc.text(isPravnicka ? "Údaje firmy" : "Údaje zákazníka", MARGIN, y);
     y += 6;
     setFont(FONT_SIZE_BODY);
     const lines: string[] = [];
+    if (isPravnicka && formData.nazevFirmy) lines.push(`Firma: ${formData.nazevFirmy}`);
     if (formData.jmenoPrijmeni) lines.push(`Jméno: ${formData.jmenoPrijmeni}`);
     if (formData.ico) lines.push(`IČO: ${formData.ico}`);
+    if (formData.dic) lines.push(`DIČ: ${formData.dic}`);
     if (formData.email) lines.push(`E-mail: ${formData.email}`);
     if (formData.telefon) lines.push(`Telefon: ${formData.telefon}`);
     if (formData.ulice) lines.push(`Adresa: ${formData.ulice}`);

@@ -56,6 +56,8 @@ export interface AdmfFormData {
   /** Customer block (from order) */
   jmenoPrijmeni?: string;
   ico?: string;
+  dic?: string;
+  nazevFirmy?: string;
   email?: string;
   telefon?: string;
   ulice?: string;
@@ -63,6 +65,11 @@ export interface AdmfFormData {
   psc?: string;
   castMesta?: string;
   bytRdFirma?: string;
+
+  /** Invoice override – when true, worker has opted to edit customer/invoice data */
+  fakturaOverride?: boolean;
+  /** Person type for invoice: "soukroma" (default) or "pravnicka" */
+  typOsoby?: "soukroma" | "pravnicka";
 
   /** Product table (prices without VAT) */
   productRows: AdmfProductRow[];
