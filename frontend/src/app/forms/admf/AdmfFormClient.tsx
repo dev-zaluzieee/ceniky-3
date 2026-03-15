@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
+import { useAppMode } from "@/lib/mode-context";
 import type { AdmfFormData, AdmfProductRow, AdmfVatRate } from "@/types/forms/admf.types";
 
 /** Today in YYYY-MM-DD for date input default */
@@ -199,6 +200,7 @@ export default function AdmfFormClient({
   orderId,
   customerFromOrder,
 }: AdmfFormClientProps) {
+  const { mode } = useAppMode();
   const isEditMode = !!formId && !!initialData;
   const [formData, setFormData] = useState<AdmfFormData>(() => {
     if (initialData) {
@@ -255,6 +257,10 @@ export default function AdmfFormClient({
   const [aresError, setAresError] = useState<string | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportedAt, setExportedAt] = useState<string | null>(null);
+  const [exportTestMode, setExportTestMode] = useState(false);
 
   /** Dirty state tracking */
   const [isDirty, setIsDirty] = useState(false);
@@ -464,6 +470,50 @@ export default function AdmfFormClient({
     }
   };
 
+  // ── Raynet export: load status on mount ──
+  useEffect(() => {
+    if (!formId || !isEditMode) return;
+    fetch(`/api/forms/${formId}/export-status`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setExportedAt(json.data.exportedAt);
+          setExportTestMode(json.data.testMode ?? false);
+        }
+      })
+      .catch(() => {});
+  }, [formId, isEditMode]);
+
+  /** Run the Raynet export (or test export). */
+  const handleExportToRaynet = async () => {
+    if (!formId || !isEditMode) return;
+    setExportLoading(true);
+    setExportError(null);
+    try {
+      const res = await fetch(`/api/forms/${formId}/export-raynet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ testMode: mode === "TEST" }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setExportError(json.error || "Export se nezdařil.");
+        return;
+      }
+      setExportedAt(json.data.exportedAt);
+      setExportTestMode(json.data.testMode ?? false);
+
+      // TODO: trigger email sending to customer here
+      // if (mode === "PRODUCTION") { await sendEmailToCustomer(formId); }
+    } catch {
+      setExportError("Nepodařilo se spojit se serverem.");
+    } finally {
+      setExportLoading(false);
+      setShowSendModal(false);
+    }
+  };
+
   /**
    * Fetch PDF and open it in a modal; user can view and download from there.
    * Blocks when form has unsaved changes because backend renders from stored form_json.
@@ -586,18 +636,34 @@ export default function AdmfFormClient({
             )}
             <button
               type="button"
-              onClick={() => setShowSendModal(true)}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90"
+              onClick={() => {
+                if (isDirty) {
+                  setExportError("Máte neuložené změny. Nejdříve formulář uložte.");
+                  return;
+                }
+                setExportError(null);
+                setShowSendModal(true);
+              }}
+              disabled={!isEditMode || exportLoading}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
-              Odeslat zákazníkovi
+              {exportLoading ? "Exportuji…" : "Odeslat zákazníkovi"}
             </button>
+            {exportError && (
+              <p className="text-sm text-red-400">{exportError}</p>
+            )}
+            {exportedAt && (
+              <p className="text-xs text-zinc-400">
+                Exportováno do Raynet{exportTestMode ? " (test)" : ""}: {new Date(exportedAt).toLocaleString("cs-CZ")}
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Modal: dev mode – save & send blocked */}
+        {/* Modal: Odeslat zákazníkovi — confirms Raynet export + email */}
         {showSendModal && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -609,17 +675,41 @@ export default function AdmfFormClient({
               <h2 id="send-modal-title" className="mb-4 text-lg font-semibold text-zinc-50">
                 Odeslat zákazníkovi
               </h2>
-              <p className="mb-6 text-sm text-zinc-400">
-                V testovacím režimu neodesíláme e-maily zákazníkům ani neukládáme data do ERP a Raynet.
-                V režimu vývoje je tato operace blokována.
-              </p>
-              <div className="flex justify-end">
+              {mode === "PRODUCTION" ? (
+                <p className="mb-6 text-sm text-zinc-300">
+                  Tato akce synchronizuje data formuláře do Raynetu a odešle e-mail zákazníkovi.
+                  Chcete pokračovat?
+                </p>
+              ) : (
+                <p className="mb-6 text-sm text-zinc-300">
+                  <span className="font-semibold text-amber-400">Testovací režim</span> — vše
+                  proběhne stejně jako v produkci, ale data se neodešlou do Raynetu a zákazníkovi
+                  nepřijde e-mail. Vhodné pro testování.
+                </p>
+              )}
+              {exportError && (
+                <p className="mb-4 text-sm text-red-400">{exportError}</p>
+              )}
+              <div className="flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setShowSendModal(false)}
-                  className="min-h-[44px] rounded-lg bg-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-500"
+                  disabled={exportLoading}
+                  className="min-h-[44px] rounded-lg bg-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-500 disabled:opacity-50"
                 >
-                  Zavřít
+                  Zrušit
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportToRaynet}
+                  disabled={exportLoading}
+                  className={`min-h-[44px] rounded-lg px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 ${
+                    mode === "PRODUCTION"
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "bg-amber-600 hover:bg-amber-700"
+                  }`}
+                >
+                  {exportLoading ? "Odesílám…" : mode === "PRODUCTION" ? "Odeslat" : "Odeslat (test)"}
                 </button>
               </div>
             </div>

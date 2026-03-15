@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
+import { useAppMode } from "@/lib/mode-context";
 
 /**
- * Header component with logo, title and user info / sign out
+ * Header component with logo, title, mode toggle, and user info / sign out
  * Styled with brand primary (green) background and white text
  * Logo uses native img to avoid Next.js Image optimizer "received null" with WebP in dev
  */
 export default function Header() {
   const { isAuthenticated, user, signOut, isLoading } = useAuth();
+  const { mode, setMode } = useAppMode();
 
   return (
     <header className="sticky top-0 z-40 border-b border-primary-hover/30 bg-primary shadow-sm dark:border-primary/50">
@@ -38,9 +40,35 @@ export default function Header() {
             </Link>
           </div>
 
-          {/* User info and sign out - on-brand styling */}
+          {/* Mode toggle + User info and sign out */}
           {!isLoading && isAuthenticated && user && (
             <div className="flex items-center gap-3 sm:gap-4">
+              {/* TEST / PRODUCTION toggle */}
+              <div className="inline-flex overflow-hidden rounded-lg border border-white/30">
+                <button
+                  type="button"
+                  onClick={() => setMode("TEST")}
+                  className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    mode === "TEST"
+                      ? "bg-amber-500 text-white"
+                      : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
+                  }`}
+                >
+                  TEST
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("PRODUCTION")}
+                  className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    mode === "PRODUCTION"
+                      ? "bg-red-600 text-white"
+                      : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80"
+                  }`}
+                >
+                  PRODUKCE
+                </button>
+              </div>
+
               <span className="text-sm text-white/90">
                 {user.email}
               </span>

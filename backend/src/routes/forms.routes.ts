@@ -9,9 +9,12 @@ import * as formsService from "../services/forms.service";
 import * as pricingFormsService from "../services/pricing-forms.service";
 import * as sizeLimitsService from "../services/size-limits.service";
 import * as admfPdfService from "../services/admf-pdf.service";
+import * as raynetExportService from "../services/raynet-export.service";
+import * as exportLogsQueries from "../queries/raynet-export-logs.queries";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { ApiError } from "../utils/errors";
 import { FormType, ListFormsQuery } from "../types/forms.types";
+import { ExportRaynetRequest } from "../types/raynet-export.types";
 
 const router = Router();
 
@@ -603,6 +606,81 @@ router.delete("/:id", authenticateToken, async (req: AuthenticatedRequest, res: 
     res.json({
       success: true,
       message: "Form deleted successfully",
+    });
+  } catch (error: any) {
+    handleError(error, res);
+  }
+});
+
+/**
+ * POST /api/forms/:id/export-raynet
+ * Export ADMF form data to Raynet event. Supports test mode.
+ */
+router.post("/:id/export-raynet", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const userId = req.userId!;
+    const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const id = parseInt(idParam, 10);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, error: "Invalid form ID" });
+    }
+
+    const body = req.body as ExportRaynetRequest;
+    const testMode = body.testMode === true;
+
+    // TODO: resolve raynet_name from JWT/auth when available
+    // For now, use jmenoPodpisZprostredkovatele from form_json as fallback
+    const raynetName: string | undefined = undefined;
+
+    const result = await raynetExportService.exportFormToRaynet(
+      pool,
+      id,
+      userId,
+      raynetName,
+      testMode
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        logId: result.logId,
+        exportedAt: result.exportedAt.toISOString(),
+        testMode: result.testMode,
+        warnings: result.warnings,
+      },
+    });
+  } catch (error: any) {
+    handleError(error, res);
+  }
+});
+
+/**
+ * GET /api/forms/:id/export-status
+ * Get the latest successful Raynet export info for a form.
+ */
+router.get("/:id/export-status", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const id = parseInt(idParam, 10);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, error: "Invalid form ID" });
+    }
+
+    const log = await exportLogsQueries.getLatestExportForForm(pool, id);
+
+    return res.json({
+      success: true,
+      data: log
+        ? {
+            exportedAt: log.completed_at?.toISOString() ?? log.created_at.toISOString(),
+            testMode: log.test_mode,
+            logId: log.id,
+          }
+        : null,
     });
   } catch (error: any) {
     handleError(error, res);

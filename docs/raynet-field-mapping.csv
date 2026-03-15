@@ -1,0 +1,23 @@
+json_field,raynet_field,business_logic
+const:220,category,"Constant object: {""id"": 220}. Always sent, not editable."
+const:COMPLETED,status,"Set to ""COMPLETED"" when ADMF is exported (= sale happened)."
+email,customFields.Email_1181e,Direct mapping (STRING). Optional — send only if filled.
+telefon,customFields.Dalsi_kont_dcaae,Direct mapping (STRING). Optional — send only if filled.
+vatRate,customFields.DPH_a6f2e,"ENUMERATION. Convert number to string: 0→""0"", 12→""12"", 21→""21""."
+typZarizeni,customFields.RDbyt_45fb8,"ENUMERATION 1:1 (aligned). Exact values: ""RD"", ""Byt"", ""Nebytový protor"", ""chata"", ""vila"", ""Obytná maringotka"". Note: ""protor"" is a Raynet typo — must match exactly."
+zalohaZaplacena,customFields.Zpusob_uhr_1bc0a,"ENUMERATION 1:1 (aligned). Exact values: ""Hotově"", ""Terminálem"", ""QR"", ""Fakturou"", ""převodem"". Note: ""převodem"" is lowercase."
+zalohovaFaktura,customFields.Zaloha_f384a,Direct mapping (MONETARY CZK). Deposit amount s DPH.
+doplatek,customFields.Doplatek_98b22,"Direct mapping (MONETARY CZK). Computed: max(0, totalSDph - zalohovaFaktura)."
+computed.totalSDph,customFields.Celkova_ho_0b99a,"Computed at export (MONETARY CZK): (Σ(cenaPoSleve × ks) + montazCenaBezDph) × (1 + vatRate/100), rounded to integer."
+variabilniSymbol,customFields.Variabilni_675b2,"BIG_DECIMAL. Prefilled from customer phone (strips +420). Send as number. Optional."
+auth.raynetName,customFields.Zamerovac_2b7ef,"ENUMERATION. Resolved from logged-in user's Raynet display name in auth profile. Must match one of 32 allowed names exactly."
+zvonek,customFields.Zvonek_60b5d,Informative field (STRING). Optional — send only if filled.
+patro,customFields.Patro_4784d,Informative field (STRING). Optional — send only if filled.
+infoKParkovani,customFields.Info_k_par_4946a,Informative field (TEXT). Optional — send only if filled.
+poznamkyVyroba + poznamkyMontaz,customFields.Dalsi_dopl_1e01a,"Merge two fields into one (TEXT). Format: ""Výroba: {x}\nMontáž: {y}"". Skip empty sections."
+composed.adresaKdyzNesedi,customFields.Adresa_kdy_8f1ac,"Compose when jinaAdresaDodani=true (TEXT): dodaciUlice + ', ' + dodaciMesto + ' ' + dodaciPsc. Only send when filled."
+infoKZaloze,customFields.Duvod_neuh_fec41,"TEXT. Raynet label: ""Info k záloze (OVT)"". Optional — info about deposit."
+infoKFakture,customFields.Info_k_fak_4dcbc,"TEXT. Raynet label: ""Info k faktuře (OVT)"". Optional."
+mngSleva,customFields.MNG_SLEVA_aac47,"BOOLEAN. Toggle: was manager discount applied? Companion to mngSlevaCastka."
+mngSlevaCastka,customFields.MNG_sleva__0836b,"MONETARY (CZK). Manager discount amount from total price (not per-row)."
+ovtSlevaCastka,customFields.OVT_sleva__909bc,"MONETARY (CZK). OVT discount amount from total price (not per-row)."
