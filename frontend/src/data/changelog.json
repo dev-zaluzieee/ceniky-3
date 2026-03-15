@@ -1,5 +1,16 @@
 [
   {
+    "date": "2026-03-15",
+    "changes": [
+      "ADMF: nová pole v sekci Další informace — Jméno na zvonku, Patro, Info k parkování",
+      "ADMF: nová sekce Slevy — OVT sleva (Kč) a MNG sleva (manažerská) včetně částky",
+      "ADMF: rozšířen Typ zařízení (RD, Byt, Nebytový prostor, Chata, Vila, Obytná maringotka) a možnosti platby (Terminálem, QR, Fakturou, převodem)",
+      "ADMF: v Platbě a montáži přibyly Variabilní symbol (předvyplnění z telefonu zákazníka), Info k záloze a Info k faktuře",
+      "ADMF: variabilní symbol při vymazání zůstane prázdný (nezapisuje se 0)",
+      "PDF ADMF: do výstupu se tisknou nová pole (zvonek, patro, info k parkování, sekce Slevy, variabilní symbol, info k záloze a faktuře)"
+    ]
+  },
+  {
     "date": "2026-03-13",
     "changes": [
       "Vizuální přepracování administrativního formuláře (ADMF)",
