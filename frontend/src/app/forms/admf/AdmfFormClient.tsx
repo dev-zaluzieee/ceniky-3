@@ -59,6 +59,17 @@ function getDefaultFormData(): AdmfFormData {
   };
 }
 
+/** Extract digits from phone string for variabilní symbol prefill. Returns undefined if no digits. */
+function phoneToVariabilniSymbol(phone?: string): number | undefined {
+  if (!phone) return undefined;
+  const digits = phone.replace(/\D/g, "");
+  // Strip leading Czech country code 420 if present
+  const cleaned = digits.startsWith("420") && digits.length > 9 ? digits.slice(3) : digits;
+  if (!cleaned) return undefined;
+  const num = parseInt(cleaned, 10);
+  return Number.isFinite(num) && num > 0 ? num : undefined;
+}
+
 function recalcCenaPoSleve(row: AdmfProductRow): number {
   return Math.round(row.cena * (1 - row.sleva / 100));
 }
@@ -201,7 +212,7 @@ export default function AdmfFormClient({
             psc: customerFromOrder.zipcode ?? "",
           }
         : {};
-      return {
+      const merged = {
         ...getDefaultFormData(),
         ...customerFallback,
         ...initialData,
@@ -211,6 +222,11 @@ export default function AdmfFormClient({
           id: r.id || defaultProductRow().id,
         })),
       };
+      // Prefill variabilniSymbol from phone if not already set
+      if (merged.variabilniSymbol == null) {
+        merged.variabilniSymbol = phoneToVariabilniSymbol(merged.telefon);
+      }
+      return merged;
     }
     const d = getDefaultFormData();
     if (customerFromOrder) {
@@ -220,6 +236,7 @@ export default function AdmfFormClient({
       d.ulice = customerFromOrder.address ?? "";
       d.mesto = customerFromOrder.city ?? "";
       d.psc = customerFromOrder.zipcode ?? "";
+      d.variabilniSymbol = phoneToVariabilniSymbol(customerFromOrder.phone);
     }
     return d;
   });
@@ -937,9 +954,12 @@ export default function AdmfFormClient({
                     onChange={(e) => updateField("typZarizeni", e.target.value)}
                     className={selectCls}
                   >
-                    <option value="Byt">Byt</option>
                     <option value="RD">RD</option>
-                    <option value="Firma">Firma</option>
+                    <option value="Byt">Byt</option>
+                    <option value="Nebytový protor">Nebytový prostor</option>
+                    <option value="chata">Chata</option>
+                    <option value="vila">Vila</option>
+                    <option value="Obytná maringotka">Obytná maringotka</option>
                   </select>
                 </div>
                 <div>
@@ -1006,6 +1026,36 @@ export default function AdmfFormClient({
                   value={formData.maZakaznikVyfocenouLamelu ?? true}
                   onChange={(v) => updateField("maZakaznikVyfocenouLamelu", v)}
                 />
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className={labelCls}>Jméno na zvonku</label>
+                  <input
+                    type="text"
+                    value={formData.zvonek ?? ""}
+                    onChange={(e) => updateField("zvonek", e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Patro</label>
+                  <input
+                    type="text"
+                    value={formData.patro ?? ""}
+                    onChange={(e) => updateField("patro", e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Info k parkování</label>
+                  <input
+                    type="text"
+                    value={formData.infoKParkovani ?? ""}
+                    onChange={(e) => updateField("infoKParkovani", e.target.value)}
+                    className={inputCls}
+                    placeholder={formData.parkovani ? "OK" : ""}
+                  />
+                </div>
               </div>
             </div>
           </CollapsibleSection>
@@ -1258,6 +1308,61 @@ export default function AdmfFormClient({
             </div>
           </CollapsibleSection>
 
+          {/* ── Slevy ── */}
+          <CollapsibleSection title="Slevy">
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>OVT sleva (Kč)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.ovtSlevaCastka ?? ""}
+                      onChange={(e) =>
+                        updateField("ovtSlevaCastka", parseInt(e.target.value, 10) || 0)
+                      }
+                      className={inputCls}
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">
+                      Kč
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formData.mngSleva ?? false}
+                    onChange={(e) => updateField("mngSleva", e.target.checked)}
+                    className="h-5 w-5 rounded border-zinc-600 bg-zinc-700 text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm font-medium text-zinc-200">MNG sleva (manažerská)</span>
+                </label>
+              </div>
+              {formData.mngSleva && (
+                <div className="max-w-xs">
+                  <label className={labelCls}>MNG sleva částka (Kč)</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.mngSlevaCastka ?? ""}
+                      onChange={(e) =>
+                        updateField("mngSlevaCastka", parseInt(e.target.value, 10) || 0)
+                      }
+                      className={inputCls}
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">
+                      Kč
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CollapsibleSection>
+
           {/* ── Poznámky ── */}
           <CollapsibleSection title="Poznámky">
             <div className="space-y-4">
@@ -1308,8 +1413,10 @@ export default function AdmfFormClient({
                     className={selectCls}
                   >
                     <option value="Hotově">Hotově</option>
-                    <option value="Kartou">Kartou</option>
-                    <option value="Převodem">Převodem</option>
+                    <option value="Terminálem">Terminálem</option>
+                    <option value="QR">QR</option>
+                    <option value="Fakturou">Fakturou</option>
+                    <option value="převodem">Převodem</option>
                   </select>
                 </div>
               </div>
@@ -1371,6 +1478,49 @@ export default function AdmfFormClient({
                       </span>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Variabilní symbol, info fields */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label className={labelCls}>Variabilní symbol</label>
+                  <input
+                    type="number"
+                    value={formData.variabilniSymbol ?? ""}
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      if (raw === "") {
+                        updateField("variabilniSymbol", undefined);
+                        return;
+                      }
+                      const num = parseInt(raw, 10);
+                      updateField(
+                        "variabilniSymbol",
+                        Number.isFinite(num) && num > 0 ? num : undefined
+                      );
+                    }}
+                    className={inputCls}
+                    placeholder="Telefonní číslo zákazníka"
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Info k záloze</label>
+                  <input
+                    type="text"
+                    value={formData.infoKZaloze ?? ""}
+                    onChange={(e) => updateField("infoKZaloze", e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Info k faktuře</label>
+                  <input
+                    type="text"
+                    value={formData.infoKFakture ?? ""}
+                    onChange={(e) => updateField("infoKFakture", e.target.value)}
+                    className={inputCls}
+                  />
                 </div>
               </div>
 

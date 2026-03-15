@@ -81,11 +81,25 @@ export interface AdmfFormData {
   /** Montáž: price without VAT (default 1339 → 1500 with 12% VAT) */
   montazCenaBezDph?: number;
 
+  /** Slevy (total-level, not per-row) */
+  /** MNG (manager) discount toggle */
+  mngSleva?: boolean;
+  /** MNG discount amount in CZK (from total price) */
+  mngSlevaCastka?: number;
+  /** OVT discount amount in CZK (from total price) */
+  ovtSlevaCastka?: number;
+
   /** Další informace */
   typZarizeni?: string;
   parkovani?: boolean;
   zv?: string;
   maZakaznikVyfocenouLamelu?: boolean;
+  /** Informative: name on doorbell / buzzer instructions */
+  zvonek?: string;
+  /** Informative: floor number */
+  patro?: string;
+  /** Informative: additional parking info (beyond boolean parkovani) */
+  infoKParkovani?: string;
 
   /** Poznámky */
   poznamkyVyroba?: string;
@@ -109,8 +123,14 @@ export interface AdmfFormData {
   castkaDoplatku?: number;
   /** K OBJEDNÁNÍ – zálohová faktura (amount with VAT, what customer pays as deposit) */
   zalohovaFaktura?: number;
+  /** Variabilní symbol (typically customer phone number as a number) */
+  variabilniSymbol?: number;
   /** Doplatek = celkem s DPH − zálohová faktura (computed, can be stored for PDF) */
   doplatek?: number;
+  /** Info k záloze (reason/details about deposit) */
+  infoKZaloze?: string;
+  /** Info k faktuře (additional invoice info) */
+  infoKFakture?: string;
   predpokladanaDodaciDoba?: string;
   predpokladanaDobaMontaze?: string;
   kodTerminalu?: string;

@@ -149,7 +149,20 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
   doc.text(`Typ prostoru: ${(formData.typProstoru ?? "bytovy") === "bytovy" ? "Bytový" : "Nebytový"}`, MARGIN, y);
   y += 5;
   doc.text(`Vyfocená lamela: ${formData.maZakaznikVyfocenouLamelu ? "Ano" : "Ne"}`, MARGIN, y);
-  y += 8;
+  y += 5;
+  if (formData.zvonek) {
+    doc.text(`Jméno na zvonku: ${formData.zvonek}`, MARGIN, y);
+    y += 5;
+  }
+  if (formData.patro) {
+    doc.text(`Patro: ${formData.patro}`, MARGIN, y);
+    y += 5;
+  }
+  if (formData.infoKParkovani) {
+    doc.text(`Info k parkování: ${formData.infoKParkovani}`, MARGIN, y);
+    y += 5;
+  }
+  y += 3;
 
   // ---- DPH ----
   setFont(FONT_SIZE_HEADING);
@@ -231,7 +244,26 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
   doc.text(`Celkem bez DPH: ${totalBezDph} Kč`, MARGIN, y);
   y += 5;
   doc.text(`Celkem s DPH (${vatRate}%): ${totalSDph} Kč`, MARGIN, y);
-  y += 10;
+  y += 6;
+
+  // ---- Slevy ----
+  const hasDiscounts = (formData.ovtSlevaCastka ?? 0) > 0 || (formData.mngSleva && (formData.mngSlevaCastka ?? 0) > 0);
+  if (hasDiscounts) {
+    setFont(FONT_SIZE_HEADING);
+    doc.text("Slevy", MARGIN, y);
+    y += 6;
+    setFont(FONT_SIZE_BODY);
+    if ((formData.ovtSlevaCastka ?? 0) > 0) {
+      doc.text(`OVT sleva: ${formData.ovtSlevaCastka} Kč`, MARGIN, y);
+      y += 5;
+    }
+    if (formData.mngSleva && (formData.mngSlevaCastka ?? 0) > 0) {
+      doc.text(`MNG sleva: ${formData.mngSlevaCastka} Kč`, MARGIN, y);
+      y += 5;
+    }
+    y += 3;
+  }
+  y += 2;
 
   // ---- Poznámky ----
   const poznamkyVyroba = (formData.poznamkyVyroba ?? "").trim();
@@ -287,6 +319,18 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
   const doplatek = formData.doplatek ?? Math.max(0, totalSDph - (formData.zalohovaFaktura ?? 0));
   doc.text(`Částka doplatku: ${doplatek} Kč`, MARGIN, y);
   y += 5;
+  if (formData.variabilniSymbol) {
+    doc.text(`Variabilní symbol: ${formData.variabilniSymbol}`, MARGIN, y);
+    y += 5;
+  }
+  if (formData.infoKZaloze) {
+    doc.text(`Info k záloze: ${formData.infoKZaloze}`, MARGIN, y);
+    y += 5;
+  }
+  if (formData.infoKFakture) {
+    doc.text(`Info k faktuře: ${formData.infoKFakture}`, MARGIN, y);
+    y += 5;
+  }
   if (formData.predpokladanaDodaciDoba) {
     doc.text(`Předpokládaná dodací doba: ${formData.predpokladanaDodaciDoba}`, MARGIN, y);
     y += 5;
