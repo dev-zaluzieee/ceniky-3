@@ -185,16 +185,13 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
     "cena po slevě",
   ];
   const body: string[][] = (formData.productRows || []).map((r: AdmfProductRow) => {
-    const hasPriceFields = (r.priceAffectingFields?.length ?? 0) > 0;
-    const field1Value =
-      r.priceAffectingFields?.[0]?.value ?? r.ram ?? "";
-    const field2Value =
-      r.priceAffectingFields?.[1]?.value ?? r.lamelaLatka ?? "";
+    const field1Value = r.priceAffectingFields?.[0]?.value ?? "";
+    const field2Value = r.priceAffectingFields?.[1]?.value ?? "";
     return [
       r.produkt ?? "",
       String(r.ks ?? ""),
-      hasPriceFields ? field1Value : r.ram ?? "",
-      hasPriceFields ? field2Value : r.lamelaLatka ?? "",
+      field1Value,
+      field2Value,
       String(r.cena ?? ""),
       String(r.sleva ?? ""),
       String(r.cenaPoSleve ?? ""),

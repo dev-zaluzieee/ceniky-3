@@ -85,15 +85,12 @@ export default async function OrderFormCreatePage({
       id: `row-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 9)}`,
       produkt: p.produkt,
       ks: p.ks,
-      ram: p.ram ?? "",
-      lamelaLatka: p.lamelaLatka ?? "",
       cena: p.cena,
       sleva: p.sleva,
       cenaPoSleve: p.cenaPoSleve,
       baseCena: p.baseCena,
       surcharges: p.surcharges,
       surchargeWarnings: p.surchargeWarnings,
-      // Pass through price-affecting fields so ADMF can render them instead of hardcoded rám/lamela.
       priceAffectingFields: p.priceAffectingFields,
     }));
 

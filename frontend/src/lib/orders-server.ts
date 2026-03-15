@@ -114,8 +114,6 @@ export async function fetchOrderByIdServer(
 export interface ExtractedProductLine {
   produkt: string;
   ks: number;
-  ram?: string;
-  lamelaLatka?: string;
   cena: number;
   sleva: number;
   cenaPoSleve: number;

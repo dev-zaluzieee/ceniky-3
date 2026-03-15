@@ -31,8 +31,6 @@ const defaultProductRow = (): AdmfProductRow => ({
   id: `row-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
   produkt: "",
   ks: 1,
-  ram: "",
-  lamelaLatka: "",
   cena: 0,
   sleva: 0,
   cenaPoSleve: 0,
@@ -1120,11 +1118,8 @@ export default function AdmfFormClient({
                     const baseCena =
                       row.baseCena != null ? row.baseCena : Math.max(0, (row.cena || 0) - surchargeSum);
                     const hasSurcharges = (row.surcharges?.length ?? 0) > 0;
-                    const hasPriceFields = (row.priceAffectingFields?.length ?? 0) > 0;
-                    const field1Value =
-                      row.priceAffectingFields?.[0]?.value ?? row.ram;
-                    const field2Value =
-                      row.priceAffectingFields?.[1]?.value ?? row.lamelaLatka;
+                    const field1Value = row.priceAffectingFields?.[0]?.value ?? "";
+                    const field2Value = row.priceAffectingFields?.[1]?.value ?? "";
                     return (
                       <React.Fragment key={row.id}>
                         <tr className="border-b border-zinc-700/50">
@@ -1148,30 +1143,10 @@ export default function AdmfFormClient({
                             />
                           </td>
                           <td className="px-3 py-2">
-                            {hasPriceFields ? (
-                              <span className="text-sm text-zinc-100">{field1Value}</span>
-                            ) : (
-                              <input
-                                type="text"
-                                value={row.ram}
-                                onChange={(e) => updateProductRow(row.id, { ram: e.target.value })}
-                                className={inputCls}
-                              />
-                            )}
+                            <span className="text-sm text-zinc-100">{field1Value}</span>
                           </td>
                           <td className="px-3 py-2">
-                            {hasPriceFields ? (
-                              <span className="text-sm text-zinc-100">{field2Value}</span>
-                            ) : (
-                              <input
-                                type="text"
-                                value={row.lamelaLatka}
-                                onChange={(e) =>
-                                  updateProductRow(row.id, { lamelaLatka: e.target.value })
-                                }
-                                className={inputCls}
-                              />
-                            )}
+                            <span className="text-sm text-zinc-100">{field2Value}</span>
                           </td>
                           <td className="px-3 py-2 text-right align-top">
                             <input

@@ -316,8 +316,6 @@ export async function extractFromCustom(
       lines.push({
         produkt,
         ks,
-        ram: (row.ram as string) ?? (row.frameColor as string) ?? "",
-        lamelaLatka: (row.lamelaLatka as string) ?? (row.latka as string) ?? "",
         cena: cenaWithSurcharges,
         sleva,
         cenaPoSleve,

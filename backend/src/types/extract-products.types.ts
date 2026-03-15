@@ -18,10 +18,6 @@ export interface ExtractedProductLine {
   produkt: string;
   /** Quantity (ks) */
   ks: number;
-  /** Frame (rám) */
-  ram?: string;
-  /** Slat/fabric (lamela/látka) */
-  lamelaLatka?: string;
   /** Unit price – from pricing service (mocked until external API) */
   cena: number;
   /** Discount % (0–100), default 0 */
@@ -40,7 +36,7 @@ export interface ExtractedProductLine {
   surchargeWarnings?: string[];
   /**
    * Fields that directly affected price resolution (selector for pricing_variant).
-   * Used on ADMF to show e.g. typ, barva, látka instead of hardcoded rám/lamela.
+   * Used on ADMF for the two price-affecting columns (e.g. typ, barva / rám, lamela).
    */
   priceAffectingFields?: ExtractedPriceAffectingField[];
 }

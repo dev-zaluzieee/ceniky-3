@@ -18,8 +18,6 @@ export interface AdmfProductRow {
   id: string;
   produkt: string;
   ks: number;
-  ram: string;
-  lamelaLatka: string;
   /** Unit price without VAT */
   cena: number;
   /** Discount % (0–100) */
@@ -38,7 +36,7 @@ export interface AdmfProductRow {
   surchargeWarnings?: string[];
   /**
    * Fields that directly affected price resolution (selector for pricing_variant).
-   * Used in UI/PDF instead of hardcoded rám / lamela/látka when available.
+   * Used in UI/PDF for the two price-affecting columns (e.g. typ, barva / rám, lamela).
    */
   priceAffectingFields?: AdmfPriceAffectingField[];
 }
