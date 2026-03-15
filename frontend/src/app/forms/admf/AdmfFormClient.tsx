@@ -503,6 +503,7 @@ export default function AdmfFormClient({
       }
       setExportedAt(json.data.exportedAt);
       setExportTestMode(json.data.testMode ?? false);
+      setShowSendModal(false);
 
       // TODO: trigger email sending to customer here
       // if (mode === "PRODUCTION") { await sendEmailToCustomer(formId); }
@@ -510,7 +511,6 @@ export default function AdmfFormClient({
       setExportError("Nepodařilo se spojit se serverem.");
     } finally {
       setExportLoading(false);
-      setShowSendModal(false);
     }
   };
 
