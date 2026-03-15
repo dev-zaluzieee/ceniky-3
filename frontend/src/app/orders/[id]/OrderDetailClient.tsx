@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { OrderRecord } from "@/lib/orders-api";
 import { updateOrder } from "@/lib/orders-api";
 import type { FormRecord, FormType, PaginationInfo } from "@/lib/forms-api";
@@ -138,6 +138,9 @@ export default function OrderDetailClient({
   });
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const [customerSaveError, setCustomerSaveError] = useState<string | null>(null);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const notesRef = useRef<HTMLDivElement>(null);
+  const [notesOverflows, setNotesOverflows] = useState(false);
 
   useEffect(() => {
     setOrder(initialOrder);
@@ -180,6 +183,21 @@ export default function OrderDetailClient({
     }
   }, [showAddFormModal]);
 
+  /** Detect whether the notes preview overflows so we can show the "Zobrazit celé" button. */
+  useEffect(() => {
+    const el = notesRef.current;
+    if (!el) { setNotesOverflows(false); return; }
+    setNotesOverflows(el.scrollHeight > el.clientHeight);
+  }, [customerData.notes]);
+
+  /** Close notes modal on Escape */
+  useEffect(() => {
+    if (!showNotesModal) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setShowNotesModal(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showNotesModal]);
+
   const handleSaveCustomer = async () => {
     setIsSavingCustomer(true);
     setCustomerSaveError(null);
@@ -193,7 +211,6 @@ export default function OrderDetailClient({
         zipcode: customerData.zipcode || undefined,
         raynet_id: customerData.raynet_id.trim() === "" ? null : Number(customerData.raynet_id),
         erp_customer_id: customerData.erp_customer_id.trim() === "" ? null : Number(customerData.erp_customer_id),
-        notes: customerData.notes || null,
       });
       if (!res.success) {
         setCustomerSaveError(res.error || "Nepodařilo se uložit.");
@@ -397,17 +414,27 @@ export default function OrderDetailClient({
               </div>
             </div>
 
-            {/* Notes */}
-            <div className="mt-5">
-              <label className={labelClasses}>Poznámky</label>
-              <textarea
-                value={customerData.notes}
-                onChange={(e) => setCustomerData((p) => ({ ...p, notes: e.target.value }))}
-                rows={4}
-                className={`${inputClasses} resize-y`}
-                placeholder="Poznámky k zakázce..."
-              />
-            </div>
+            {/* Notes (read-only) */}
+            {customerData.notes && (
+              <div className="mt-5">
+                <label className={labelClasses}>Poznámky</label>
+                <div
+                  ref={notesRef}
+                  className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                >
+                  {customerData.notes}
+                </div>
+                {notesOverflows && (
+                  <button
+                    type="button"
+                    onClick={() => setShowNotesModal(true)}
+                    className="mt-2 text-sm font-medium text-accent hover:text-accent-hover"
+                  >
+                    Zobrazit celé poznámky
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Save button */}
             {customerSaveError && (
@@ -744,6 +771,35 @@ export default function OrderDetailClient({
               >
                 Zavřít
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notes fullscreen modal */}
+      {showNotesModal && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-black/90 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="notes-modal-title"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowNotesModal(false); }}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-4 border-b border-zinc-700 pb-3">
+            <h2 id="notes-modal-title" className="text-lg font-semibold text-zinc-50">
+              Poznámky
+            </h2>
+            <button
+              type="button"
+              onClick={() => setShowNotesModal(false)}
+              className="min-h-[44px] rounded-lg bg-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-500"
+            >
+              Zavřít
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pt-4">
+            <div className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-200">
+              {customerData.notes}
             </div>
           </div>
         </div>
