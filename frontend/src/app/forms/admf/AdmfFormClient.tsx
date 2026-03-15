@@ -48,8 +48,7 @@ function getDefaultFormData(): AdmfFormData {
     poznamkyMontaz: "",
     platceDph: false,
     faktura: true,
-    nebytovyProstor: false,
-    bytovyProstor: true,
+    typProstoru: "bytovy" as const,
     vatRate: 12,
     zalohovaFaktura: 0,
     datum: todayString(),
@@ -976,18 +975,31 @@ export default function AdmfFormClient({
                   />
                 </div>
                 <div>
-                  <label className={labelCls}>Nebytový prostor</label>
-                  <ToggleButton
-                    value={formData.nebytovyProstor ?? false}
-                    onChange={(v) => updateField("nebytovyProstor", v)}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Bytový prostor</label>
-                  <ToggleButton
-                    value={formData.bytovyProstor ?? true}
-                    onChange={(v) => updateField("bytovyProstor", v)}
-                  />
+                  <label className={labelCls}>Typ prostoru</label>
+                  <div className="flex gap-1 rounded-lg bg-zinc-700 p-1">
+                    <button
+                      type="button"
+                      onClick={() => updateField("typProstoru", "bytovy")}
+                      className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        (formData.typProstoru ?? "bytovy") === "bytovy"
+                          ? "bg-primary text-white"
+                          : "text-zinc-300 hover:text-white"
+                      }`}
+                    >
+                      Bytový
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateField("typProstoru", "nebytovy")}
+                      className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        formData.typProstoru === "nebytovy"
+                          ? "bg-primary text-white"
+                          : "text-zinc-300 hover:text-white"
+                      }`}
+                    >
+                      Nebytový
+                    </button>
+                  </div>
                 </div>
               </div>
               <div>

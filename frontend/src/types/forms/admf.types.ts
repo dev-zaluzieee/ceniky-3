@@ -99,8 +99,8 @@ export interface AdmfFormData {
   /** VAT logic */
   platceDph?: boolean;
   faktura?: boolean;
-  nebytovyProstor?: boolean;
-  bytovyProstor?: boolean;
+  /** "bytovy" (default) or "nebytovy" */
+  typProstoru?: "bytovy" | "nebytovy";
   /** Selected VAT rate % (default 12) */
   vatRate?: AdmfVatRate;
 

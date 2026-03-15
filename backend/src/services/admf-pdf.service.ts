@@ -50,8 +50,7 @@ interface AdmfPdfData {
   parkovani?: boolean;
   zv?: string;
   platceDph?: boolean;
-  nebytovyProstor?: boolean;
-  bytovyProstor?: boolean;
+  typProstoru?: "bytovy" | "nebytovy";
   maZakaznikVyfocenouLamelu?: boolean;
   vatRate?: number;
   productRows?: AdmfProductRow[];
@@ -189,9 +188,7 @@ export async function generateAdmfPdfBuffer(raw: Record<string, unknown>): Promi
   }
   doc.text(`Plátce DPH: ${formData.platceDph ? "Ano" : "Ne"}`, MARGIN, y);
   y += 5;
-  doc.text(`Nebytový prostor: ${formData.nebytovyProstor ? "Ano" : "Ne"}`, MARGIN, y);
-  y += 5;
-  doc.text(`Bytový prostor: ${formData.bytovyProstor ? "Ano" : "Ne"}`, MARGIN, y);
+  doc.text(`Typ prostoru: ${(formData.typProstoru ?? "bytovy") === "bytovy" ? "Bytový" : "Nebytový"}`, MARGIN, y);
   y += 5;
   doc.text(`Vyfocená lamela: ${formData.maZakaznikVyfocenouLamelu ? "Ano" : "Ne"}`, MARGIN, y);
   y += 8;
