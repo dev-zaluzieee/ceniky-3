@@ -280,6 +280,57 @@ export default function AdmfFormClient({
     setIsDirty(serializeForDirtyCheck(formData) !== initialFormDataRef.current);
   }, [formData]);
 
+  /** Autosave: debounced save 3s after last change (edit mode only) */
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosaveFailCountRef = useRef(0);
+  const [autosaveError, setAutosaveError] = useState(false);
+  const [isAutosaving, setIsAutosaving] = useState(false);
+
+  useEffect(() => {
+    // Only autosave in edit mode when dirty and not currently submitting/exporting
+    if (!isEditMode || !formId || !isDirty || isSubmitting || exportLoading) return;
+
+    // Cancel previous timer
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+
+    autosaveTimerRef.current = setTimeout(async () => {
+      // Re-check: data may have changed since timeout was set
+      const latest = latestFormDataRef.current;
+      if (!latest) return;
+      const snapshot = serializeForDirtyCheck(latest);
+      if (snapshot === initialFormDataRef.current) return;
+
+      setIsAutosaving(true);
+      const dataToSave = withComputedDoplatek(latest);
+      try {
+        const res = await updateForm(formId, dataToSave);
+        if (res.success) {
+          autosaveFailCountRef.current = 0;
+          setAutosaveError(false);
+          setSubmitSuccess(true);
+          const savedSnapshot = serializeForDirtyCheck(dataToSave);
+          initialFormDataRef.current = savedSnapshot;
+          const currentData = latestFormDataRef.current;
+          setIsDirty(
+            currentData ? serializeForDirtyCheck(currentData) !== savedSnapshot : false
+          );
+        } else {
+          autosaveFailCountRef.current++;
+          if (autosaveFailCountRef.current >= 3) setAutosaveError(true);
+        }
+      } catch {
+        autosaveFailCountRef.current++;
+        if (autosaveFailCountRef.current >= 3) setAutosaveError(true);
+      } finally {
+        setIsAutosaving(false);
+      }
+    }, 3000);
+
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [formData, isEditMode, formId, isDirty, isSubmitting, exportLoading]);
+
   const updateField = useCallback(
     <K extends keyof AdmfFormData,>(key: K, value: AdmfFormData[K]) => {
       setFormData((p) => ({ ...p, [key]: value }));
@@ -330,6 +381,10 @@ export default function AdmfFormClient({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Cancel any pending autosave to avoid double-save
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveFailCountRef.current = 0;
+    setAutosaveError(false);
     setIsSubmitting(true);
     setSubmitError(null);
     setSubmitSuccess(false);
@@ -614,6 +669,14 @@ export default function AdmfFormClient({
               </svg>
               všechny změny uloženy
             </span>
+          ) : isAutosaving ? (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-500 bg-zinc-800 px-3 py-1 text-xs font-medium text-zinc-400">
+              <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Ukládám…
+            </span>
           ) : isDirty ? (
             <span className="rounded-md border border-amber-400 bg-amber-900/30 px-3 py-1 text-xs font-medium text-amber-400">
               neuložené změny
@@ -670,15 +733,25 @@ export default function AdmfFormClient({
           </div>
         </div>
 
-        {/* ── Status bar: export info ── */}
-        {exportedAt && (
-          <div className="mb-6 flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-2.5">
-            <svg className="h-3.5 w-3.5 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            <span className="text-xs text-zinc-400">
-              Exportováno do Raynet{exportTestMode ? " (test)" : ""}: {new Date(exportedAt).toLocaleString("cs-CZ")}
-            </span>
+        {/* ── Status bar: export info + autosave warning ── */}
+        {(exportedAt || autosaveError) && (
+          <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-2.5">
+            {exportedAt && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
+                <svg className="h-3.5 w-3.5 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Exportováno do Raynet{exportTestMode ? " (test)" : ""}: {new Date(exportedAt).toLocaleString("cs-CZ")}
+              </span>
+            )}
+            {autosaveError && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-amber-400">
+                <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Automatické ukládání selhalo — uložte ručně
+              </span>
+            )}
           </div>
         )}
 
