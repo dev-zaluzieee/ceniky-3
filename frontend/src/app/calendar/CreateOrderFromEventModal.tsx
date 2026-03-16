@@ -438,9 +438,25 @@ export default function CreateOrderFromEventModal({
               <p className="text-sm text-zinc-400">Načítám zakázky z ERP...</p>
             )}
 
-            {/* Error */}
+            {/* Error: show message and allow skip so user can proceed without ERP order */}
             {erpOrderError && (
-              <p className="text-sm text-red-400">{erpOrderError}</p>
+              <div>
+                <p className="text-sm text-red-400">{erpOrderError}</p>
+                {!skippedErpOrder && (
+                  <button
+                    type="button"
+                    onClick={handleSkipErpOrder}
+                    className="mt-2 text-xs text-zinc-500 underline decoration-zinc-600 hover:text-zinc-300"
+                  >
+                    Pokračovat bez ERP zakázky
+                  </button>
+                )}
+                {skippedErpOrder && (
+                  <p className="mt-2 text-xs text-amber-400">
+                    Zakázka bude vytvořena bez napojení na ERP zakázku.
+                  </p>
+                )}
+              </div>
             )}
 
             {/* No orders found */}
