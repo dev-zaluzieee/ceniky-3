@@ -81,6 +81,7 @@ export default function CustomFormClient({
       const schemaWithPricingId: ProductPayload = {
         ...(payload as ProductPayload),
         _product_pricing_id: pricingId.trim(),
+        _product_manufacturer: res.data.manufacturer,
         price_affecting_enums: res.data.price_affecting_enums ?? [],
       };
       setSchema(schemaWithPricingId);
