@@ -220,7 +220,11 @@ export default function DynamicProductForm({
           const disabledDeps = dependencies.filter(
             (d) => d.target_property === code && d.field_disabled === true
           );
-          const isDisabled = disabledDeps.some((dep) => row[dep.source_enum] === dep.source_value);
+          const isDisabled = disabledDeps.some((dep) => {
+            const sourceVal = row[dep.source_enum];
+            if (sourceVal === undefined || sourceVal === null) return false;
+            return String(sourceVal) === String(dep.source_value);
+          });
           return !isDisabled; // missing and not disabled => counts as error
         })
       )
@@ -436,7 +440,11 @@ export default function DynamicProductForm({
       payload.dependencies?.filter(
         (d) => d.target_property === propertyCode && d.field_disabled === true
       ) ?? [];
-    return deps.some((dep) => row[dep.source_enum] === dep.source_value);
+    return deps.some((dep) => {
+      const sourceVal = row[dep.source_enum];
+      if (sourceVal === undefined || sourceVal === null) return false;
+      return String(sourceVal) === String(dep.source_value);
+    });
   };
 
   const renderFormField = (
