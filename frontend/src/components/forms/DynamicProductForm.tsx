@@ -79,6 +79,8 @@ export interface DynamicProductFormProps {
   onSizeLimitErrorChange?: (hasError: boolean) => void;
   /** Called when any row is outside warranty range but inside manufacturing range */
   onWarrantyErrorChange?: (hasError: boolean) => void;
+  /** Called when any row has missing required (price-affecting) fields (true = block submit) */
+  onRequiredFieldsErrorChange?: (hasError: boolean) => void;
 }
 
 export default function DynamicProductForm({
@@ -88,9 +90,14 @@ export default function DynamicProductForm({
   actionsFooter,
   onSizeLimitErrorChange,
   onWarrantyErrorChange,
+  onRequiredFieldsErrorChange,
 }: DynamicProductFormProps) {
   const formBodyProperties = (payload.form_body?.Properties ?? []) as PropertyDefinition[];
   const productPricingId = payload._product_pricing_id;
+  const priceAffectingEnums = React.useMemo(
+    () => new Set(payload.price_affecting_enums ?? []),
+    [payload.price_affecting_enums]
+  );
 
   const linkPropertyCodes = React.useMemo(
     () =>
@@ -194,6 +201,23 @@ export default function DynamicProductForm({
     onSizeLimitErrorChange?.(hasManufacturingError);
     onWarrantyErrorChange?.(hasWarrantyError);
   }, [sizeLimitByRow, onSizeLimitErrorChange, onWarrantyErrorChange]);
+
+  // Validate required (price-affecting) fields in all rows
+  useEffect(() => {
+    if (priceAffectingEnums.size === 0) {
+      onRequiredFieldsErrorChange?.(false);
+      return;
+    }
+    const hasMissing = formData.rooms.some((room) =>
+      room.rows.some((row) =>
+        Array.from(priceAffectingEnums).some((code) => {
+          const v = row[code];
+          return v === undefined || v === null || String(v).trim() === "";
+        })
+      )
+    );
+    onRequiredFieldsErrorChange?.(hasMissing);
+  }, [formData, priceAffectingEnums, onRequiredFieldsErrorChange]);
 
   const getPropertyLabel = (prop: PropertyDefinition): string =>
     prop["label-form"] ?? prop.Name;
@@ -414,6 +438,7 @@ export default function DynamicProductForm({
   ) => {
     const disabled = context?.row ? isFieldDisabledByDependency(property.Code, context.row) : false;
     const compact = context?.compact ?? false;
+    const isRequired = priceAffectingEnums.has(property.Code);
     const disabledClass = disabled
       ? "cursor-not-allowed opacity-60 bg-zinc-100 dark:bg-zinc-800"
       : "";
@@ -424,14 +449,18 @@ export default function DynamicProductForm({
         : getEnumOptions(property.Code);
       const currentCode = String(value);
       const valueInOptions = options.some((o) => o.code === currentCode);
+      const isEmpty = !currentCode;
+      const requiredEmptyClass = isRequired && isEmpty && !disabled
+        ? "ring-2 ring-red-400 dark:ring-red-500"
+        : "";
       return (
         <select
           value={currentCode}
           onChange={(e) => !disabled && onChange(e.target.value)}
           disabled={disabled}
-          className={`${compact ? "max-w-[5rem] min-w-0 truncate" : "min-w-[4rem]"} w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 md:text-xs ${disabledClass}`}
+          className={`${compact ? "max-w-[5rem] min-w-0 truncate" : "min-w-[4rem]"} w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 md:text-xs ${disabledClass} ${requiredEmptyClass}`}
         >
-          <option value="">-</option>
+          <option value="">{isRequired ? "— povinné —" : "-"}</option>
           {options.map((opt) => (
             <option key={opt.code} value={opt.code} title={opt.note ?? undefined}>
               {opt.name} ({opt.code}){opt.note ? ` — ${opt.note}` : ""}

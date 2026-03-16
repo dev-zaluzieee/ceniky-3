@@ -81,6 +81,7 @@ export default function CustomFormClient({
       const schemaWithPricingId: ProductPayload = {
         ...(payload as ProductPayload),
         _product_pricing_id: pricingId.trim(),
+        price_affecting_enums: res.data.price_affecting_enums ?? [],
       };
       setSchema(schemaWithPricingId);
       setFormData(buildInitialFormData(schemaWithPricingId, customerFromOrder));
@@ -129,6 +130,7 @@ export default function CustomFormClient({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [hasSizeLimitError, setHasSizeLimitError] = useState(false);
   const [hasWarrantyError, setHasWarrantyError] = useState(false);
+  const [hasRequiredFieldsError, setHasRequiredFieldsError] = useState(false);
 
   /** Track unsaved changes: set true on any formData change after initial load */
   const [isDirty, setIsDirty] = useState(false);
@@ -158,7 +160,7 @@ export default function CustomFormClient({
   const [autosaveSuccess, setAutosaveSuccess] = useState(false);
 
   useEffect(() => {
-    if (!isEditMode || !formId || !schema || !isDirty || isSubmitting || hasSizeLimitError) return;
+    if (!isEditMode || !formId || !schema || !isDirty || isSubmitting || hasSizeLimitError || hasRequiredFieldsError) return;
 
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
 
@@ -197,7 +199,7 @@ export default function CustomFormClient({
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
-  }, [formData, isEditMode, formId, schema, isDirty, isSubmitting, hasSizeLimitError]);
+  }, [formData, isEditMode, formId, schema, isDirty, isSubmitting, hasSizeLimitError, hasRequiredFieldsError]);
 
   const handleSizeLimitErrorChange = useCallback((hasError: boolean) => {
     setHasSizeLimitError(hasError);
@@ -260,6 +262,10 @@ export default function CustomFormClient({
         {hasSizeLimitError ? (
           <div className="rounded-md bg-red-500 px-6 py-3 text-center text-sm font-medium text-white">
             Některé položky z formuláře nelze vyrobit
+          </div>
+        ) : hasRequiredFieldsError ? (
+          <div className="rounded-md bg-red-500 px-6 py-3 text-center text-sm font-medium text-white">
+            Vyplňte všechna povinná pole (ovlivňující cenu)
           </div>
         ) : hasWarrantyError ? (
           <button
@@ -337,6 +343,7 @@ export default function CustomFormClient({
             setFormData={setFormDataForForm}
             onSizeLimitErrorChange={handleSizeLimitErrorChange}
             onWarrantyErrorChange={setHasWarrantyError}
+            onRequiredFieldsErrorChange={setHasRequiredFieldsError}
           />
         </div>
         {saveBar}

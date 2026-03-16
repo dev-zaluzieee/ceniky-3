@@ -49,6 +49,8 @@ export interface ProductPayload {
   _product_pricing_id?: string;
   /** Property codes that are configured as surcharges (příplatky) in pricing */
   surcharge_properties?: string[];
+  /** Property codes that affect price resolution (required in form rows) */
+  price_affecting_enums?: string[];
 }
 
 export interface FormRow {

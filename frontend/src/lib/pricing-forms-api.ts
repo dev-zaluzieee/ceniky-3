@@ -16,6 +16,7 @@ export interface PricingFormDetail {
   manufacturer: string;
   product_code: string;
   ovt_export_json: unknown;
+  price_affecting_enums?: string[];
 }
 
 export interface ListPricingFormsResponse {

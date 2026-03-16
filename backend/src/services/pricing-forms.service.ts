@@ -62,6 +62,7 @@ export interface PricingFormDetail {
   manufacturer: string;
   product_code: string;
   ovt_export_json: unknown;
+  price_affecting_enums: string[];
 }
 
 /**
@@ -69,18 +70,25 @@ export interface PricingFormDetail {
  */
 export async function getOvtFormById(pool: Pool, id: string): Promise<PricingFormDetail | null> {
   const result = await pool.query(
-    `SELECT id, manufacturer, product_code, ovt_export_json
+    `SELECT id, manufacturer, product_code, ovt_export_json, price_affecting_enums
      FROM product_pricing
      WHERE id = $1 AND available_for_ovt = true`,
     [id]
   );
   const row = result.rows[0];
   if (!row) return null;
+  const enums = row.price_affecting_enums;
+  const priceAffectingEnums: string[] = Array.isArray(enums)
+    ? enums
+    : typeof enums === "string"
+      ? (() => { try { const p = JSON.parse(enums); return Array.isArray(p) ? p : []; } catch { return []; } })()
+      : [];
   return {
     id: row.id,
     manufacturer: row.manufacturer,
     product_code: row.product_code,
     ovt_export_json: row.ovt_export_json,
+    price_affecting_enums: priceAffectingEnums,
   };
 }
 
