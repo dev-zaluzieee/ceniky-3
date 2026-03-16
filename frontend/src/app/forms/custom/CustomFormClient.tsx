@@ -133,6 +133,7 @@ export default function CustomFormClient({
   /** Track unsaved changes: set true on any formData change after initial load */
   const [isDirty, setIsDirty] = useState(false);
   const initialFormDataRef = useRef<string | null>(null);
+  const latestFormDataRef = useRef<JsonSchemaFormData | null>(null);
 
   useEffect(() => {
     if (formData && initialFormDataRef.current === null) {
@@ -141,15 +142,72 @@ export default function CustomFormClient({
   }, [formData]);
 
   useEffect(() => {
+    latestFormDataRef.current = formData;
+  }, [formData]);
+
+  useEffect(() => {
     if (!formData || initialFormDataRef.current === null) return;
     setIsDirty(JSON.stringify(formData) !== initialFormDataRef.current);
   }, [formData]);
+
+  /** Autosave: debounced save 3s after last change (edit mode only) */
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosaveFailCountRef = useRef(0);
+  const [autosaveError, setAutosaveError] = useState(false);
+  const [isAutosaving, setIsAutosaving] = useState(false);
+  const [autosaveSuccess, setAutosaveSuccess] = useState(false);
+
+  useEffect(() => {
+    if (!isEditMode || !formId || !schema || !isDirty || isSubmitting || hasSizeLimitError) return;
+
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+
+    autosaveTimerRef.current = setTimeout(async () => {
+      const latest = latestFormDataRef.current;
+      if (!latest) return;
+      const snapshot = JSON.stringify(latest);
+      if (snapshot === initialFormDataRef.current) return;
+
+      setIsAutosaving(true);
+      try {
+        const formJson: CustomFormJson = { schema, data: latest };
+        const res = await updateForm(formId, formJson);
+        if (res.success) {
+          autosaveFailCountRef.current = 0;
+          setAutosaveError(false);
+          setAutosaveSuccess(true);
+          const savedSnapshot = JSON.stringify(latest);
+          initialFormDataRef.current = savedSnapshot;
+          const currentData = latestFormDataRef.current;
+          setIsDirty(
+            currentData ? JSON.stringify(currentData) !== savedSnapshot : false
+          );
+        } else {
+          autosaveFailCountRef.current++;
+          if (autosaveFailCountRef.current >= 3) setAutosaveError(true);
+        }
+      } catch {
+        autosaveFailCountRef.current++;
+        if (autosaveFailCountRef.current >= 3) setAutosaveError(true);
+      } finally {
+        setIsAutosaving(false);
+      }
+    }, 3000);
+
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, [formData, isEditMode, formId, schema, isDirty, isSubmitting, hasSizeLimitError]);
 
   const handleSizeLimitErrorChange = useCallback((hasError: boolean) => {
     setHasSizeLimitError(hasError);
   }, []);
 
   const handleSubmit = async () => {
+    // Cancel any pending autosave
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveFailCountRef.current = 0;
+    setAutosaveError(false);
     const payload = schema;
     const data = formData;
     if (!payload || !data) return;
@@ -226,15 +284,38 @@ export default function CustomFormClient({
     </div>
   );
 
-  /** Title with unsaved changes badge */
+  /** Title with save-state badge */
   const titleSection = (
     <div className="mb-5 flex flex-wrap items-center gap-3">
       <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
         {productTitle ? `VÝROBNÍ DOKUMENTACE - ${productTitle}` : "VÝROBNÍ DOKUMENTACE"}
       </h1>
-      {isDirty && (
+      {autosaveSuccess && !isDirty ? (
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-green-600 bg-green-50 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          všechny změny uloženy
+        </span>
+      ) : isAutosaving ? (
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-500 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+          <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Ukládám…
+        </span>
+      ) : isDirty ? (
         <span className="rounded-md border border-amber-400 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 dark:border-amber-500 dark:bg-amber-900/30 dark:text-amber-400">
-          některé změny nejsou uloženy
+          neuložené změny
+        </span>
+      ) : null}
+      {autosaveError && (
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 dark:border-amber-500 dark:bg-amber-900/30 dark:text-amber-400">
+          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          Automatické ukládání selhalo — uložte ručně
         </span>
       )}
     </div>
