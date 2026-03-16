@@ -73,8 +73,9 @@ export async function getOrdersByUserId(
 }
 
 /**
- * Update an order
- * When raynet_id/erp_customer_id are undefined in request, preserve existing values (null clears).
+ * Update an order.
+ * When raynet_id, erp_customer_id, source_raynet_event_id, source_erp_order_id, or notes are
+ * undefined in the request, existing values are preserved (explicit null clears the field).
  * @throws NotFoundError if order not found
  */
 export async function updateOrder(
@@ -95,6 +96,10 @@ export async function updateOrder(
       request.source_raynet_event_id !== undefined
         ? request.source_raynet_event_id
         : existing.source_raynet_event_id,
+    source_erp_order_id:
+      request.source_erp_order_id !== undefined
+        ? request.source_erp_order_id
+        : existing.source_erp_order_id,
     notes: request.notes !== undefined ? request.notes : existing.notes,
   };
   const order = await ordersQueries.updateOrder(pool, id, userId, merged);
