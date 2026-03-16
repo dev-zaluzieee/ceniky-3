@@ -410,9 +410,7 @@ export default function DynamicProductForm({
     let options = getEnumOptions(propertyCode);
     const deps = payload.dependencies?.filter((d) => d.target_property === propertyCode) ?? [];
     for (const dep of deps) {
-      const sourceVal = row[dep.source_enum];
-      if (sourceVal === undefined || sourceVal === null) continue;
-      if (String(sourceVal) !== String(dep.source_value)) continue;
+      if (row[dep.source_enum] !== dep.source_value) continue;
       if (Array.isArray(dep.allowed_values) && dep.allowed_values.length > 0) {
         const allowedSet = new Set(dep.allowed_values);
         options = options.filter((opt) => allowedSet.has(opt.code));
@@ -634,12 +632,11 @@ export default function DynamicProductForm({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={handleAddRoom}
+              onClick={() => handleAddRoom()}
               className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               Přidat místnost
             </button>
-            {actionsInRoomsHeader}
           </div>
         </div>
 
