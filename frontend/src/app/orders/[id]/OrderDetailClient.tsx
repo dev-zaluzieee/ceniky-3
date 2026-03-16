@@ -142,6 +142,9 @@ export default function OrderDetailClient({
   const notesRef = useRef<HTMLDivElement>(null);
   const [notesOverflows, setNotesOverflows] = useState(false);
 
+  // Export status per ADMF form: formId → { exportedAt, testMode }
+  const [exportStatuses, setExportStatuses] = useState<Record<number, { exportedAt: string; testMode: boolean }>>({});
+
   useEffect(() => {
     setOrder(initialOrder);
     setCustomerData({
@@ -182,6 +185,31 @@ export default function OrderDetailClient({
       setModalSearch("");
     }
   }, [showAddFormModal]);
+
+  // Fetch export status for each ADMF form
+  useEffect(() => {
+    const admf = forms.filter((f) => f.form_type === "admf");
+    if (admf.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      admf.map((f) =>
+        fetch(`/api/forms/${f.id}/export-status`, { credentials: "include" })
+          .then((r) => r.json())
+          .then((json) => ({ formId: f.id, data: json.success && json.data ? json.data : null }))
+          .catch(() => ({ formId: f.id, data: null }))
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const statuses: Record<number, { exportedAt: string; testMode: boolean }> = {};
+      for (const r of results) {
+        if (r.data) {
+          statuses[r.formId] = { exportedAt: r.data.exportedAt, testMode: r.data.testMode ?? false };
+        }
+      }
+      setExportStatuses(statuses);
+    });
+    return () => { cancelled = true; };
+  }, [forms]);
 
   /** Detect whether the notes preview overflows so we can show the "Zobrazit celé" button. */
   useEffect(() => {
@@ -283,6 +311,15 @@ export default function OrderDetailClient({
 
   const step1Forms = forms.filter((f) => STEP1_FORM_TYPES.includes(f.form_type as FormType));
   const admfForms = forms.filter((f) => f.form_type === "admf");
+
+  // Find the most recently exported ADMF form
+  const latestExportedFormId = Object.keys(exportStatuses).length > 0
+    ? Object.entries(exportStatuses).reduce<number | null>((best, [formId, status]) => {
+        if (!best) return Number(formId);
+        const bestDate = exportStatuses[best]?.exportedAt ?? "";
+        return status.exportedAt > bestDate ? Number(formId) : best;
+      }, null)
+    : null;
   const sourceFormIdsToHighlight =
     hoveredAdmfFormId != null
       ? (forms.find((f) => f.id === hoveredAdmfFormId)?.form_json as { source_form_ids?: number[] } | undefined)
@@ -628,12 +665,25 @@ export default function OrderDetailClient({
                             </svg>
                           </button>
                           <div>
-                          <div className="mb-1 flex items-center gap-2">
+                          <div className="mb-1 flex flex-wrap items-center gap-2">
                             <span className="inline-flex rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
                               {FORM_TYPE_NAMES.admf}
                             </span>
                             <span className="font-medium text-zinc-900 dark:text-zinc-50">{admfName}</span>
                             <span className="text-xs text-zinc-500 dark:text-zinc-400">ID: {form.id}</span>
+                            {exportStatuses[form.id] && form.id === latestExportedFormId && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Exportováno{exportStatuses[form.id].testMode ? " (test)" : ""}
+                              </span>
+                            )}
+                            {exportStatuses[form.id] && form.id !== latestExportedFormId && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
+                                Dříve exportováno
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-zinc-500 dark:text-zinc-500">
                             Vytvořeno: {formatDate(form.created_at)}

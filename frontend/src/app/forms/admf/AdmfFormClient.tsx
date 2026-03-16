@@ -243,6 +243,7 @@ export default function AdmfFormClient({
     return d;
   });
 
+  const formRef = useRef<HTMLFormElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
@@ -602,7 +603,7 @@ export default function AdmfFormClient({
         </div>
 
         {/* ── Title bar: title + save badge + action buttons ── */}
-        <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold text-zinc-50">
             Administrativní formulář (ADMF)
           </h1>
@@ -620,6 +621,17 @@ export default function AdmfFormClient({
           ) : null}
 
           <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => formRef.current?.requestSubmit()}
+              disabled={isSubmitting}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              {isSubmitting ? "Ukládám…" : "Uložit"}
+            </button>
             <button
               type="button"
               onClick={handleOpenPdfModal}
@@ -655,13 +667,20 @@ export default function AdmfFormClient({
             {exportError && (
               <p className="text-sm text-red-400">{exportError}</p>
             )}
-            {exportedAt && (
-              <p className="text-xs text-zinc-400">
-                Exportováno do Raynet{exportTestMode ? " (test)" : ""}: {new Date(exportedAt).toLocaleString("cs-CZ")}
-              </p>
-            )}
           </div>
         </div>
+
+        {/* ── Status bar: export info ── */}
+        {exportedAt && (
+          <div className="mb-6 flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-2.5">
+            <svg className="h-3.5 w-3.5 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span className="text-xs text-zinc-400">
+              Exportováno do Raynet{exportTestMode ? " (test)" : ""}: {new Date(exportedAt).toLocaleString("cs-CZ")}
+            </span>
+          </div>
+        )}
 
         {/* Modal: Odeslat zákazníkovi — confirms Raynet export + email */}
         {showSendModal && (
@@ -787,7 +806,7 @@ export default function AdmfFormClient({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
           {/* ── Název varianty formuláře ── */}
           <div className="rounded-xl border border-zinc-700 bg-zinc-800 px-5 py-5">
             <h2 className="mb-3 text-lg font-semibold text-zinc-50">Název varianty formuláře</h2>
