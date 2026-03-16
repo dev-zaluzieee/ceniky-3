@@ -10,11 +10,14 @@ import * as pricingFormsService from "../services/pricing-forms.service";
 import * as sizeLimitsService from "../services/size-limits.service";
 import * as admfPdfService from "../services/admf-pdf.service";
 import * as raynetExportService from "../services/raynet-export.service";
+import * as erpExportService from "../services/erp-export.service";
 import * as exportLogsQueries from "../queries/raynet-export-logs.queries";
+import * as erpExportLogsQueries from "../queries/erp-export-logs.queries";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { ApiError } from "../utils/errors";
 import { FormType, ListFormsQuery } from "../types/forms.types";
 import { ExportRaynetRequest } from "../types/raynet-export.types";
+import { randomUUID } from "crypto";
 
 const router = Router();
 
@@ -613,6 +616,68 @@ router.delete("/:id", authenticateToken, async (req: AuthenticatedRequest, res: 
 });
 
 /**
+ * POST /api/forms/:id/export
+ * Unified export: fires Raynet + ERP in parallel via Promise.allSettled.
+ * Returns results for both targets. Each has independent logging.
+ */
+router.post("/:id/export", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const userId = req.userId!;
+    const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const id = parseInt(idParam, 10);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, error: "Invalid form ID" });
+    }
+
+    const body = req.body as { testMode?: boolean };
+    const testMode = body.testMode === true;
+    const exportBatchId = randomUUID();
+
+    const raynetName: string | undefined =
+      req.raynetUserName && req.raynetUserName.trim() !== "" ? req.raynetUserName.trim() : undefined;
+
+    const [raynetResult, erpResult] = await Promise.allSettled([
+      raynetExportService.exportFormToRaynet(pool, id, userId, raynetName, testMode, exportBatchId),
+      erpExportService.exportFormToErp(pool, id, userId, testMode, exportBatchId),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        exportBatchId,
+        testMode,
+        raynet: raynetResult.status === "fulfilled"
+          ? {
+              success: true,
+              logId: raynetResult.value.logId,
+              exportedAt: raynetResult.value.exportedAt.toISOString(),
+              warnings: raynetResult.value.warnings,
+            }
+          : {
+              success: false,
+              error: raynetResult.reason?.message ?? "Raynet export failed",
+            },
+        erp: erpResult.status === "fulfilled"
+          ? {
+              success: true,
+              logId: erpResult.value.logId,
+              exportedAt: erpResult.value.exportedAt.toISOString(),
+              warnings: erpResult.value.warnings,
+            }
+          : {
+              success: false,
+              error: erpResult.reason?.message ?? "ERP export failed",
+            },
+      },
+    });
+  } catch (error: any) {
+    handleError(error, res);
+  }
+});
+
+/**
  * POST /api/forms/:id/export-raynet
  * Export ADMF form data to Raynet event. Supports test mode.
  */
@@ -630,7 +695,6 @@ router.post("/:id/export-raynet", authenticateToken, async (req: AuthenticatedRe
     const body = req.body as ExportRaynetRequest;
     const testMode = body.testMode === true;
 
-    // Raynet display name from JWT (set when user has raw_user_meta_data.raynet_name)
     const raynetName: string | undefined =
       req.raynetUserName && req.raynetUserName.trim() !== "" ? req.raynetUserName.trim() : undefined;
 
@@ -657,8 +721,42 @@ router.post("/:id/export-raynet", authenticateToken, async (req: AuthenticatedRe
 });
 
 /**
+ * POST /api/forms/:id/export-erp
+ * Export ADMF form data to ERP. Supports test mode.
+ */
+router.post("/:id/export-erp", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const userId = req.userId!;
+    const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const id = parseInt(idParam, 10);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, error: "Invalid form ID" });
+    }
+
+    const body = req.body as { testMode?: boolean };
+    const testMode = body.testMode === true;
+
+    const result = await erpExportService.exportFormToErp(pool, id, userId, testMode);
+
+    return res.json({
+      success: true,
+      data: {
+        logId: result.logId,
+        exportedAt: result.exportedAt.toISOString(),
+        testMode: result.testMode,
+        warnings: result.warnings,
+      },
+    });
+  } catch (error: any) {
+    handleError(error, res);
+  }
+});
+
+/**
  * GET /api/forms/:id/export-status
- * Get the latest successful Raynet export info for a form.
+ * Get the latest successful export info for both Raynet and ERP.
  */
 router.get("/:id/export-status", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -670,17 +768,29 @@ router.get("/:id/export-status", authenticateToken, async (req: AuthenticatedReq
       return res.status(400).json({ success: false, error: "Invalid form ID" });
     }
 
-    const log = await exportLogsQueries.getLatestExportForForm(pool, id);
+    const [raynetLog, erpLog] = await Promise.all([
+      exportLogsQueries.getLatestExportForForm(pool, id),
+      erpExportLogsQueries.getLatestErpExportForForm(pool, id),
+    ]);
 
     return res.json({
       success: true,
-      data: log
-        ? {
-            exportedAt: log.completed_at?.toISOString() ?? log.created_at.toISOString(),
-            testMode: log.test_mode,
-            logId: log.id,
-          }
-        : null,
+      data: {
+        raynet: raynetLog
+          ? {
+              exportedAt: raynetLog.completed_at?.toISOString() ?? raynetLog.created_at.toISOString(),
+              testMode: raynetLog.test_mode,
+              logId: raynetLog.id,
+            }
+          : null,
+        erp: erpLog
+          ? {
+              exportedAt: erpLog.completed_at?.toISOString() ?? erpLog.created_at.toISOString(),
+              testMode: erpLog.test_mode,
+              logId: erpLog.id,
+            }
+          : null,
+      },
     });
   } catch (error: any) {
     handleError(error, res);

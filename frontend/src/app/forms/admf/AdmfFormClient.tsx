@@ -6,6 +6,7 @@ import { submitForm, updateForm } from "@/lib/forms-api";
 import { useAppMode } from "@/lib/mode-context";
 import type { AdmfFormData, AdmfProductRow, AdmfVatRate } from "@/types/forms/admf.types";
 import QrPaymentModal from "@/components/QrPaymentModal";
+import ExportStatusModal, { type ExportResult } from "@/components/ExportStatusModal";
 import { buildSpdString } from "@/lib/spd-qr";
 
 /** Today in YYYY-MM-DD for date input default */
@@ -265,6 +266,10 @@ export default function AdmfFormClient({
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportedAt, setExportedAt] = useState<string | null>(null);
   const [exportTestMode, setExportTestMode] = useState(false);
+  const [erpExportedAt, setErpExportedAt] = useState<string | null>(null);
+  const [erpExportTestMode, setErpExportTestMode] = useState(false);
+  const [showExportStatusModal, setShowExportStatusModal] = useState(false);
+  const [exportResult, setExportResult] = useState<ExportResult | null>(null);
 
   /** Dirty state tracking */
   const [isDirty, setIsDirty] = useState(false);
@@ -540,27 +545,40 @@ export default function AdmfFormClient({
     }
   };
 
-  // ── Raynet export: load status on mount ──
+  // ── Export status: load on mount (Raynet + ERP) ──
   useEffect(() => {
     if (!formId || !isEditMode) return;
     fetch(`/api/forms/${formId}/export-status`, { credentials: "include" })
       .then((r) => r.json())
       .then((json) => {
         if (json.success && json.data) {
-          setExportedAt(json.data.exportedAt);
-          setExportTestMode(json.data.testMode ?? false);
+          if (json.data.raynet) {
+            setExportedAt(json.data.raynet.exportedAt);
+            setExportTestMode(json.data.raynet.testMode ?? false);
+          } else if (json.data.exportedAt) {
+            // Backwards compat with old response shape
+            setExportedAt(json.data.exportedAt);
+            setExportTestMode(json.data.testMode ?? false);
+          }
+          if (json.data.erp) {
+            setErpExportedAt(json.data.erp.exportedAt);
+            setErpExportTestMode(json.data.erp.testMode ?? false);
+          }
         }
       })
       .catch(() => {});
   }, [formId, isEditMode]);
 
-  /** Run the Raynet export (or test export). */
-  const handleExportToRaynet = async () => {
+  /** Run the unified export (Raynet + ERP in parallel). */
+  const handleUnifiedExport = async () => {
     if (!formId || !isEditMode) return;
     setExportLoading(true);
     setExportError(null);
+    setExportResult(null);
+    setShowSendModal(false);
+    setShowExportStatusModal(true);
     try {
-      const res = await fetch(`/api/forms/${formId}/export-raynet`, {
+      const res = await fetch(`/api/forms/${formId}/export`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -569,16 +587,22 @@ export default function AdmfFormClient({
       const json = await res.json();
       if (!res.ok || !json.success) {
         setExportError(json.error || "Export se nezdařil.");
+        setShowExportStatusModal(false);
         return;
       }
-      setExportedAt(json.data.exportedAt);
-      setExportTestMode(json.data.testMode ?? false);
-      setShowSendModal(false);
-
-      // TODO: trigger email sending to customer here
-      // if (mode === "PRODUCTION") { await sendEmailToCustomer(formId); }
+      const data = json.data as ExportResult;
+      setExportResult(data);
+      if (data.raynet.success && data.raynet.exportedAt) {
+        setExportedAt(data.raynet.exportedAt);
+        setExportTestMode(data.testMode);
+      }
+      if (data.erp.success && data.erp.exportedAt) {
+        setErpExportedAt(data.erp.exportedAt);
+        setErpExportTestMode(data.testMode);
+      }
     } catch {
       setExportError("Nepodařilo se spojit se serverem.");
+      setShowExportStatusModal(false);
     } finally {
       setExportLoading(false);
     }
@@ -748,14 +772,22 @@ export default function AdmfFormClient({
         </div>
 
         {/* ── Status bar: export info + autosave warning ── */}
-        {(exportedAt || autosaveError) && (
+        {(exportedAt || erpExportedAt || autosaveError) && (
           <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-2.5">
             {exportedAt && (
               <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
                 <svg className="h-3.5 w-3.5 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                Exportováno do Raynet{exportTestMode ? " (test)" : ""}: {new Date(exportedAt).toLocaleString("cs-CZ")}
+                Raynet{exportTestMode ? " (test)" : ""}: {new Date(exportedAt).toLocaleString("cs-CZ")}
+              </span>
+            )}
+            {erpExportedAt && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
+                <svg className="h-3.5 w-3.5 shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                ERP{erpExportTestMode ? " (test)" : ""}: {new Date(erpExportedAt).toLocaleString("cs-CZ")}
               </span>
             )}
             {autosaveError && (
@@ -769,7 +801,7 @@ export default function AdmfFormClient({
           </div>
         )}
 
-        {/* Modal: Odeslat zákazníkovi — confirms Raynet export + email */}
+        {/* Modal: Odeslat zákazníkovi — confirms Raynet + ERP export */}
         {showSendModal && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -783,14 +815,14 @@ export default function AdmfFormClient({
               </h2>
               {mode === "PRODUCTION" ? (
                 <p className="mb-6 text-sm text-zinc-300">
-                  Tato akce synchronizuje data formuláře do Raynetu a odešle e-mail zákazníkovi.
+                  Tato akce synchronizuje data formuláře do Raynetu a ERP systému.
                   Chcete pokračovat?
                 </p>
               ) : (
                 <p className="mb-6 text-sm text-zinc-300">
                   <span className="font-semibold text-amber-400">Testovací režim</span> — vše
-                  proběhne stejně jako v produkci, ale data se neodešlou do Raynetu a zákazníkovi
-                  nepřijde e-mail. Vhodné pro testování.
+                  proběhne stejně jako v produkci, ale data se neodešlou do Raynetu ani ERP
+                  a zákazníkovi nepřijde e-mail. Vhodné pro testování.
                 </p>
               )}
               {exportError && (
@@ -807,7 +839,7 @@ export default function AdmfFormClient({
                 </button>
                 <button
                   type="button"
-                  onClick={handleExportToRaynet}
+                  onClick={handleUnifiedExport}
                   disabled={exportLoading}
                   className={`min-h-[44px] rounded-lg px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 ${
                     mode === "PRODUCTION"
@@ -820,6 +852,15 @@ export default function AdmfFormClient({
               </div>
             </div>
           </div>
+        )}
+
+        {/* Modal: Export status — shows Raynet + ERP results */}
+        {showExportStatusModal && (
+          <ExportStatusModal
+            result={exportResult}
+            loading={exportLoading}
+            onClose={() => setShowExportStatusModal(false)}
+          />
         )}
 
         {/* Modal: e-podpis not available */}

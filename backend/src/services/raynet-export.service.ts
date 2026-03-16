@@ -238,7 +238,8 @@ export async function exportFormToRaynet(
   formId: number,
   userId: string,
   raynetName: string | undefined,
-  testMode: boolean
+  testMode: boolean,
+  exportBatchId?: string
 ): Promise<ExportResult> {
   // ── Step 0: Load form + order, resolve event ID ──
   const form = await formsQueries.getFormById(pool, formId, userId);
@@ -267,6 +268,7 @@ export async function exportFormToRaynet(
     raynet_event_id: raynetEventId,
     user_id: userId,
     test_mode: testMode,
+    export_batch_id: exportBatchId,
   });
 
   try {

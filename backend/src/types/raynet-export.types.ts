@@ -47,6 +47,7 @@ export interface CreateExportLogParams {
   raynet_event_id: number;
   user_id: string;
   test_mode: boolean;
+  export_batch_id?: string;
 }
 
 export interface UpdateExportLogParams {

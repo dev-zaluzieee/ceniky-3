@@ -1,50 +1,49 @@
 /**
- * Raw SQL queries for raynet_export_logs operations
+ * Raw SQL queries for erp_export_logs operations
  */
 
 import { Pool } from "pg";
 import {
-  ExportLogRecord,
-  CreateExportLogParams,
-  UpdateExportLogParams,
-} from "../types/raynet-export.types";
+  ErpExportLogRecord,
+  CreateErpExportLogParams,
+  UpdateErpExportLogParams,
+} from "../types/erp-export.types";
 import { DatabaseError } from "../utils/errors";
 
 /**
- * Insert a new export log with PENDING status.
- * This is the first write — must succeed before any fallible operation.
+ * Insert a new ERP export log with PENDING status.
  */
-export async function createExportLog(
+export async function createErpExportLog(
   pool: Pool,
-  params: CreateExportLogParams
+  params: CreateErpExportLogParams
 ): Promise<number> {
   const query = `
-    INSERT INTO raynet_export_logs (form_id, order_id, raynet_event_id, user_id, status, test_mode, export_batch_id)
-    VALUES ($1, $2, $3, $4, 'PENDING', $5, $6)
+    INSERT INTO erp_export_logs (form_id, order_id, erp_order_id, user_id, export_batch_id, status, test_mode)
+    VALUES ($1, $2, $3, $4, $5, 'PENDING', $6)
     RETURNING id
   `;
   try {
     const result = await pool.query(query, [
       params.form_id,
       params.order_id,
-      params.raynet_event_id,
+      params.erp_order_id,
       params.user_id,
-      params.test_mode,
       params.export_batch_id ?? null,
+      params.test_mode,
     ]);
     return result.rows[0].id;
   } catch (error: any) {
-    throw new DatabaseError(`Failed to create export log: ${error.message}`, error);
+    throw new DatabaseError(`Failed to create ERP export log: ${error.message}`, error);
   }
 }
 
 /**
- * Update an existing export log. Only provided fields are updated.
+ * Update an existing ERP export log. Only provided fields are updated.
  */
-export async function updateExportLog(
+export async function updateErpExportLog(
   pool: Pool,
   logId: number,
-  params: UpdateExportLogParams
+  params: UpdateErpExportLogParams
 ): Promise<void> {
   const setClauses: string[] = [];
   const values: unknown[] = [];
@@ -90,26 +89,26 @@ export async function updateExportLog(
   if (setClauses.length === 0) return;
 
   values.push(logId);
-  const query = `UPDATE raynet_export_logs SET ${setClauses.join(", ")} WHERE id = $${idx}`;
+  const query = `UPDATE erp_export_logs SET ${setClauses.join(", ")} WHERE id = $${idx}`;
 
   try {
     await pool.query(query, values);
   } catch (error: any) {
-    // Log but don't throw — we never want a log-update failure to mask the real error
-    console.error(`Failed to update export log ${logId}:`, error.message);
+    // Log but don't throw — never mask the real error
+    console.error(`Failed to update ERP export log ${logId}:`, error.message);
   }
 }
 
 /**
- * Get the most recent successful export log for a form (for display in UI).
+ * Get the most recent successful ERP export log for a form.
  */
-export async function getLatestExportForForm(
+export async function getLatestErpExportForForm(
   pool: Pool,
   formId: number
-): Promise<ExportLogRecord | null> {
+): Promise<ErpExportLogRecord | null> {
   const query = `
     SELECT *
-    FROM raynet_export_logs
+    FROM erp_export_logs
     WHERE form_id = $1 AND status = 'SUCCESS'
     ORDER BY created_at DESC
     LIMIT 1
@@ -117,19 +116,20 @@ export async function getLatestExportForForm(
   try {
     const result = await pool.query(query, [formId]);
     if (result.rows.length === 0) return null;
-    return mapRowToExportLog(result.rows[0]);
+    return mapRowToErpExportLog(result.rows[0]);
   } catch (error: any) {
-    throw new DatabaseError(`Failed to get export log: ${error.message}`, error);
+    throw new DatabaseError(`Failed to get ERP export log: ${error.message}`, error);
   }
 }
 
-function mapRowToExportLog(row: any): ExportLogRecord {
+function mapRowToErpExportLog(row: any): ErpExportLogRecord {
   return {
     id: row.id,
     form_id: row.form_id,
     order_id: row.order_id,
-    raynet_event_id: row.raynet_event_id,
+    erp_order_id: row.erp_order_id,
     user_id: row.user_id,
+    export_batch_id: row.export_batch_id,
     status: row.status,
     test_mode: row.test_mode,
     request_payload: row.request_payload,

@@ -1,0 +1,26 @@
+json_field,erp_field,erp_endpoint,business_logic
+--- ORDER STATUS (PUT /orders/{id}) ---,,,
+const:zamereni,status,PUT /orders/{id},"Always set to ""zamereni"" on export. ADMF export = zaměření completed."
+--- FINANCE: TOP-LEVEL + COLUMN VALUES (PUT /orders/{id}) ---,,,
+computed.totalSDph,column_values.prodejni_cena_s_dph,PUT /orders/{id},"Computed (DECIMAL): (Σ(cenaPoSleve × ks) + montazCenaBezDph) × (1 + vatRate/100), rounded to integer."
+computed.totalBezDph,column_values.prodejni_cena_bez_dph,PUT /orders/{id},"Computed (DECIMAL): Σ(cenaPoSleve × ks) + montazCenaBezDph. Total without VAT."
+computed.totalSDph,final_value,PUT /orders/{id},"Same value as prodejni_cena_s_dph. Sent as top-level field (not column_values). Always sent."
+vatRate,column_values.dph,PUT /orders/{id},"ENUM format conversion. ADMF number → ERP string: 0→""0"", 12→""0.12"", 21→""0.21""."
+zalohovaFaktura,column_values.vyse_zalohy,PUT /orders/{id},"Direct mapping (DECIMAL). Deposit amount s DPH. Send if > 0."
+computed.doplatek,column_values.vyse_doplatku,PUT /orders/{id},"Computed (DECIMAL): max(0, totalSDph - zalohovaFaktura). Always sent."
+zalohaZaplacena,column_values.druh_platby,PUT /orders/{id},"ENUM mapping required. ADMF → ERP slug: ""Hotově""→""hotove"", ""Terminálem""→""terminalem"", ""QR""→""qr-kod"", ""převodem""→""prevodem"". OPEN: what slug for ""Fakturou""?"
+computed.montazSDph,column_values.cena_za_montaz_s_dph,PUT /orders/{id},"Computed (DECIMAL): montazCenaBezDph × (1 + vatRate/100), rounded. Send if montazCenaBezDph > 0."
+--- PRODUCTS (POST /orders/{id}/products) ---,,,
+productRows[].produkt,products[].nazev,POST /orders/{id}/products,"Direct mapping (STRING). Product name from ADMF row."
+productRows[].ks,products[].ks,POST /orders/{id}/products,"Direct mapping (INTEGER). Quantity."
+productRows[].cenaPoSleve,products[].cena_bez_dph,POST /orders/{id}/products,"Direct mapping (DECIMAL). Per-unit price without VAT."
+computed.rowCenaSDph,products[].cena_s_dph,POST /orders/{id}/products,"Computed per row (DECIMAL): cenaPoSleve × (1 + vatRate/100), rounded."
+schema._product_manufacturer,products[].vyrobce,POST /orders/{id}/products,"From linked custom form schema._product_manufacturer. Same manufacturer for all rows from one form. OPEN: missing on old forms — skip with warning."
+--- COMMENT (POST /orders/{id}/comments — every export) ---,,,
+poznamkyVyroba + poznamkyMontaz,body,POST /orders/{id}/comments,"Merge into comment text. Format: ""Export z ADMF ({datum}):\nVýroba: {x}\nMontáž: {y}"". Skip empty sections. Sent on every export — creates audit trail."
+--- FIELDS EXPLICITLY NOT SENT ---,,,
+-,customer_name / email / phone / address,NOT SENT,ERP is master for customer data. We do not overwrite.
+-,column_values.zpusob_doplatku,NOT SENT,ADMF is not owner of this field.
+-,column_values.datum_objednavky,NOT SENT,ADMF is not owner of this field.
+-,column_values.sleva_vratka,NOT SENT,ADMF is not owner of this field.
+-,estimated_value,NOT SENT,Set at lead stage. Not overwritten.
