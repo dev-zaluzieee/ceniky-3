@@ -5,6 +5,8 @@ import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import { useAppMode } from "@/lib/mode-context";
 import type { AdmfFormData, AdmfProductRow, AdmfVatRate } from "@/types/forms/admf.types";
+import QrPaymentModal from "@/components/QrPaymentModal";
+import { buildSpdString } from "@/lib/spd-qr";
 
 /** Today in YYYY-MM-DD for date input default */
 function todayString(): string {
@@ -249,6 +251,7 @@ export default function AdmfFormClient({
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [showSignModal, setShowSignModal] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   /** Blob URL for PDF viewer modal; when set, modal is open. Revoke on close. */
@@ -438,6 +441,17 @@ export default function AdmfFormClient({
   const minZaloha = Math.round(0.5 * totalSDph);
   const zalohaTooLow = totalSDph > 0 && zalohovaFaktura < minZaloha;
   const doplatek = Math.max(0, totalSDph - zalohovaFaktura);
+
+  const bankAccount = process.env.NEXT_PUBLIC_BANK_ACCOUNT ?? "";
+  const qrSpdString =
+    bankAccount && zalohovaFaktura > 0 && formData.variabilniSymbol
+      ? buildSpdString({
+          account: bankAccount,
+          amount: zalohovaFaktura,
+          variableSymbol: formData.variabilniSymbol,
+          message: "Zaloha za objednavku",
+        })
+      : "";
 
   // Column labels from price-affecting fields
   const firstRowWithPriceFields = formData.productRows.find(
@@ -1589,17 +1603,36 @@ export default function AdmfFormClient({
                 </div>
                 <div>
                   <label className={labelCls}>Záloha zaplacena</label>
-                  <select
-                    value={formData.zalohaZaplacena ?? "Hotově"}
-                    onChange={(e) => updateField("zalohaZaplacena", e.target.value)}
-                    className={selectCls}
-                  >
-                    <option value="Hotově">Hotově</option>
-                    <option value="Terminálem">Terminálem</option>
-                    <option value="QR">QR</option>
-                    <option value="Fakturou">Fakturou</option>
-                    <option value="převodem">Převodem</option>
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={formData.zalohaZaplacena ?? "Hotově"}
+                      onChange={(e) => updateField("zalohaZaplacena", e.target.value)}
+                      className={selectCls}
+                    >
+                      <option value="Hotově">Hotově</option>
+                      <option value="Terminálem">Terminálem</option>
+                      <option value="QR">QR</option>
+                      <option value="Fakturou">Fakturou</option>
+                      <option value="převodem">Převodem</option>
+                    </select>
+                    {formData.zalohaZaplacena === "QR" && (
+                      <button
+                        type="button"
+                        disabled={!formData.zalohovaFaktura || !formData.variabilniSymbol}
+                        onClick={() => setShowQrModal(true)}
+                        className="min-h-[44px] shrink-0 rounded-lg border border-primary bg-primary/20 px-4 py-2.5 text-sm font-medium text-primary hover:bg-primary/30 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={
+                          !formData.zalohovaFaktura
+                            ? "Vyplňte zálohovou fakturu"
+                            : !formData.variabilniSymbol
+                              ? "Vyplňte variabilní symbol"
+                              : "Zobrazit QR kód pro platbu"
+                        }
+                      >
+                        QR platba
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1784,6 +1817,19 @@ export default function AdmfFormClient({
             </button>
           </div>
         </form>
+
+        {/* QR payment modal */}
+        {bankAccount && formData.variabilniSymbol && zalohovaFaktura > 0 && (
+          <QrPaymentModal
+            open={showQrModal}
+            onClose={() => setShowQrModal(false)}
+            spdString={qrSpdString}
+            account={bankAccount}
+            amount={zalohovaFaktura}
+            variableSymbol={formData.variabilniSymbol}
+            message="Záloha za objednávku"
+          />
+        )}
       </div>
     </div>
   );
