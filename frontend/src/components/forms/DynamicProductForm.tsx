@@ -649,13 +649,59 @@ export default function DynamicProductForm({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => handleAddRoom()}
+              onClick={() => setShowAddRoomPanel((v) => !v)}
               className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               Přidat místnost
             </button>
           </div>
         </div>
+
+        {/* Room preset panel */}
+        {showAddRoomPanel && (
+          <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-700/50">
+            <p className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Vyberte typ místnosti nebo zadejte vlastní název:
+            </p>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {ROOM_PRESETS.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => handleAddRoom(name)}
+                  className="min-h-[44px] touch-manipulation rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-primary hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:border-primary dark:hover:bg-primary/20"
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={customRoomName}
+                onChange={(e) => setCustomRoomName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && customRoomName.trim()) {
+                    e.preventDefault();
+                    handleAddRoom(customRoomName.trim());
+                  }
+                }}
+                className="min-h-[44px] flex-1 rounded-md border border-zinc-300 px-3 py-2.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+                placeholder="Vlastní název..."
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (customRoomName.trim()) handleAddRoom(customRoomName.trim());
+                }}
+                disabled={!customRoomName.trim()}
+                className="min-h-[44px] touch-manipulation rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                Přidat
+              </button>
+            </div>
+          </div>
+        )}
 
         {formData.rooms.length === 0 ? (
           <div className="rounded-lg border border-zinc-200 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-800">
@@ -688,6 +734,13 @@ export default function DynamicProductForm({
                         className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                       >
                         Přidat řádek
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDuplicateRoom(room.id)}
+                        className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                      >
+                        Duplikovat
                       </button>
                       <button
                         type="button"
