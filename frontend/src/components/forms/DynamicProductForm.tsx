@@ -202,22 +202,31 @@ export default function DynamicProductForm({
     onWarrantyErrorChange?.(hasWarrantyError);
   }, [sizeLimitByRow, onSizeLimitErrorChange, onWarrantyErrorChange]);
 
-  // Validate required (price-affecting) fields in all rows
+  // Validate required (price-affecting) fields in all rows.
+  // Skip fields that are disabled by dependency (user cannot fill them).
   useEffect(() => {
     if (priceAffectingEnums.size === 0) {
       onRequiredFieldsErrorChange?.(false);
       return;
     }
+    const dependencies = payload.dependencies ?? [];
     const hasMissing = formData.rooms.some((room) =>
       room.rows.some((row) =>
         Array.from(priceAffectingEnums).some((code) => {
           const v = row[code];
-          return v === undefined || v === null || String(v).trim() === "";
+          const isEmpty = v === undefined || v === null || String(v).trim() === "";
+          if (!isEmpty) return false;
+          // Same logic as isFieldDisabledByDependency: skip if field is disabled by dependency
+          const disabledDeps = dependencies.filter(
+            (d) => d.target_property === code && d.field_disabled === true
+          );
+          const isDisabled = disabledDeps.some((dep) => row[dep.source_enum] === dep.source_value);
+          return !isDisabled; // missing and not disabled => counts as error
         })
       )
     );
     onRequiredFieldsErrorChange?.(hasMissing);
-  }, [formData, priceAffectingEnums, onRequiredFieldsErrorChange]);
+  }, [formData, priceAffectingEnums, payload.dependencies, onRequiredFieldsErrorChange]);
 
   const getPropertyLabel = (prop: PropertyDefinition): string =>
     prop["label-form"] ?? prop.Name;
