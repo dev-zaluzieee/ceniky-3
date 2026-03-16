@@ -555,12 +555,11 @@ export default function OrderDetailClient({
                           <div>
                             <div className="mb-1 flex items-center gap-2">
                               <span className="inline-flex rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
-                                {FORM_TYPE_NAMES[form.form_type]}
+                                {parsedInfo.name || FORM_TYPE_NAMES[form.form_type]}
                               </span>
                               <span className="text-xs text-zinc-500 dark:text-zinc-400">ID: {form.id}</span>
                             </div>
                             <div className="text-sm text-zinc-600 dark:text-zinc-400">
-                              {parsedInfo.name && <p>{parsedInfo.name}</p>}
                               {parsedInfo.address && (
                                 <p>
                                   {parsedInfo.address}
