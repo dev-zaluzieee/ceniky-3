@@ -29,9 +29,6 @@ export default function Header() {
                 className="h-10 w-auto sm:h-11"
               />
             </Link>
-            <span className="hidden border-l border-white/30 pl-4 text-sm font-medium text-white/90 sm:inline">
-              Výrobní dokumentace
-            </span>
             <Link
               href="/changelog"
               className="rounded-lg px-3 py-2 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-primary"
