@@ -134,6 +134,7 @@ export default function OrderDetailClient({
     zipcode: initialOrder.zipcode ?? "",
     raynet_id: initialOrder.raynet_id != null ? String(initialOrder.raynet_id) : "",
     erp_customer_id: initialOrder.erp_customer_id != null ? String(initialOrder.erp_customer_id) : "",
+    source_erp_order_id: initialOrder.source_erp_order_id != null ? String(initialOrder.source_erp_order_id) : "",
     notes: initialOrder.notes ?? "",
   });
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
@@ -156,6 +157,7 @@ export default function OrderDetailClient({
       zipcode: initialOrder.zipcode ?? "",
       raynet_id: initialOrder.raynet_id != null ? String(initialOrder.raynet_id) : "",
       erp_customer_id: initialOrder.erp_customer_id != null ? String(initialOrder.erp_customer_id) : "",
+      source_erp_order_id: initialOrder.source_erp_order_id != null ? String(initialOrder.source_erp_order_id) : "",
       notes: initialOrder.notes ?? "",
     });
   }, [initialOrder]);
@@ -239,6 +241,7 @@ export default function OrderDetailClient({
         zipcode: customerData.zipcode || undefined,
         raynet_id: customerData.raynet_id.trim() === "" ? null : Number(customerData.raynet_id),
         erp_customer_id: customerData.erp_customer_id.trim() === "" ? null : Number(customerData.erp_customer_id),
+        source_erp_order_id: customerData.source_erp_order_id.trim() === "" ? null : Number(customerData.source_erp_order_id),
       });
       if (!res.success) {
         setCustomerSaveError(res.error || "Nepodařilo se uložit.");
@@ -437,7 +440,7 @@ export default function OrderDetailClient({
                 />
               </div>
 
-              {/* Row 4: ERP zákazník ID */}
+              {/* Row 4: ERP zákazník ID, ERP zakázka ID */}
               <div>
                 <label className={labelClasses}>ERP zákazník ID</label>
                 <input
@@ -445,6 +448,17 @@ export default function OrderDetailClient({
                   inputMode="numeric"
                   value={customerData.erp_customer_id}
                   onChange={(e) => setCustomerData((p) => ({ ...p, erp_customer_id: e.target.value }))}
+                  className={inputClasses}
+                  placeholder="—"
+                />
+              </div>
+              <div>
+                <label className={labelClasses}>ERP zakázka ID</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={customerData.source_erp_order_id}
+                  onChange={(e) => setCustomerData((p) => ({ ...p, source_erp_order_id: e.target.value }))}
                   className={inputClasses}
                   placeholder="—"
                 />

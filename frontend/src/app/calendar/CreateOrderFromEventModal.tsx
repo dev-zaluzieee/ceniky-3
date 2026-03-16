@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { searchCustomersDual } from "@/lib/customers-api";
+import { fetchErpOrdersByCustomerId } from "@/lib/erp-api";
 import { createOrder } from "@/lib/orders-api";
-import { ErpCustomer } from "@/types/erp.types";
+import { ErpCustomer, ErpOrder } from "@/types/erp.types";
 import type { RaynetEvent } from "@/lib/raynet-events";
 
 interface CreateOrderFromEventModalProps {
@@ -34,6 +35,45 @@ function extractEventNotes(description: string | null): string | null {
   return text.length > 0 ? text : null;
 }
 
+/** Format a date string for display. */
+function formatErpDate(dateStr: string | null): string {
+  if (!dateStr) return "—";
+  try {
+    return new Intl.DateTimeFormat("cs-CZ", {
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+    }).format(new Date(dateStr));
+  } catch {
+    return dateStr;
+  }
+}
+
+/** Status label for display. */
+function statusLabel(status: string): string {
+  const map: Record<string, string> = {
+    pending: "Čeká",
+    in_progress: "Probíhá",
+    completed: "Dokončeno",
+    cancelled: "Zrušeno",
+  };
+  return map[status] ?? status;
+}
+
+/** Status badge color classes. */
+function statusColor(status: string): string {
+  switch (status) {
+    case "completed":
+      return "bg-emerald-900/40 text-emerald-400";
+    case "cancelled":
+      return "bg-red-900/40 text-red-400";
+    case "in_progress":
+      return "bg-blue-900/40 text-blue-400";
+    default:
+      return "bg-zinc-700 text-zinc-300";
+  }
+}
+
 export default function CreateOrderFromEventModal({
   event,
   prefillPhone,
@@ -41,7 +81,7 @@ export default function CreateOrderFromEventModal({
   onClose,
   onOrderCreated,
 }: CreateOrderFromEventModalProps) {
-  // ERP search
+  // Step 1: ERP customer search
   const [phone, setPhone] = useState(prefillPhone ?? "");
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -50,7 +90,14 @@ export default function CreateOrderFromEventModal({
   const [hasSearched, setHasSearched] = useState(false);
   const [skippedErp, setSkippedErp] = useState(false);
 
-  // Order creation
+  // Step 2: ERP order pairing
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [erpOrders, setErpOrders] = useState<ErpOrder[]>([]);
+  const [selectedErpOrder, setSelectedErpOrder] = useState<ErpOrder | null>(null);
+  const [erpOrderError, setErpOrderError] = useState<string | null>(null);
+  const [skippedErpOrder, setSkippedErpOrder] = useState(false);
+
+  // Step 3: Order creation
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -64,7 +111,12 @@ export default function CreateOrderFromEventModal({
     zipcode: event.companyAddress?.zipCode ?? "",
   });
 
-  const canCreate = selectedErp !== null || skippedErp;
+  // Step 2 is ready when ERP customer is selected (or skipped)
+  const customerDone = selectedErp !== null || skippedErp;
+  // Step 3 (form) is ready when ERP order is selected, skipped, or customer was skipped entirely
+  const canCreate = skippedErp || selectedErpOrder !== null || skippedErpOrder;
+
+  // --- Step 1: ERP customer search ---
 
   const doErpSearch = async (searchPhone: string) => {
     const trimmed = searchPhone.trim();
@@ -77,6 +129,11 @@ export default function CreateOrderFromEventModal({
     setErpCandidates([]);
     setSelectedErp(null);
     setSkippedErp(false);
+    // Reset order step
+    setErpOrders([]);
+    setSelectedErpOrder(null);
+    setSkippedErpOrder(false);
+    setErpOrderError(null);
 
     try {
       const result = await searchCustomersDual(trimmed);
@@ -109,6 +166,11 @@ export default function CreateOrderFromEventModal({
   const handleSelectErp = (erp: ErpCustomer) => {
     setSelectedErp(erp);
     setSkippedErp(false);
+    // Reset order step when customer changes
+    setErpOrders([]);
+    setSelectedErpOrder(null);
+    setSkippedErpOrder(false);
+    setErpOrderError(null);
     // Pre-fill form from ERP data (keep Raynet data as fallback)
     setFormData({
       name: erp.name ?? event.company?.name ?? "",
@@ -123,7 +185,67 @@ export default function CreateOrderFromEventModal({
   const handleSkipErp = () => {
     setSkippedErp(true);
     setSelectedErp(null);
+    // Reset order step
+    setErpOrders([]);
+    setSelectedErpOrder(null);
+    setSkippedErpOrder(false);
+    setErpOrderError(null);
   };
+
+  // --- Step 2: ERP order fetch (auto-triggered when customer is selected) ---
+
+  useEffect(() => {
+    if (!selectedErp) return;
+
+    let cancelled = false;
+    setIsLoadingOrders(true);
+    setErpOrderError(null);
+    setErpOrders([]);
+    setSelectedErpOrder(null);
+    setSkippedErpOrder(false);
+
+    (async () => {
+      try {
+        const result = await fetchErpOrdersByCustomerId(selectedErp.id);
+        if (cancelled) return;
+
+        if (!result.success) {
+          setErpOrderError(result.error || "Nepodařilo se načíst zakázky z ERP");
+          return;
+        }
+
+        const orders = result.data?.orders ?? [];
+        setErpOrders(orders);
+
+        // QoL: auto-select if exactly one order
+        if (orders.length === 1) {
+          setSelectedErpOrder(orders[0]);
+        }
+      } catch {
+        if (!cancelled) {
+          setErpOrderError("Došlo k chybě při načítání ERP zakázek.");
+        }
+      } finally {
+        if (!cancelled) setIsLoadingOrders(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedErp]);
+
+  const handleSelectErpOrder = (order: ErpOrder) => {
+    setSelectedErpOrder(order);
+    setSkippedErpOrder(false);
+  };
+
+  const handleSkipErpOrder = () => {
+    setSkippedErpOrder(true);
+    setSelectedErpOrder(null);
+  };
+
+  // --- Step 3: Create order ---
 
   const handleCreate = async () => {
     setIsCreating(true);
@@ -139,6 +261,7 @@ export default function CreateOrderFromEventModal({
         raynet_id: event.company?.id ?? undefined,
         erp_customer_id: selectedErp?.id ?? undefined,
         source_raynet_event_id: event.id,
+        source_erp_order_id: selectedErpOrder?.id ?? undefined,
         notes: extractEventNotes(event.description),
       });
       if (!result.success) {
@@ -160,6 +283,10 @@ export default function CreateOrderFromEventModal({
       setIsCreating(false);
     }
   };
+
+  // --- Step indicator helper ---
+  const stepDone = (done: boolean) =>
+    done ? "bg-emerald-500 text-emerald-950" : "bg-zinc-700 text-zinc-300";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -196,12 +323,10 @@ export default function CreateOrderFromEventModal({
           )}
         </div>
 
-        {/* Step 1: ERP pairing */}
+        {/* Step 1: ERP customer pairing */}
         <div className="mb-4 rounded-xl border border-zinc-700 p-4">
           <div className="mb-3 flex items-center gap-2">
-            <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-              selectedErp ? "bg-emerald-500 text-emerald-950" : "bg-zinc-700 text-zinc-300"
-            }`}>
+            <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${stepDone(!!selectedErp)}`}>
               1
             </span>
             <p className="text-sm font-medium text-zinc-200">
@@ -296,13 +421,138 @@ export default function CreateOrderFromEventModal({
           )}
         </div>
 
-        {/* Step 2: Customer form + create (only visible after ERP selection or skip) */}
+        {/* Step 2: ERP order pairing (only when customer is selected, not skipped) */}
+        {selectedErp && (
+          <div className="mb-4 rounded-xl border border-zinc-700 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${stepDone(!!selectedErpOrder)}`}>
+                2
+              </span>
+              <p className="text-sm font-medium text-zinc-200">
+                Spárovat s ERP zakázkou
+              </p>
+            </div>
+
+            {/* Loading */}
+            {isLoadingOrders && (
+              <p className="text-sm text-zinc-400">Načítám zakázky z ERP...</p>
+            )}
+
+            {/* Error */}
+            {erpOrderError && (
+              <p className="text-sm text-red-400">{erpOrderError}</p>
+            )}
+
+            {/* No orders found */}
+            {!isLoadingOrders && !erpOrderError && erpOrders.length === 0 && (
+              <div>
+                <p className="text-sm text-zinc-400">
+                  Zákazník nemá žádné zakázky v ERP.
+                </p>
+                {!skippedErpOrder && (
+                  <button
+                    type="button"
+                    onClick={handleSkipErpOrder}
+                    className="mt-2 text-xs text-zinc-500 underline decoration-zinc-600 hover:text-zinc-300"
+                  >
+                    Pokračovat bez ERP zakázky
+                  </button>
+                )}
+                {skippedErpOrder && (
+                  <p className="mt-2 text-xs text-amber-400">
+                    Zakázka bude vytvořena bez napojení na ERP zakázku.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Order list (only shown when 2+ orders, since 1 is auto-selected) */}
+            {!isLoadingOrders && erpOrders.length > 1 && (
+              <div>
+                <p className="mb-2 text-xs font-semibold text-zinc-400">
+                  Vyberte ERP zakázku ({erpOrders.length})
+                </p>
+                <div className="max-h-48 overflow-y-auto rounded-lg border border-zinc-700">
+                  {erpOrders.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => handleSelectErpOrder(o)}
+                      className={`w-full border-b border-zinc-700 px-3 py-2.5 text-left last:border-0 transition-colors ${
+                        selectedErpOrder?.id === o.id
+                          ? "bg-emerald-900/40"
+                          : "hover:bg-zinc-800"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-zinc-100">
+                          Zakázka #{o.id}
+                        </p>
+                        <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${statusColor(o.status)}`}>
+                          {statusLabel(o.status)}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-zinc-400">
+                        Vytvořeno: {formatErpDate(o.created_at)}
+                        {o.priority !== "medium" && ` | Priorita: ${o.priority}`}
+                        {o.order_type !== "order" && ` | Typ: ${o.order_type}`}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Auto-selected single order confirmation */}
+            {!isLoadingOrders && erpOrders.length === 1 && selectedErpOrder && (
+              <div className="rounded-lg border border-emerald-800/50 bg-emerald-900/20 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-emerald-300">
+                    Zakázka #{selectedErpOrder.id}
+                  </p>
+                  <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${statusColor(selectedErpOrder.status)}`}>
+                    {statusLabel(selectedErpOrder.status)}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs text-emerald-400/70">
+                  Automaticky vybráno (jediná zakázka zákazníka)
+                </p>
+              </div>
+            )}
+
+            {/* Selected confirmation (multi-order case) */}
+            {!isLoadingOrders && erpOrders.length > 1 && selectedErpOrder && (
+              <p className="mt-2 text-xs text-emerald-400">
+                Vybráno: Zakázka #{selectedErpOrder.id} ({statusLabel(selectedErpOrder.status)}, {formatErpDate(selectedErpOrder.created_at)})
+              </p>
+            )}
+
+            {/* Skip option for orders */}
+            {!isLoadingOrders && erpOrders.length > 0 && !selectedErpOrder && !skippedErpOrder && (
+              <button
+                type="button"
+                onClick={handleSkipErpOrder}
+                className="mt-3 text-xs text-zinc-500 underline decoration-zinc-600 hover:text-zinc-300"
+              >
+                Pokračovat bez ERP zakázky
+              </button>
+            )}
+
+            {skippedErpOrder && erpOrders.length > 0 && (
+              <p className="mt-2 text-xs text-amber-400">
+                Zakázka bude vytvořena bez napojení na ERP zakázku.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Customer form + create (only visible after ERP pairing is resolved) */}
         {canCreate && (
           <>
             <div className="mb-4 rounded-xl border border-zinc-700 p-4">
               <div className="mb-3 flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-700 text-xs font-bold text-zinc-300">
-                  2
+                  {skippedErp ? "2" : "3"}
                 </span>
                 <p className="text-sm font-medium text-zinc-200">
                   Údaje zákazníka

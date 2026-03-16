@@ -16,3 +16,14 @@ export interface ErpCustomer {
   updated_at: string | null;
 }
 
+export interface ErpOrder {
+  id: number;
+  status: string;
+  created_at: string | null;
+  updated_at: string | null;
+  customer_id: number | null;
+  priority: string;
+  order_type: string;
+  parent_order_id: number | null;
+}
+
