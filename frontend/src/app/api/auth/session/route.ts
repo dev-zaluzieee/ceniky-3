@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     const userEmail = cookieStore.get("user_email")?.value;
     const userId = cookieStore.get("user_id")?.value;
     const userRaynetId = cookieStore.get("user_raynet_id")?.value;
+    const userRaynetName = cookieStore.get("user_raynet_name")?.value ?? null;
 
     // Check if token exists and is not expired
     if (!accessToken) {
@@ -36,6 +37,7 @@ export async function GET(request: NextRequest) {
         cookieStore.delete("user_email");
         cookieStore.delete("user_id");
         cookieStore.delete("user_raynet_id");
+        cookieStore.delete("user_raynet_name");
         return NextResponse.json({ success: false, authenticated: false }, { status: 401 });
       }
     }
@@ -49,6 +51,7 @@ export async function GET(request: NextRequest) {
         email: userEmail || null,
         id: userId || null,
         raynet_id: userRaynetId ?? null,
+        raynet_name: userRaynetName,
       },
       expires_at: parsedExpiresAt != null && !Number.isNaN(parsedExpiresAt) ? parsedExpiresAt : null,
     });

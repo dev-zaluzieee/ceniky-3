@@ -14,6 +14,8 @@ export interface AuthenticatedRequest extends Request {
   userId?: string;
   userEmail?: string;
   raynetUserId?: string | null;
+  /** Raynet display name (from auth) for ADMF Zprostredkovatel and export. */
+  raynetUserName?: string | null;
 }
 
 /**
@@ -23,6 +25,7 @@ interface JwtPayload {
   email: string;
   id?: string;
   raynet_id?: string | null;
+  raynet_name?: string | null;
   iat?: number;
   exp?: number;
 }
@@ -89,6 +92,7 @@ export function authenticateToken(
     req.userId = userEmail;
     req.userEmail = userEmail;
     req.raynetUserId = decoded.raynet_id ?? null;
+    req.raynetUserName = decoded.raynet_name ?? null;
 
     next();
   } catch (error: any) {

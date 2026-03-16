@@ -630,9 +630,9 @@ router.post("/:id/export-raynet", authenticateToken, async (req: AuthenticatedRe
     const body = req.body as ExportRaynetRequest;
     const testMode = body.testMode === true;
 
-    // TODO: resolve raynet_name from JWT/auth when available
-    // For now, use jmenoPodpisZprostredkovatele from form_json as fallback
-    const raynetName: string | undefined = undefined;
+    // Raynet display name from JWT (set when user has raw_user_meta_data.raynet_name)
+    const raynetName: string | undefined =
+      req.raynetUserName && req.raynetUserName.trim() !== "" ? req.raynetUserName.trim() : undefined;
 
     const result = await raynetExportService.exportFormToRaynet(
       pool,

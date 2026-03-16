@@ -169,6 +169,23 @@ export async function POST(request: NextRequest) {
           maxAge: 60 * 60 * 24 * 7, // 7 days
         });
       }
+
+      // Raynet display name (from raw_user_meta_data.raynet_name) for ADMF Zprostredkovatel + export
+      const raynetName =
+        data.data.user.raynet_name ??
+        (data.data.user as { raw_user_meta_data?: { raynet_name?: string } }).raw_user_meta_data?.raynet_name ??
+        null;
+      if (raynetName == null || typeof raynetName !== "string" || raynetName.trim() === "") {
+        cookieStore.delete("user_raynet_name");
+      } else {
+        cookieStore.set("user_raynet_name", raynetName.trim(), {
+          httpOnly: false,
+          secure: isProduction,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 60 * 60 * 24 * 7, // 7 days
+        });
+      }
     }
 
     // Return success response (without sensitive tokens)

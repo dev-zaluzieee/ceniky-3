@@ -72,9 +72,18 @@ export default async function OrderFormEditPage({
 
   if (formType === "admf") {
     const initialData = form.form_json as AdmfFormData;
+    const raynetName = session.user.raynet_name ?? undefined;
+    // Prefill Zprostredkovatel when saved value is empty (so current user name appears)
+    const mergedInitialData: AdmfFormData = {
+      ...initialData,
+      jmenoPodpisZprostredkovatele:
+        (initialData.jmenoPodpisZprostredkovatele?.trim() ?? "") !== ""
+          ? initialData.jmenoPodpisZprostredkovatele
+          : raynetName ?? "",
+    };
     return (
       <AdmfFormClient
-        initialData={initialData}
+        initialData={mergedInitialData}
         formId={formId}
         orderId={orderId}
         customerFromOrder={customerFromOrder}

@@ -95,6 +95,7 @@ export default async function OrderFormCreatePage({
     }));
 
     const today = new Date().toISOString().slice(0, 10);
+    const raynetName = session.user.raynet_name ?? undefined;
     const initialData = {
       name: variantaName,
       source_form_ids: extractRes.success && extractRes.data?.source_form_ids ? extractRes.data.source_form_ids : [],
@@ -114,6 +115,7 @@ export default async function OrderFormCreatePage({
       vatRate: 12 as const,
       zalohovaFaktura: 0,
       datum: today,
+      jmenoPodpisZprostredkovatele: raynetName ?? "",
     };
 
     return (

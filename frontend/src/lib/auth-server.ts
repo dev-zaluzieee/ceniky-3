@@ -45,6 +45,7 @@ export async function getServerSession(): Promise<{
     email: string | null;
     id: string | null;
     raynet_id?: string | null;
+    raynet_name?: string | null;
   };
   expires_at: number | null;
 } | null> {
@@ -70,6 +71,7 @@ export async function getServerSession(): Promise<{
     const userEmail = cookieStore.get("user_email")?.value || null;
     const userId = cookieStore.get("user_id")?.value || null;
     const userRaynetId = cookieStore.get("user_raynet_id")?.value || null;
+    const userRaynetName = cookieStore.get("user_raynet_name")?.value ?? null;
     const parsedExpiresAt = expiresAt ? parseInt(expiresAt, 10) : null;
 
     return {
@@ -77,6 +79,7 @@ export async function getServerSession(): Promise<{
         email: userEmail,
         id: userId,
         raynet_id: userRaynetId,
+        raynet_name: userRaynetName,
       },
       expires_at: parsedExpiresAt != null && !Number.isNaN(parsedExpiresAt) ? parsedExpiresAt : null,
     };

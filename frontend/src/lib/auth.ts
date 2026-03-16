@@ -18,6 +18,8 @@ export interface SignInResponse {
        * Null when the user is not paired.
        */
       raynet_id?: string | null;
+      /** Raynet display name (for ADMF Zprostredkovatel and export). */
+      raynet_name?: string | null;
     };
     expires_at: number;
   };
@@ -38,6 +40,8 @@ export interface SessionResponse {
      * Null when the user is not paired.
      */
     raynet_id?: string | null;
+    /** Raynet display name (for ADMF Zprostredkovatel and export). */
+    raynet_name?: string | null;
   };
   expires_at?: number | null;
   message?: string;
