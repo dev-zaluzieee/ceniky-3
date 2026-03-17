@@ -33,9 +33,9 @@ function toDimensionValues(width: string, height: string): { w: number; h: numbe
 }
 
 /**
- * Clamp width and height independently to the nearest available value
- * in the price table. If the entered dimension is below the table minimum,
- * use the minimum. If above the maximum, use the maximum.
+ * Snap width and height independently to the nearest available value in the price table.
+ * Below table minimum → use minimum; above table maximum → use maximum;
+ * between two steps → use the step with the smaller distance (tie: use the higher step).
  */
 function clampToPriceTable(
   w: number,
@@ -57,13 +57,19 @@ function clampToPriceTable(
   const sortedW = Array.from(widths).sort((a, b) => a - b);
   const sortedH = Array.from(heights).sort((a, b) => a - b);
 
-  const clamp = (val: number, sorted: number[]): number => {
+  /** Pick the nearest value in sorted array; if tied, use the higher value. */
+  const snapToNearest = (val: number, sorted: number[]): number => {
     if (val <= sorted[0]) return sorted[0];
     if (val >= sorted[sorted.length - 1]) return sorted[sorted.length - 1];
-    return val;
+    const i = sorted.findIndex((x) => x >= val);
+    const lo = sorted[i - 1];
+    const hi = sorted[i];
+    const dLo = val - lo;
+    const dHi = hi - val;
+    return dHi <= dLo ? hi : lo;
   };
 
-  return { w: clamp(w, sortedW), h: clamp(h, sortedH) };
+  return { w: snapToNearest(w, sortedW), h: snapToNearest(h, sortedH) };
 }
 
 /**
@@ -139,11 +145,11 @@ export async function resolvePrice(
   let key = dimensionKey(dims.w, dims.h);
   let cena = prices[key];
 
-  // If exact key not found, clamp dimensions to the price table range independently
+  // If exact key not found, snap width/height to nearest available in the table (per axis)
   if (typeof cena !== "number" || cena < 0) {
-    const clamped = clampToPriceTable(dims.w, dims.h, prices);
-    if (clamped.w !== dims.w || clamped.h !== dims.h) {
-      key = dimensionKey(clamped.w, clamped.h);
+    const snapped = clampToPriceTable(dims.w, dims.h, prices);
+    if (snapped.w !== dims.w || snapped.h !== dims.h) {
+      key = dimensionKey(snapped.w, snapped.h);
       cena = prices[key];
     }
   }
