@@ -20,11 +20,50 @@ function ceilTo100(value: number): number {
   return Math.ceil(value / 100) * 100;
 }
 
-function dimensionKey(width: string, height: string): string {
-  const w = ceilTo100(Math.round(Number(width) || 0));
-  const h = ceilTo100(Math.round(Number(height) || 0));
+function dimensionKey(width: number, height: number): string {
   // Key format expected by pricing tool: "<height>_<width>"
-  return `${h}_${w}`;
+  return `${height}_${width}`;
+}
+
+function toDimensionValues(width: string, height: string): { w: number; h: number } {
+  return {
+    w: ceilTo100(Math.round(Number(width) || 0)),
+    h: ceilTo100(Math.round(Number(height) || 0)),
+  };
+}
+
+/**
+ * Clamp width and height independently to the nearest available value
+ * in the price table. If the entered dimension is below the table minimum,
+ * use the minimum. If above the maximum, use the maximum.
+ */
+function clampToPriceTable(
+  w: number,
+  h: number,
+  prices: Record<string, number>
+): { w: number; h: number } {
+  const widths = new Set<number>();
+  const heights = new Set<number>();
+  for (const key of Object.keys(prices)) {
+    const parts = key.split("_");
+    if (parts.length !== 2) continue;
+    const kh = Number(parts[0]);
+    const kw = Number(parts[1]);
+    if (!Number.isNaN(kh)) heights.add(kh);
+    if (!Number.isNaN(kw)) widths.add(kw);
+  }
+  if (widths.size === 0 || heights.size === 0) return { w, h };
+
+  const sortedW = Array.from(widths).sort((a, b) => a - b);
+  const sortedH = Array.from(heights).sort((a, b) => a - b);
+
+  const clamp = (val: number, sorted: number[]): number => {
+    if (val <= sorted[0]) return sorted[0];
+    if (val >= sorted[sorted.length - 1]) return sorted[sorted.length - 1];
+    return val;
+  };
+
+  return { w: clamp(w, sortedW), h: clamp(h, sortedH) };
 }
 
 /**
@@ -89,14 +128,26 @@ export async function resolvePrice(
     );
   }
 
-  const key = dimensionKey(width, height);
   const prices = variant.dimension_pricing?.prices;
   if (!prices || typeof prices !== "object") {
     throw new Error(
       `Variant ${variant.id} has no dimension_pricing.prices.`
     );
   }
-  const cena = prices[key];
+
+  const dims = toDimensionValues(width, height);
+  let key = dimensionKey(dims.w, dims.h);
+  let cena = prices[key];
+
+  // If exact key not found, clamp dimensions to the price table range independently
+  if (typeof cena !== "number" || cena < 0) {
+    const clamped = clampToPriceTable(dims.w, dims.h, prices);
+    if (clamped.w !== dims.w || clamped.h !== dims.h) {
+      key = dimensionKey(clamped.w, clamped.h);
+      cena = prices[key];
+    }
+  }
+
   if (typeof cena !== "number" || cena < 0) {
     throw new Error(
       `No price for dimensions ${width}×${height} (key "${key}") in variant ${variant.id}.`
