@@ -22,9 +22,16 @@ export async function GET(
     const backendResponse = await fetch(`${getBackendUrl()}/api/forms/${id}/attachments`, {
       method: "GET",
       headers: { Authorization: `Bearer ${authToken}` },
+      cache: "no-store",
     });
     const data = await backendResponse.json().catch(() => ({}));
-    return NextResponse.json(data, { status: backendResponse.status });
+    return NextResponse.json(data, {
+      status: backendResponse.status,
+      headers: {
+        "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        Pragma: "no-cache",
+      },
+    });
   } catch (e) {
     console.error("GET /api/forms/[id]/attachments:", e);
     return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });

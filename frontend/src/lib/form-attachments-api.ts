@@ -29,6 +29,7 @@ export async function listFormAttachments(formId: number): Promise<ListAttachmen
     const res = await fetch(`/api/forms/${formId}/attachments`, {
       method: "GET",
       credentials: "include",
+      cache: "no-store",
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {

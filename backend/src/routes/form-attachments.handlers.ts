@@ -36,6 +36,9 @@ export async function listFormAttachmentsHandler(
     formId,
     req.userId!
   );
+  // Prevent CDN/browser caching stale list after uploads (production)
+  res.setHeader("Cache-Control", "private, no-store, no-cache, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
   res.json({ success: true, data: items });
 }
 
