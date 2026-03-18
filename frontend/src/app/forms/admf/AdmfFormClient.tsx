@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
+import FormAttachmentsSection from "@/components/forms/FormAttachmentsSection";
 import { useAppMode } from "@/lib/mode-context";
 import type { AdmfFormData, AdmfProductRow, AdmfVatRate } from "@/types/forms/admf.types";
 import QrPaymentModal from "@/components/QrPaymentModal";
@@ -721,7 +722,7 @@ export default function AdmfFormClient({
             </span>
           ) : null}
 
-          <div className="ml-auto flex items-center gap-2">
+          <div id="admf-primary-save" className="ml-auto flex items-center gap-2">
             <button
               type="button"
               onClick={() => formRef.current?.requestSubmit()}
@@ -1624,6 +1625,11 @@ export default function AdmfFormClient({
                 />
               </div>
             </div>
+          </CollapsibleSection>
+
+          {/* ── Přílohy (MinIO) — pouze po uložení formuláře ── */}
+          <CollapsibleSection title="Přílohy (fotografie, PDF)" defaultOpen={true}>
+            <FormAttachmentsSection formId={formId} saveSectionId="admf-primary-save" />
           </CollapsibleSection>
 
           {/* ── Platba a montáž ── */}

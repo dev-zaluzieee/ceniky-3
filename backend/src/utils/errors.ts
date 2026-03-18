@@ -63,6 +63,15 @@ export class ConflictError extends ApiError {
 }
 
 /**
+ * Service unavailable (503) — e.g. object storage not configured
+ */
+export class ServiceUnavailableError extends ApiError {
+  constructor(message: string, code?: string) {
+    super(503, message, code);
+  }
+}
+
+/**
  * Internal server error (500)
  */
 export class InternalServerError extends ApiError {

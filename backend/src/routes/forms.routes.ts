@@ -18,6 +18,7 @@ import { ApiError } from "../utils/errors";
 import { FormType, ListFormsQuery } from "../types/forms.types";
 import { ExportRaynetRequest } from "../types/raynet-export.types";
 import { randomUUID } from "crypto";
+import * as formAttachmentHandlers from "./form-attachments.handlers";
 
 const router = Router();
 
@@ -393,6 +394,52 @@ router.get("/", authenticateToken, async (req: AuthenticatedRequest, res: Respon
       data: result.data,
       pagination: result.pagination,
     });
+  } catch (error: any) {
+    handleError(error, res);
+  }
+});
+
+/** ADMF form attachments (MinIO / S3) — must be registered before GET /:id */
+router.get("/:id/attachments/file", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await formAttachmentHandlers.getFormAttachmentFileHandler(req, res);
+  } catch (error: any) {
+    if (!res.headersSent) handleError(error, res);
+  }
+});
+
+router.get("/:id/attachments", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await formAttachmentHandlers.listFormAttachmentsHandler(req, res);
+  } catch (error: any) {
+    handleError(error, res);
+  }
+});
+
+router.post(
+  "/:id/attachments",
+  authenticateToken,
+  (req: AuthenticatedRequest, res: Response, next) => {
+    formAttachmentHandlers.formAttachmentUpload.single("file")(req, res, (err: unknown) => {
+      if (err) {
+        if (formAttachmentHandlers.multerErrorHandler(err, res)) return;
+        return next(err);
+      }
+      next();
+    });
+  },
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      await formAttachmentHandlers.uploadFormAttachmentHandler(req, res);
+    } catch (error: any) {
+      handleError(error, res);
+    }
+  }
+);
+
+router.delete("/:id/attachments", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await formAttachmentHandlers.deleteFormAttachmentHandler(req, res);
   } catch (error: any) {
     handleError(error, res);
   }
