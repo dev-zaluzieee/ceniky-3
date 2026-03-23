@@ -69,7 +69,12 @@ export async function extractProductsForOrder(
 
   for (const form of formsToUse) {
     const formType = form.form_type as FormType;
-    const lines = await extractProductsFromForm(formType, form.form_json as Record<string, unknown>, pricingPool);
+    const lines = await extractProductsFromForm(
+      formType,
+      form.form_json as Record<string, unknown>,
+      pricingPool,
+      form.id
+    );
     if (lines.length > 0) {
       products.push(...lines);
       sourceFormIds.push(form.id);

@@ -5,6 +5,7 @@
 
 import { createMainBackendToken } from "./auth-backend";
 import type { OrderRecord, OrdersPaginationInfo } from "./orders-api";
+import type { AdmfPricingTraceV1 } from "@/types/forms/admf.types";
 
 function getBackendUrl(): string {
   return (
@@ -133,6 +134,8 @@ export interface ExtractedProductLine {
     label: string;
     value: string;
   }>;
+  /** Per-row pricing audit from pricing DB at extract time; optional manual_edits added in ADMF UI. */
+  pricingTrace?: AdmfPricingTraceV1;
 }
 
 export interface ServerExtractProductsResponse {
@@ -145,7 +148,7 @@ export interface ServerExtractProductsResponse {
 }
 
 /**
- * Fetch extracted products from step 1 forms for an order (for ADMF prefill; prices mocked on backend)
+ * Fetch extracted products from step 1 forms for an order (ADMF prefill; prices from pricing DB).
  * @param orderId - Order ID
  * @param formIds - Optional: only extract from these form IDs (must be step 1 and belong to order)
  */

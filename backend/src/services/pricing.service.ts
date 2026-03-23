@@ -1,10 +1,13 @@
 /**
  * Pricing service – resolves price from pricing DB (pricing_variant) or throws.
- * No mock or random values. Form must have been created from catalog (product_pricing_id stored).
+ * Form must have been created from catalog (product_pricing_id stored).
  */
 
 import type { Pool } from "pg";
-import type { ExtractedProductLine } from "../types/extract-products.types";
+import type {
+  AdmfPricingTraceDimensionsV1,
+  ExtractedProductLine,
+} from "../types/extract-products.types";
 import {
   getProductPricingForResolve,
   getPricingVariantsByProductId,
@@ -94,23 +97,24 @@ function findMatchingVariant(
   return null;
 }
 
+/** Result of grid lookup: unit price plus audit dimensions. */
+export interface ResolvePriceDetailedResult {
+  unitPrice: number;
+  pricing_variant_id: string;
+  dimensions: AdmfPricingTraceDimensionsV1;
+}
+
 /**
- * Resolve unit price from pricing DB for a product row.
- * Uses product_pricing_id + row's enum values (selector) to find pricing_variant, then dimension_pricing.prices[width_height].
- * @param pool - Pricing DB pool (PRICING_DATABASE_URL)
- * @param productPricingId - product_pricing.id (must be stored in form when created from catalog)
- * @param selectorValues - e.g. { type: "25", color: "203" } from form row
- * @param width - width dimension (e.g. "400")
- * @param height - height dimension (e.g. "500")
- * @returns unit price (cena)
+ * Resolve unit price from pricing DB for a product row, with full dimension/variant audit data.
+ * Uses product_pricing_id + row's enum values (selector) to find pricing_variant, then dimension_pricing.prices.
  */
-export async function resolvePrice(
+export async function resolvePriceDetailed(
   pool: Pool,
   productPricingId: string,
   selectorValues: Record<string, string>,
   width: string,
   height: string
-): Promise<number> {
+): Promise<ResolvePriceDetailedResult> {
   const product = await getProductPricingForResolve(pool, productPricingId);
   if (!product) {
     throw new Error(
@@ -120,9 +124,7 @@ export async function resolvePrice(
 
   const variants = await getPricingVariantsByProductId(pool, productPricingId);
   if (variants.length === 0) {
-    throw new Error(
-      `No pricing variants found for product_pricing_id "${productPricingId}".`
-    );
+    throw new Error(`No pricing variants found for product_pricing_id "${productPricingId}".`);
   }
 
   const variant = findMatchingVariant(variants, selectorValues);
@@ -136,22 +138,25 @@ export async function resolvePrice(
 
   const prices = variant.dimension_pricing?.prices;
   if (!prices || typeof prices !== "object") {
-    throw new Error(
-      `Variant ${variant.id} has no dimension_pricing.prices.`
-    );
+    throw new Error(`Variant ${variant.id} has no dimension_pricing.prices.`);
   }
 
+  const inputWidthMm = Math.round(Number(width) || 0);
+  const inputHeightMm = Math.round(Number(height) || 0);
   const dims = toDimensionValues(width, height);
+  let lookupW = dims.w;
+  let lookupH = dims.h;
   let key = dimensionKey(dims.w, dims.h);
   let cena = prices[key];
+  let usedSnap = false;
 
-  // If exact key not found, snap width/height to nearest available in the table (per axis)
   if (typeof cena !== "number" || cena < 0) {
     const snapped = clampToPriceTable(dims.w, dims.h, prices);
-    if (snapped.w !== dims.w || snapped.h !== dims.h) {
-      key = dimensionKey(snapped.w, snapped.h);
-      cena = prices[key];
-    }
+    lookupW = snapped.w;
+    lookupH = snapped.h;
+    key = dimensionKey(snapped.w, snapped.h);
+    cena = prices[key];
+    usedSnap = snapped.w !== dims.w || snapped.h !== dims.h;
   }
 
   if (typeof cena !== "number" || cena < 0) {
@@ -159,12 +164,30 @@ export async function resolvePrice(
       `No price for dimensions ${width}×${height} (key "${key}") in variant ${variant.id}.`
     );
   }
-  return cena;
+
+  const dimensions: AdmfPricingTraceDimensionsV1 = {
+    raw_width: width,
+    raw_height: height,
+    input_width_mm: inputWidthMm,
+    input_height_mm: inputHeightMm,
+    width_mm_ceiled: dims.w,
+    height_mm_ceiled: dims.h,
+    lookup_width_mm: lookupW,
+    lookup_height_mm: lookupH,
+    used_dimension_snap: usedSnap,
+    price_key: key,
+  };
+
+  return {
+    unitPrice: cena,
+    pricing_variant_id: variant.id,
+    dimensions,
+  };
 }
 
 /**
  * Get unit price for a product line (legacy fallback).
- * Throws – use resolvePrice from pricing DB instead.
+ * Throws – prices come from `resolvePriceDetailed` / pricing DB.
  */
 export function getPriceForProduct(
   product: Omit<ExtractedProductLine, "cena" | "sleva" | "cenaPoSleve">

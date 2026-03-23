@@ -117,7 +117,7 @@ router.post(
 /**
  * GET /api/orders/:id/extract-products - Extract products from step 1 forms for ADMF prefill
  * Query: formIds (optional) – comma-separated form IDs; if present, only those forms are used
- * Returns product lines (with mocked prices) and source form IDs for hover highlight
+ * Returns product lines (prices from pricing DB + per-row `pricingTrace`) and source form IDs
  */
 router.get("/:id/extract-products", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {

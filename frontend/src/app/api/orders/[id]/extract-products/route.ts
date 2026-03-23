@@ -1,6 +1,6 @@
 /**
  * Next.js API route: GET /api/orders/[id]/extract-products
- * Proxies to backend: extract products from step 1 forms for ADMF prefill (with mocked prices)
+ * Proxies to backend: extract products from step 1 forms for ADMF prefill (pricing DB + pricingTrace).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -14,7 +14,7 @@ function getBackendUrl(): string {
   );
 }
 
-/** GET /api/orders/[id]/extract-products - Extract products from step 1 forms (mocked prices) */
+/** GET /api/orders/[id]/extract-products - Extract products from step 1 forms (pricing DB). */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

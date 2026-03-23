@@ -6,11 +6,13 @@
 import type { Pool } from "pg";
 import type { FormType } from "../types/forms.types";
 import type {
+  AdmfPricingTraceAutomatedV1,
+  AdmfPricingTraceV1,
   ExtractedPriceAffectingField,
   ExtractedProductLine,
 } from "../types/extract-products.types";
 import { getProductPricingForResolve } from "./pricing-forms.service";
-import { resolvePrice } from "./pricing.service";
+import { resolvePriceDetailed } from "./pricing.service";
 
 /** Possible row property codes for width/height (order of preference) */
 const WIDTH_KEYS = ["ovl_sirka", "width", "Sirka", "sirka", "šířka"];
@@ -187,7 +189,8 @@ function getSelectorValuesFromRow(
  */
 export async function extractFromCustom(
   formJson: Record<string, unknown>,
-  pricingPool: Pool
+  pricingPool: Pool,
+  sourceFormId: number
 ): Promise<ExtractedProductLine[]> {
   const schema = formJson?.schema as Record<string, unknown> | undefined;
   const data = formJson?.data as Record<string, unknown> | undefined;
@@ -219,10 +222,12 @@ export async function extractFromCustom(
   const surchargeConfigMap = (product.surcharges as Record<string, unknown> | null) ?? null;
   const surchargeProperties = (schema.surcharge_properties as string[] | undefined) ?? [];
 
-  for (const room of rooms) {
+  for (let roomIndex = 0; roomIndex < rooms.length; roomIndex++) {
+    const room = rooms[roomIndex];
     const rows = room?.rows;
     if (!Array.isArray(rows)) continue;
-    for (const row of rows) {
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const row = rows[rowIndex];
       const width = getDimension(row, WIDTH_KEYS);
       const height = getDimension(row, HEIGHT_KEYS);
       const dimStr = [width, height].filter(Boolean).join("×") || "—";
@@ -245,7 +250,8 @@ export async function extractFromCustom(
         productName,
         dimStr
       );
-      const unitCenaBase = await resolvePrice(
+      const resolvedAt = new Date().toISOString();
+      const { unitPrice: unitCenaBase, pricing_variant_id, dimensions } = await resolvePriceDetailed(
         pricingPool,
         productPricingId,
         selectorValues,
@@ -299,6 +305,33 @@ export async function extractFromCustom(
       const sleva = 0;
       const cenaPoSleve = Math.round(cenaWithSurcharges * (1 - sleva / 100));
 
+      const automated: AdmfPricingTraceAutomatedV1 = {
+        resolved_at: resolvedAt,
+        product_pricing_id: productPricingId,
+        source_form_id: sourceFormId,
+        room_name: typeof room?.name === "string" ? room.name : undefined,
+        room_index: roomIndex,
+        row_index: rowIndex,
+        dimensions,
+        pricing_variant_id,
+        selector_applied: { ...selectorValues },
+        unit_price_grid: unitCenaBase,
+        ks,
+        line_base: cenaBase,
+        surcharge_total: surchargeTotal,
+        surcharges: surchargeItems.length > 0 ? surchargeItems : undefined,
+        surcharge_warnings: surchargeWarnings.length > 0 ? surchargeWarnings : undefined,
+        cena: cenaWithSurcharges,
+        sleva,
+        cenaPoSleve,
+      };
+
+      const pricingTrace: AdmfPricingTraceV1 = {
+        trace_version: 1,
+        automated,
+        manual_edits: undefined,
+      };
+
       // Build human-friendly list of price-affecting fields for display in ADMF.
       const priceAffectingFields: ExtractedPriceAffectingField[] = [];
       for (const code of priceAffectingEnums) {
@@ -323,20 +356,25 @@ export async function extractFromCustom(
         surcharges: surchargeItems.length > 0 ? surchargeItems : undefined,
         surchargeWarnings: surchargeWarnings.length > 0 ? surchargeWarnings : undefined,
         priceAffectingFields: priceAffectingFields.length > 0 ? priceAffectingFields : undefined,
+        pricingTrace,
       });
     }
   }
   return lines;
 }
 
-/** Run extractor for given form type (only custom supported). Requires pricingPool for custom. */
+/**
+ * Run extractor for given form type (only custom supported). Requires pricingPool for custom.
+ * @param sourceFormId - DB id of the custom form (stored in pricing trace).
+ */
 export async function extractProductsFromForm(
   formType: FormType,
   formJson: Record<string, unknown>,
-  pricingPool: Pool
+  pricingPool: Pool,
+  sourceFormId: number
 ): Promise<ExtractedProductLine[]> {
   if (formType === "custom") {
-    return extractFromCustom(formJson, pricingPool);
+    return extractFromCustom(formJson, pricingPool, sourceFormId);
   }
   return [];
 }

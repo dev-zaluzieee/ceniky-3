@@ -5,7 +5,13 @@ import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import FormAttachmentsSection from "@/components/forms/FormAttachmentsSection";
 import { useAppMode } from "@/lib/mode-context";
-import type { AdmfFormData, AdmfProductRow, AdmfVatRate } from "@/types/forms/admf.types";
+import type {
+  AdmfFormData,
+  AdmfPricingManualEditV1,
+  AdmfPricingTraceV1,
+  AdmfProductRow,
+  AdmfVatRate,
+} from "@/types/forms/admf.types";
 import QrPaymentModal from "@/components/QrPaymentModal";
 import ExportStatusModal, { type ExportResult } from "@/components/ExportStatusModal";
 import { buildSpdString } from "@/lib/spd-qr";
@@ -77,6 +83,67 @@ function phoneToVariabilniSymbol(phone?: string): number | undefined {
 
 function recalcCenaPoSleve(row: AdmfProductRow): number {
   return Math.round(row.cena * (1 - row.sleva / 100));
+}
+
+/** Debounce before appending one `manual_edits` entry (avoids per-keystroke trace spam). */
+const PRICING_TRACE_DEBOUNCE_MS = 600;
+
+const PRICING_TRACE_FIELD_ORDER = ["cena", "sleva", "ks", "surcharges"] as const;
+
+function collectPricingTraceFieldsFromUpd(upd: Partial<AdmfProductRow>): string[] {
+  const out: string[] = [];
+  if ("cena" in upd) out.push("cena");
+  if ("sleva" in upd) out.push("sleva");
+  if ("ks" in upd) out.push("ks");
+  if ("surcharges" in upd) out.push("surcharges");
+  return out;
+}
+
+/** One manual-edit record from current row values (for downstream audit). */
+function buildManualEditForRow(row: AdmfProductRow, fields_changed: string[]): AdmfPricingManualEditV1 | null {
+  if (fields_changed.length === 0) return null;
+  return {
+    edited_at: new Date().toISOString(),
+    cena: row.cena,
+    sleva: row.sleva,
+    cenaPoSleve: row.cenaPoSleve,
+    ks: row.ks,
+    fields_changed: PRICING_TRACE_FIELD_ORDER.filter((f) => fields_changed.includes(f)),
+  };
+}
+
+function appendManualEditToTrace(row: AdmfProductRow, edit: AdmfPricingManualEditV1): AdmfPricingTraceV1 {
+  const prevTrace = row.pricingTrace;
+  return {
+    trace_version: 1,
+    ...(prevTrace?.automated ? { automated: prevTrace.automated } : {}),
+    manual_edits: [...(prevTrace?.manual_edits ?? []), edit],
+  };
+}
+
+/**
+ * Apply pending pricing-trace field sets to form data (synchronous, for save paths).
+ * Clears each applied row from `pending` as a side effect is avoided — caller clears refs.
+ */
+function mergePendingPricingIntoFormData(
+  data: AdmfFormData,
+  pending: Map<string, Set<string>>
+): AdmfFormData {
+  if (pending.size === 0) return data;
+  let productRows = data.productRows;
+  let changed = false;
+  for (const [rowId, fieldsSet] of pending.entries()) {
+    if (fieldsSet.size === 0) continue;
+    const row = productRows.find((r) => r.id === rowId);
+    if (!row) continue;
+    const fields_changed = PRICING_TRACE_FIELD_ORDER.filter((f) => fieldsSet.has(f));
+    const edit = buildManualEditForRow(row, [...fields_changed]);
+    if (!edit) continue;
+    const newTrace = appendManualEditToTrace(row, edit);
+    productRows = productRows.map((r) => (r.id === rowId ? { ...r, pricingTrace: newTrace } : r));
+    changed = true;
+  }
+  return changed ? { ...data, productRows } : data;
 }
 
 /** Clamp discount to allowed integer range (0-100). */
@@ -289,6 +356,68 @@ export default function AdmfFormClient({
     setIsDirty(serializeForDirtyCheck(formData) !== initialFormDataRef.current);
   }, [formData]);
 
+  /** Debounced `manual_edits` on product rows (pricing trace) — see PRICING_TRACE_DEBOUNCE_MS */
+  const pricingTraceTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const pricingTracePendingFieldsRef = useRef<Map<string, Set<string>>>(new Map());
+
+  const flushPricingTraceForRow = useCallback((rowId: string) => {
+    const fieldsSet = pricingTracePendingFieldsRef.current.get(rowId);
+    if (!fieldsSet || fieldsSet.size === 0) return;
+    pricingTracePendingFieldsRef.current.delete(rowId);
+
+    setFormData((prev) => {
+      const row = prev.productRows.find((r) => r.id === rowId);
+      if (!row) return prev;
+      const fields_changed = PRICING_TRACE_FIELD_ORDER.filter((f) => fieldsSet.has(f));
+      const edit = buildManualEditForRow(row, [...fields_changed]);
+      if (!edit) return prev;
+      const newTrace = appendManualEditToTrace(row, edit);
+      return {
+        ...prev,
+        productRows: prev.productRows.map((r) =>
+          r.id === rowId ? { ...r, pricingTrace: newTrace } : r
+        ),
+      };
+    });
+  }, []);
+
+  const schedulePricingTraceManualEdit = useCallback(
+    (rowId: string, touchedFields: string[]) => {
+      if (touchedFields.length === 0) return;
+      let set = pricingTracePendingFieldsRef.current.get(rowId);
+      if (!set) {
+        set = new Set<string>();
+        pricingTracePendingFieldsRef.current.set(rowId, set);
+      }
+      for (const f of touchedFields) set.add(f);
+
+      const existing = pricingTraceTimersRef.current.get(rowId);
+      if (existing) clearTimeout(existing);
+
+      const t = setTimeout(() => {
+        pricingTraceTimersRef.current.delete(rowId);
+        flushPricingTraceForRow(rowId);
+      }, PRICING_TRACE_DEBOUNCE_MS);
+
+      pricingTraceTimersRef.current.set(rowId, t);
+    },
+    [flushPricingTraceForRow]
+  );
+
+  /** Merge pending pricing-trace edits into data and clear timers (submit / autosave). */
+  const drainPendingPricingTracesIntoData = useCallback((base: AdmfFormData): AdmfFormData => {
+    for (const timer of pricingTraceTimersRef.current.values()) {
+      clearTimeout(timer);
+    }
+    pricingTraceTimersRef.current.clear();
+    const pending = new Map<string, Set<string>>();
+    for (const [rowId, fields] of pricingTracePendingFieldsRef.current.entries()) {
+      pending.set(rowId, new Set(fields));
+    }
+    pricingTracePendingFieldsRef.current.clear();
+    return mergePendingPricingIntoFormData(base, pending);
+  }, []);
+
   /** Autosave: debounced save 3s after last change (edit mode only) */
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveFailCountRef = useRef(0);
@@ -310,7 +439,9 @@ export default function AdmfFormClient({
       if (snapshot === initialFormDataRef.current) return;
 
       setIsAutosaving(true);
-      const dataToSave = withComputedDoplatek(latest);
+      const merged = drainPendingPricingTracesIntoData(latest);
+      setFormData(merged);
+      const dataToSave = withComputedDoplatek(merged);
       try {
         const res = await updateForm(formId, dataToSave);
         if (res.success) {
@@ -338,7 +469,7 @@ export default function AdmfFormClient({
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
-  }, [formData, isEditMode, formId, isDirty, isSubmitting, exportLoading]);
+  }, [formData, isEditMode, formId, isDirty, isSubmitting, exportLoading, drainPendingPricingTracesIntoData]);
 
   const updateField = useCallback(
     <K extends keyof AdmfFormData,>(key: K, value: AdmfFormData[K]) => {
@@ -348,17 +479,21 @@ export default function AdmfFormClient({
   );
 
   const updateProductRow = (id: string, upd: Partial<AdmfProductRow>) => {
+    const traceFields = collectPricingTraceFieldsFromUpd(upd);
     setFormData((prev) => ({
       ...prev,
       productRows: prev.productRows.map((r) => {
         if (r.id !== id) return r;
-        const next = { ...r, ...upd };
+        const next: AdmfProductRow = { ...r, ...upd };
         if ("cena" in upd || "sleva" in upd) {
           next.cenaPoSleve = recalcCenaPoSleve(next);
         }
         return next;
       }),
     }));
+    if (traceFields.length > 0) {
+      schedulePricingTraceManualEdit(id, traceFields);
+    }
   };
 
   const addProductRow = () => {
@@ -369,6 +504,10 @@ export default function AdmfFormClient({
   };
 
   const removeProductRow = (id: string) => {
+    const t = pricingTraceTimersRef.current.get(id);
+    if (t) clearTimeout(t);
+    pricingTraceTimersRef.current.delete(id);
+    pricingTracePendingFieldsRef.current.delete(id);
     setFormData((prev) => ({
       ...prev,
       productRows: prev.productRows.filter((r) => r.id !== id),
@@ -378,14 +517,25 @@ export default function AdmfFormClient({
   /** Apply one integer discount value to every product row. */
   const applyDiscountToAllRows = useCallback((discount: number) => {
     const sanitizedDiscount = sanitizeDiscountInteger(discount);
-    setFormData((prev) => ({
-      ...prev,
-      productRows: prev.productRows.map((row) => {
-        const next = { ...row, sleva: sanitizedDiscount };
-        next.cenaPoSleve = recalcCenaPoSleve(next);
-        return next;
-      }),
-    }));
+    setFormData((prev) => {
+      for (const row of prev.productRows) {
+        const t = pricingTraceTimersRef.current.get(row.id);
+        if (t) clearTimeout(t);
+        pricingTraceTimersRef.current.delete(row.id);
+        pricingTracePendingFieldsRef.current.delete(row.id);
+      }
+      return {
+        ...prev,
+        productRows: prev.productRows.map((row) => {
+          if (row.sleva === sanitizedDiscount) return row;
+          const next: AdmfProductRow = { ...row, sleva: sanitizedDiscount };
+          next.cenaPoSleve = recalcCenaPoSleve(next);
+          const edit = buildManualEditForRow(next, ["sleva"]);
+          if (!edit) return next;
+          return { ...next, pricingTrace: appendManualEditToTrace(row, edit) };
+        }),
+      };
+    });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -397,7 +547,10 @@ export default function AdmfFormClient({
     setIsSubmitting(true);
     setSubmitError(null);
     setSubmitSuccess(false);
-    const dataToSave: AdmfFormData = withComputedDoplatek(formData);
+    const base = latestFormDataRef.current ?? formData;
+    const merged = drainPendingPricingTracesIntoData(base);
+    setFormData(merged);
+    const dataToSave: AdmfFormData = withComputedDoplatek(merged);
     try {
       if (isEditMode && formId) {
         const res = await updateForm(formId, dataToSave);

@@ -92,6 +92,7 @@ export default async function OrderFormCreatePage({
       surcharges: p.surcharges,
       surchargeWarnings: p.surchargeWarnings,
       priceAffectingFields: p.priceAffectingFields,
+      pricingTrace: p.pricingTrace,
     }));
 
     const today = new Date().toISOString().slice(0, 10);

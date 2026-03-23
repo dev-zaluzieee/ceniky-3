@@ -13,6 +13,62 @@ export interface AdmfPriceAffectingField {
   value: string;
 }
 
+/** Mirrors backend `AdmfPricingTraceDimensionsV1` — audit only, not shown in OVT UI. */
+export interface AdmfPricingTraceDimensionsV1 {
+  raw_width: string;
+  raw_height: string;
+  input_width_mm: number;
+  input_height_mm: number;
+  width_mm_ceiled: number;
+  height_mm_ceiled: number;
+  lookup_width_mm: number;
+  lookup_height_mm: number;
+  used_dimension_snap: boolean;
+  price_key: string;
+}
+
+/** Mirrors backend `AdmfPricingTraceAutomatedV1`. */
+export interface AdmfPricingTraceAutomatedV1 {
+  resolved_at: string;
+  product_pricing_id: string;
+  source_form_id: number;
+  room_name?: string;
+  room_index: number;
+  row_index: number;
+  dimensions: AdmfPricingTraceDimensionsV1;
+  pricing_variant_id: string;
+  selector_applied: Record<string, string>;
+  unit_price_grid: number;
+  ks: number;
+  line_base: number;
+  surcharge_total: number;
+  surcharges?: Array<{ code: string; label?: string; amount: number }>;
+  surcharge_warnings?: string[];
+  cena: number;
+  sleva: number;
+  cenaPoSleve: number;
+}
+
+/** Mirrors backend `AdmfPricingManualEditV1`. */
+export interface AdmfPricingManualEditV1 {
+  edited_at: string;
+  cena: number;
+  sleva: number;
+  cenaPoSleve: number;
+  ks: number;
+  fields_changed: string[];
+}
+
+/**
+ * Carried in `form_json` for downstream tools; OVT UI does not display this.
+ * Backend sets `automated` at extract; client appends `manual_edits` on price/qty/surcharge edits.
+ */
+export interface AdmfPricingTraceV1 {
+  trace_version: 1;
+  automated?: AdmfPricingTraceAutomatedV1;
+  manual_edits?: AdmfPricingManualEditV1[];
+}
+
 /** Single row in "Záznam o jednání se zákazníkem" table (prices without VAT) */
 export interface AdmfProductRow {
   id: string;
@@ -39,6 +95,8 @@ export interface AdmfProductRow {
    * Used in UI/PDF for the two price-affecting columns (e.g. typ, barva / rám, lamela).
    */
   priceAffectingFields?: AdmfPriceAffectingField[];
+  /** Pricing audit trail — not shown in UI; preserved on save for external consumers. */
+  pricingTrace?: AdmfPricingTraceV1;
 }
 
 /** VAT rate in % */
