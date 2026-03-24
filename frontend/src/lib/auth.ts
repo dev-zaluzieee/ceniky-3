@@ -82,6 +82,43 @@ export async function signIn(email: string, password: string): Promise<SignInRes
   }
 }
 
+/** Single in-flight refresh so parallel callers share one POST /api/auth/refresh. */
+let refreshSessionPromise: Promise<{ success: boolean; message?: string }> | null = null;
+
+/**
+ * Refresh Supabase session via BFF (httpOnly refresh_token cookie).
+ * Deduplicates concurrent calls.
+ */
+export async function refreshSession(): Promise<{ success: boolean; message?: string }> {
+  if (refreshSessionPromise) {
+    return refreshSessionPromise;
+  }
+  refreshSessionPromise = (async () => {
+    try {
+      const response = await fetch("/api/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          success: false,
+          message: (data as { message?: string }).message || "Session refresh failed",
+        };
+      }
+      return { success: true };
+    } catch (error: unknown) {
+      console.error("Error refreshing session:", error);
+      return { success: false, message: "Network error during session refresh" };
+    } finally {
+      refreshSessionPromise = null;
+    }
+  })();
+  return refreshSessionPromise;
+}
+
 /**
  * Sign out current user
  * @returns Promise with sign out response

@@ -5,49 +5,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-
-/**
- * Get calculation backend API URL from environment variables
- */
-function getCalculationBackendUrl(): string {
-  return (
-    process.env.CALCULATION_BACKEND_API_URL ||
-    process.env.NEXT_PUBLIC_CALCULATION_BACKEND_API_URL ||
-    "http://localhost:3002"
-  );
-}
-
-/**
- * Get Supabase authentication token from cookies
- * Returns the access_token from the httpOnly cookie set during signin
- */
-async function getCalculationBackendToken(request: NextRequest): Promise<string | null> {
-  try {
-    // Get access token from cookies
-    const accessToken = request.cookies.get("access_token")?.value;
-
-    if (!accessToken) {
-      console.error("No access token found in cookies");
-      return null;
-    }
-
-    // Check token expiration (invalid or non-numeric expires_at is treated as expired)
-    const expiresAt = request.cookies.get("expires_at")?.value;
-    if (expiresAt) {
-      const expirationTime = parseInt(expiresAt, 10) * 1000; // Convert to milliseconds
-      const now = Date.now();
-      if (Number.isNaN(expirationTime) || now >= expirationTime) {
-        console.error("Access token has expired or invalid expires_at");
-        return null;
-      }
-    }
-
-    return accessToken;
-  } catch (error) {
-    console.error("Error getting calculation backend token:", error);
-    return null;
-  }
-}
+import {
+  fetchCalculationBackendWithRefresh,
+  getCalculationBackendUrl,
+} from "@/lib/calculation-session";
 
 /**
  * GET /api/calculation/categories
@@ -56,15 +17,6 @@ async function getCalculationBackendToken(request: NextRequest): Promise<string 
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get Supabase authentication token from calculation backend
-    const authToken = await getCalculationBackendToken(request);
-    if (!authToken) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized - failed to get calculation backend token" },
-        { status: 401 }
-      );
-    }
-
     // Get query parameters
     const searchParams = request.nextUrl.searchParams;
     const manufacturerId = searchParams.get("manufacturerId");
@@ -82,13 +34,8 @@ export async function GET(request: NextRequest) {
 
     let response;
     try {
-      response = await fetch(url.toString(), {
+      response = await fetchCalculationBackendWithRefresh(url.toString(), {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        cache: "no-store",
       });
     } catch (fetchError: any) {
       console.error("Fetch error (calculation backend may be unreachable):", fetchError.message);

@@ -1,8 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getSession, signOut as authSignOut, SessionResponse } from "@/lib/auth";
+import {
+  getSession,
+  signOut as authSignOut,
+  refreshSession,
+  SessionResponse,
+} from "@/lib/auth";
 import { useRouter } from "next/navigation";
+
+/** Proactively refresh when access JWT expires within this window (seconds). */
+const REFRESH_SOON_SECONDS = 120;
 
 /**
  * Custom hook for authentication state
@@ -14,10 +22,25 @@ export function useAuth() {
   const router = useRouter();
 
   useEffect(() => {
-    // Fetch session on mount
-    const fetchSession = async () => {
+    // Fetch session on mount; refresh access token shortly before expiry
+    const loadSession = async () => {
       try {
-        const sessionData = await getSession();
+        let sessionData = await getSession();
+
+        if (
+          sessionData.success &&
+          sessionData.authenticated &&
+          sessionData.expires_at != null
+        ) {
+          const expMs = sessionData.expires_at * 1000;
+          if (expMs - Date.now() <= REFRESH_SOON_SECONDS * 1000) {
+            const refreshed = await refreshSession();
+            if (refreshed.success) {
+              sessionData = await getSession();
+            }
+          }
+        }
+
         setSession(sessionData);
       } catch (error) {
         console.error("Error fetching session:", error);
@@ -27,10 +50,10 @@ export function useAuth() {
       }
     };
 
-    fetchSession();
+    loadSession();
 
     // Refresh session periodically (every 5 minutes)
-    const interval = setInterval(fetchSession, 5 * 60 * 1000);
+    const interval = setInterval(loadSession, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
   }, []);

@@ -5,17 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
-/**
- * Get calculation backend API URL from environment variables
- */
-function getCalculationBackendUrl(): string {
-  return (
-    process.env.CALCULATION_BACKEND_API_URL ||
-    process.env.NEXT_PUBLIC_CALCULATION_BACKEND_API_URL ||
-    "http://localhost:3002"
-  );
-}
+import { applyCalculationSessionCookies, getCalculationBackendUrl } from "@/lib/calculation-session";
 
 /**
  * POST /api/auth/signin
@@ -99,94 +89,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Store tokens in httpOnly cookies
     const cookieStore = await cookies();
     const isProduction = process.env.NODE_ENV === "production";
-
-    // Set access token cookie
-    cookieStore.set("access_token", data.data.access_token, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: "lax",
-      path: "/",
-      maxAge: data.data.expires_at
-        ? Math.floor(data.data.expires_at - Date.now() / 1000)
-        : 3600, // Default to 1 hour if expires_at not provided
-    });
-
-    // Set refresh token cookie
-    if (data.data.refresh_token) {
-      cookieStore.set("refresh_token", data.data.refresh_token, {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7, // 7 days
-      });
-    }
-
-    // Set expires_at cookie
-    if (data.data.expires_at) {
-      cookieStore.set("expires_at", data.data.expires_at.toString(), {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7, // 7 days
-      });
-    }
-
-    // Set user info cookies (non-sensitive)
-    if (data.data.user) {
-      cookieStore.set("user_email", data.data.user.email, {
-        httpOnly: false, // Can be accessed client-side for display
-        secure: isProduction,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7, // 7 days
-      });
-
-      if (data.data.user.id) {
-        cookieStore.set("user_id", data.data.user.id, {
-          httpOnly: false, // Can be accessed client-side
-          secure: isProduction,
-          sameSite: "lax",
-          path: "/",
-          maxAge: 60 * 60 * 24 * 7, // 7 days
-        });
-      }
-
-      // Raynet user identifier (nullable when not paired)
-      const raynetId = data.data.user.raynet_id;
-      if (raynetId == null) {
-        cookieStore.delete("user_raynet_id");
-      } else {
-        cookieStore.set("user_raynet_id", String(raynetId), {
-          httpOnly: false, // Used for UI and for minting downstream tokens
-          secure: isProduction,
-          sameSite: "lax",
-          path: "/",
-          maxAge: 60 * 60 * 24 * 7, // 7 days
-        });
-      }
-
-      // Raynet display name (from raw_user_meta_data.raynet_name) for ADMF Zprostredkovatel + export
-      const raynetName =
-        data.data.user.raynet_name ??
-        (data.data.user as { raw_user_meta_data?: { raynet_name?: string } }).raw_user_meta_data?.raynet_name ??
-        null;
-      if (raynetName == null || typeof raynetName !== "string" || raynetName.trim() === "") {
-        cookieStore.delete("user_raynet_name");
-      } else {
-        cookieStore.set("user_raynet_name", raynetName.trim(), {
-          httpOnly: false,
-          secure: isProduction,
-          sameSite: "lax",
-          path: "/",
-          maxAge: 60 * 60 * 24 * 7, // 7 days
-        });
-      }
-    }
+    applyCalculationSessionCookies(cookieStore, data.data, isProduction);
 
     // Return success response (without sensitive tokens)
     return NextResponse.json({

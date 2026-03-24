@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-03-24",
+    "changes": [
+      "Opravena chyba automatického odhlášování / unauthorized error při ukládání formuláře"
+    ]
+  },
+  {
     "date": "2026-03-15",
     "changes": [
       "ADMF: nová pole v sekci Další informace — Jméno na zvonku, Patro, Info k parkování",
