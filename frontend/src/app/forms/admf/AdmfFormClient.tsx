@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import FormAttachmentsSection from "@/components/forms/FormAttachmentsSection";
+import { IntegerInput } from "@/components/forms/IntegerInput";
 import { useAppMode } from "@/lib/mode-context";
 import type {
   AdmfFormData,
@@ -325,7 +326,8 @@ export default function AdmfFormClient({
   const [pdfError, setPdfError] = useState<string | null>(null);
   /** Blob URL for PDF viewer modal; when set, modal is open. Revoke on close. */
   const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
-  const [bulkSlevaInput, setBulkSlevaInput] = useState<string>("0");
+  /** Bulk discount % (0–100); committed via IntegerInput, applied with “Nastavit slevu všem”. */
+  const [bulkSlevaPercent, setBulkSlevaPercent] = useState(0);
   const [aresLoading, setAresLoading] = useState(false);
   const [aresError, setAresError] = useState<string | null>(null);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -1497,37 +1499,20 @@ export default function AdmfFormClient({
             <div className="mb-4 flex flex-wrap items-end gap-3">
               <div className="w-full max-w-[240px]">
                 <label className={labelCls}>Sleva pro všechny produkty (%)</label>
-                <input
-                  type="number"
+                <IntegerInput
+                  value={bulkSlevaPercent}
+                  onCommit={setBulkSlevaPercent}
+                  emptyBlurValue={0}
                   min={0}
                   max={100}
-                  step={1}
-                  value={bulkSlevaInput}
-                  onChange={(e) => {
-                    const nextRaw = e.target.value;
-                    if (nextRaw === "") {
-                      setBulkSlevaInput("");
-                      return;
-                    }
-                    const parsed = parseInt(nextRaw, 10);
-                    setBulkSlevaInput(
-                      Number.isNaN(parsed) ? "0" : String(sanitizeDiscountInteger(parsed))
-                    );
-                  }}
-                  onBlur={() => {
-                    const parsed = parseInt(bulkSlevaInput, 10);
-                    setBulkSlevaInput(String(sanitizeDiscountInteger(parsed)));
-                  }}
+                  transform={sanitizeDiscountInteger}
                   className={`${inputCls} text-right`}
                 />
               </div>
               <button
                 type="button"
                 onClick={() => {
-                  const parsed = parseInt(bulkSlevaInput, 10);
-                  const discount = sanitizeDiscountInteger(parsed);
-                  setBulkSlevaInput(String(discount));
-                  applyDiscountToAllRows(discount);
+                  applyDiscountToAllRows(bulkSlevaPercent);
                 }}
                 disabled={formData.productRows.length === 0}
                 className="min-h-[44px] rounded-lg border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1573,13 +1558,11 @@ export default function AdmfFormClient({
                             />
                           </td>
                           <td className="px-3 py-2 text-center">
-                            <input
-                              type="number"
-                              min={1}
+                            <IntegerInput
                               value={row.ks}
-                              onChange={(e) =>
-                                updateProductRow(row.id, { ks: parseInt(e.target.value, 10) || 1 })
-                              }
+                              onCommit={(n) => updateProductRow(row.id, { ks: n })}
+                              emptyBlurValue={1}
+                              min={1}
                               className={`${inputCls} w-16 text-center`}
                             />
                           </td>
@@ -1590,13 +1573,12 @@ export default function AdmfFormClient({
                             <span className="text-sm text-zinc-100">{field2Value}</span>
                           </td>
                           <td className="px-3 py-2 text-right align-top">
-                            <input
-                              type="number"
+                            <IntegerInput
+                              value={row.cena}
+                              onCommit={(n) => updateProductRow(row.id, { cena: n })}
+                              emptyBlurValue={0}
+                              zeroAsEmpty
                               min={0}
-                              value={row.cena || ""}
-                              onChange={(e) =>
-                                updateProductRow(row.id, { cena: parseInt(e.target.value, 10) || 0 })
-                              }
                               className={`${inputCls} w-24 text-right`}
                             />
                             {hasSurcharges && (
@@ -1606,17 +1588,13 @@ export default function AdmfFormClient({
                             )}
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <input
-                              type="number"
+                            <IntegerInput
+                              value={row.sleva}
+                              onCommit={(n) => updateProductRow(row.id, { sleva: n })}
+                              emptyBlurValue={0}
                               min={0}
                               max={100}
-                              step={1}
-                              value={row.sleva || 0}
-                              onChange={(e) =>
-                                updateProductRow(row.id, {
-                                  sleva: sanitizeDiscountInteger(parseInt(e.target.value, 10)),
-                                })
-                              }
+                              transform={sanitizeDiscountInteger}
                               className={`${inputCls} w-20 text-right`}
                             />
                           </td>
@@ -1654,15 +1632,11 @@ export default function AdmfFormClient({
                                     <span className="text-[11px] text-zinc-500">
                                       {s.label ?? s.code}:
                                     </span>
-                                    <input
-                                      type="number"
-                                      className="w-20 rounded-lg border border-zinc-600 bg-zinc-700 px-2 py-1 text-right text-[11px] text-zinc-50"
+                                    <IntegerInput
                                       value={s.amount}
-                                      onChange={(e) => {
+                                      onCommit={(n) => {
                                         const next = (row.surcharges ?? []).map((item, j) =>
-                                          j === idx
-                                            ? { ...item, amount: parseInt(e.target.value, 10) || 0 }
-                                            : item
+                                          j === idx ? { ...item, amount: n } : item
                                         );
                                         const newSum = next.reduce(
                                           (sum, it) => sum + (it.amount || 0),
@@ -1674,6 +1648,9 @@ export default function AdmfFormClient({
                                           cena: newCena,
                                         });
                                       }}
+                                      emptyBlurValue={0}
+                                      min={0}
+                                      className="w-20 rounded-lg border border-zinc-600 bg-zinc-700 px-2 py-1 text-right text-[11px] text-zinc-50"
                                     />
                                     <span className="text-[11px] text-zinc-500">Kč</span>
                                   </div>
@@ -1706,13 +1683,12 @@ export default function AdmfFormClient({
                 <div>
                   <label className={labelCls}>OVT sleva (Kč)</label>
                   <div className="relative">
-                    <input
-                      type="number"
+                    <IntegerInput
+                      value={formData.ovtSlevaCastka ?? 0}
+                      onCommit={(n) => updateField("ovtSlevaCastka", n)}
+                      emptyBlurValue={0}
+                      zeroAsEmpty
                       min={0}
-                      value={formData.ovtSlevaCastka ?? ""}
-                      onChange={(e) =>
-                        updateField("ovtSlevaCastka", parseInt(e.target.value, 10) || 0)
-                      }
                       className={inputCls}
                     />
                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">
@@ -1736,13 +1712,12 @@ export default function AdmfFormClient({
                 <div className="max-w-xs">
                   <label className={labelCls}>MNG sleva částka (Kč)</label>
                   <div className="relative">
-                    <input
-                      type="number"
+                    <IntegerInput
+                      value={formData.mngSlevaCastka ?? 0}
+                      onCommit={(n) => updateField("mngSlevaCastka", n)}
+                      emptyBlurValue={0}
+                      zeroAsEmpty
                       min={0}
-                      value={formData.mngSlevaCastka ?? ""}
-                      onChange={(e) =>
-                        updateField("mngSlevaCastka", parseInt(e.target.value, 10) || 0)
-                      }
                       className={inputCls}
                     />
                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">
@@ -1852,13 +1827,12 @@ export default function AdmfFormClient({
                     <label className={labelCls}>Zálohová faktura (s DPH)</label>
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1">
-                        <input
-                          type="number"
+                        <IntegerInput
+                          value={formData.zalohovaFaktura ?? 0}
+                          onCommit={(n) => updateField("zalohovaFaktura", n)}
+                          emptyBlurValue={0}
+                          zeroAsEmpty
                           min={0}
-                          value={formData.zalohovaFaktura ?? ""}
-                          onChange={(e) =>
-                            updateField("zalohovaFaktura", parseInt(e.target.value, 10) || 0)
-                          }
                           className={inputCls}
                         />
                         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">
