@@ -14,13 +14,13 @@ import { checkSizeLimits, type SizeLimitsResult } from "@/lib/size-limits-api";
 import {
   buildEffectiveRequiredFieldCodes,
   hasAnyMissingPriceAffectingFields,
+  isHeightPropertyCode,
   isPriceAffectingFieldMissing,
   isRowFieldDisabledByDependency,
+  isWidthPropertyCode,
 } from "@/lib/price-affecting-validation";
 
-/** Property codes for width/height (same order as backend); first match in form_body is used */
-const WIDTH_CODES = ["ovl_sirka", "width", "Sirka", "sirka", "šířka"];
-const HEIGHT_CODES = ["ovl_vyska", "height", "Vyska", "vyska", "výška"];
+/** Debounce for size-limit API; width/height columns resolved via `isWidthPropertyCode` / `isHeightPropertyCode` (first match in form_body). */
 const SIZE_LIMITS_DEBOUNCE_MS = 400;
 
 /** Generate unique ID for rows/rooms */
@@ -125,8 +125,8 @@ export default function DynamicProductForm({
     [payload]
   );
 
-  const widthCode = formBodyProperties.find((p) => WIDTH_CODES.includes(p.Code))?.Code;
-  const heightCode = formBodyProperties.find((p) => HEIGHT_CODES.includes(p.Code))?.Code;
+  const widthCode = formBodyProperties.find((p) => isWidthPropertyCode(p.Code))?.Code;
+  const heightCode = formBodyProperties.find((p) => isHeightPropertyCode(p.Code))?.Code;
 
   const [sizeLimitByRow, setSizeLimitByRow] = useState<Record<string, SizeLimitsResult>>({});
   const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
