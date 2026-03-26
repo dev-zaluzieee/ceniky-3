@@ -266,7 +266,7 @@ export default function CustomFormClient({
           </div>
         ) : hasRequiredFieldsError ? (
           <div className="rounded-md bg-red-500 px-6 py-3 text-center text-sm font-medium text-white">
-            Vyplňte všechna povinná pole (ovlivňující cenu)
+            Vyplňte všechna povinná pole pro výpočet ceny — viz červené zvýraznění a seznam výše v tabulce
           </div>
         ) : hasWarrantyError ? (
           <button

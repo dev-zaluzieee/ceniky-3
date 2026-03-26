@@ -11,6 +11,11 @@ import type {
   EnumEntry,
 } from "@/types/json-schema-form.types";
 import { checkSizeLimits, type SizeLimitsResult } from "@/lib/size-limits-api";
+import {
+  hasAnyMissingPriceAffectingFields,
+  isPriceAffectingFieldMissing,
+  isRowFieldDisabledByDependency,
+} from "@/lib/price-affecting-validation";
 
 /** Property codes for width/height (same order as backend); first match in form_body is used */
 const WIDTH_CODES = ["ovl_sirka", "width", "Sirka", "sirka", "šířka"];
@@ -93,6 +98,8 @@ export default function DynamicProductForm({
   onRequiredFieldsErrorChange,
 }: DynamicProductFormProps) {
   const formBodyProperties = (payload.form_body?.Properties ?? []) as PropertyDefinition[];
+  const getPropertyLabel = (prop: PropertyDefinition): string =>
+    prop["label-form"] ?? prop.Name;
   const productPricingId = payload._product_pricing_id;
   const priceAffectingEnums = React.useMemo(
     () => new Set(payload.price_affecting_enums ?? []),
@@ -200,38 +207,45 @@ export default function DynamicProductForm({
     onWarrantyErrorChange?.(hasWarrantyError);
   }, [sizeLimitByRow, onSizeLimitErrorChange, onWarrantyErrorChange]);
 
-  // Validate required (price-affecting) fields in all rows.
-  // Skip fields that are disabled by dependency (user cannot fill them).
-  useEffect(() => {
-    if (priceAffectingEnums.size === 0) {
-      onRequiredFieldsErrorChange?.(false);
-      return;
-    }
-    const dependencies = payload.dependencies ?? [];
-    const hasMissing = formData.rooms.some((room) =>
-      room.rows.some((row) =>
-        Array.from(priceAffectingEnums).some((code) => {
-          const v = row[code];
-          const isEmpty = v === undefined || v === null || String(v).trim() === "";
-          if (!isEmpty) return false;
-          // Same logic as isFieldDisabledByDependency: skip if field is disabled by dependency
-          const disabledDeps = dependencies.filter(
-            (d) => d.target_property === code && d.field_disabled === true
-          );
-          const isDisabled = disabledDeps.some((dep) => {
-            const sourceVal = row[dep.source_enum];
-            if (sourceVal === undefined || sourceVal === null) return false;
-            return String(sourceVal) === String(dep.source_value);
-          });
-          return !isDisabled; // missing and not disabled => counts as error
-        })
-      )
-    );
-    onRequiredFieldsErrorChange?.(hasMissing);
-  }, [formData, priceAffectingEnums, payload.dependencies, onRequiredFieldsErrorChange]);
+  const dependencies = payload.dependencies ?? [];
 
-  const getPropertyLabel = (prop: PropertyDefinition): string =>
-    prop["label-form"] ?? prop.Name;
+  const hasMissingRequired = React.useMemo(
+    () =>
+      hasAnyMissingPriceAffectingFields(formData.rooms, priceAffectingEnums, dependencies),
+    [formData.rooms, priceAffectingEnums, dependencies]
+  );
+
+  useEffect(() => {
+    onRequiredFieldsErrorChange?.(hasMissingRequired);
+  }, [hasMissingRequired, onRequiredFieldsErrorChange]);
+
+  /** Human-readable lines for inline validation summary (room + row + missing labels). */
+  const missingRequiredLines = React.useMemo(() => {
+    if (!hasMissingRequired || priceAffectingEnums.size === 0) return [];
+    const lines: string[] = [];
+    for (const room of formData.rooms) {
+      for (let ri = 0; ri < room.rows.length; ri++) {
+        const row = room.rows[ri];
+        const missingCodes = Array.from(priceAffectingEnums).filter((code) =>
+          isPriceAffectingFieldMissing(row, code, dependencies)
+        );
+        if (missingCodes.length === 0) continue;
+        const labels = missingCodes.map((code) => {
+          const p = formBodyProperties.find((x) => x.Code === code);
+          return p ? getPropertyLabel(p) : code;
+        });
+        const roomLabel = room.name?.trim() || "Místnost bez názvu";
+        lines.push(`${roomLabel}, řádek ${ri + 1}: ${labels.join(", ")}`);
+      }
+    }
+    return lines;
+  }, [
+    hasMissingRequired,
+    priceAffectingEnums,
+    formData.rooms,
+    dependencies,
+    formBodyProperties,
+  ]);
 
   const createEmptyFormBodyRow = (): FormRow => {
     const row: FormRow = { id: generateId() };
@@ -433,17 +447,8 @@ export default function DynamicProductForm({
     return options;
   };
 
-  const isFieldDisabledByDependency = (propertyCode: string, row: FormRow): boolean => {
-    const deps =
-      payload.dependencies?.filter(
-        (d) => d.target_property === propertyCode && d.field_disabled === true
-      ) ?? [];
-    return deps.some((dep) => {
-      const sourceVal = row[dep.source_enum];
-      if (sourceVal === undefined || sourceVal === null) return false;
-      return String(sourceVal) === String(dep.source_value);
-    });
-  };
+  const isFieldDisabledByDependency = (propertyCode: string, row: FormRow): boolean =>
+    isRowFieldDisabledByDependency(row, propertyCode, payload.dependencies);
 
   const renderFormField = (
     property: PropertyDefinition,
@@ -703,6 +708,32 @@ export default function DynamicProductForm({
           </div>
         )}
 
+        {priceAffectingEnums.size > 0 && (
+          <p className="mb-3 flex flex-wrap items-start gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+            <span className="font-semibold text-red-600 dark:text-red-400" aria-hidden="true">
+              *
+            </span>
+            <span>
+              Označuje pole <strong className="font-medium text-zinc-800 dark:text-zinc-200">povinná pro výpočet ceny</strong> — v každém řádku je nutné je vyplnit (pokud není pole podle výběru skryté).
+            </span>
+          </p>
+        )}
+
+        {hasMissingRequired && missingRequiredLines.length > 0 && (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950/40 dark:text-red-100"
+          >
+            <p className="mb-2 font-semibold">Chybí povinná pole pro výpočet ceny:</p>
+            <ul className="list-inside list-disc space-y-1 text-red-800 dark:text-red-200">
+              {missingRequiredLines.map((line, idx) => (
+                <li key={`req-${idx}-${line.slice(0, 48)}`}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {formData.rooms.length === 0 ? (
           <div className="rounded-lg border border-zinc-200 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-800">
             <p className="text-zinc-500 dark:text-zinc-400">
@@ -760,15 +791,35 @@ export default function DynamicProductForm({
                         <th className="sticky left-0 z-20 border border-zinc-300 bg-zinc-100 px-2 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
                           #
                         </th>
-                        {formBodyProperties.map((prop) => (
-                          <th
-                            key={prop.ID}
-                            className="whitespace-nowrap border border-zinc-300 px-2 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300"
-                            title={prop.Name}
-                          >
-                            {getPropertyLabel(prop)}
-                          </th>
-                        ))}
+                        {formBodyProperties.map((prop) => {
+                          const requiredCol = priceAffectingEnums.has(prop.Code);
+                          return (
+                            <th
+                              key={prop.ID}
+                              className="whitespace-nowrap border border-zinc-300 px-2 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300"
+                              title={
+                                requiredCol
+                                  ? `${getPropertyLabel(prop)} — povinné pro výpočet ceny`
+                                  : prop.Name
+                              }
+                            >
+                              {requiredCol ? (
+                                <span className="inline-flex items-baseline gap-0.5">
+                                  <span
+                                    className="font-bold leading-none text-red-600 dark:text-red-400"
+                                    aria-hidden="true"
+                                  >
+                                    *
+                                  </span>
+                                  <span>{getPropertyLabel(prop)}</span>
+                                  <span className="sr-only"> — povinné pro výpočet ceny</span>
+                                </span>
+                              ) : (
+                                getPropertyLabel(prop)
+                              )}
+                            </th>
+                          );
+                        })}
                         <th className="sticky right-0 z-20 border border-zinc-300 bg-zinc-100 px-2 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
                           Akce
                         </th>
@@ -802,19 +853,28 @@ export default function DynamicProductForm({
                           <td className={`sticky left-0 z-10 border border-zinc-300 px-2 py-1 text-center text-zinc-600 dark:border-zinc-600 dark:text-zinc-400 ${stickyCellBg}`}>
                             {rowIndex + 1}
                           </td>
-                          {formBodyProperties.map((prop) => (
-                            <td
-                              key={prop.ID}
-                              className="border border-zinc-300 px-1 py-1 dark:border-zinc-600"
-                            >
-                              {renderFormField(
-                                prop,
-                                row[prop.Code] ?? "",
-                                (value) => handleRowChange(room.id, row.id, prop.Code, value),
-                                { row }
-                              )}
-                            </td>
-                          ))}
+                          {formBodyProperties.map((prop) => {
+                            const missingCell =
+                              priceAffectingEnums.has(prop.Code) &&
+                              isPriceAffectingFieldMissing(row, prop.Code, dependencies);
+                            return (
+                              <td
+                                key={prop.ID}
+                                className={`border border-zinc-300 px-1 py-1 dark:border-zinc-600 ${
+                                  missingCell
+                                    ? "rounded-md ring-2 ring-red-500 ring-offset-1 ring-offset-white dark:ring-red-400 dark:ring-offset-zinc-800"
+                                    : ""
+                                }`}
+                              >
+                                {renderFormField(
+                                  prop,
+                                  row[prop.Code] ?? "",
+                                  (value) => handleRowChange(room.id, row.id, prop.Code, value),
+                                  { row }
+                                )}
+                              </td>
+                            );
+                          })}
                           <td className={`sticky right-0 z-10 border border-zinc-300 px-1 py-1 dark:border-zinc-600 ${stickyCellBg}`}>
                             <button
                               type="button"

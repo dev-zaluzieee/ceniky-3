@@ -2,7 +2,8 @@
   {
   "date": "2026-03-26",
   "changes": [
-    "ADMF: opraveno zadávání číselných polí — při mazání nevzniká vedoucí nula"
+    "ADMF: opraveno zadávání číselných polí — při mazání nevzniká vedoucí nula",
+    "Výrobní formulář: povinná pole pro výpočet ceny jsou lépe označená"
   ]
   },
   {
