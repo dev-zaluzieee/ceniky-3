@@ -214,6 +214,8 @@ export default function CustomFormClient({
     const payload = schema;
     const data = formData;
     if (!payload || !data) return;
+    // Align with save bar + autosave: do not persist invalid manufacturing / required fields
+    if (hasSizeLimitError || hasRequiredFieldsError) return;
     setIsSubmitting(true);
     setSubmitError(null);
     try {
@@ -443,6 +445,7 @@ export default function CustomFormClient({
           setFormData={setFormDataForForm}
           onSizeLimitErrorChange={handleSizeLimitErrorChange}
           onWarrantyErrorChange={setHasWarrantyError}
+          onRequiredFieldsErrorChange={setHasRequiredFieldsError}
         />
       </div>
       {saveBar}
