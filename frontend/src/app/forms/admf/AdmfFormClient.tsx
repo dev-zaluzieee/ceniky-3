@@ -17,6 +17,13 @@ import QrPaymentModal from "@/components/QrPaymentModal";
 import ExportStatusModal, { type ExportResult } from "@/components/ExportStatusModal";
 import { buildSpdString } from "@/lib/spd-qr";
 
+/**
+ * Minimální záloha jako podíl z celkové ceny s DPH — dle `typOsoby` (soukromá vs právnická).
+ * Právnická: 70 %, soukromá (výchozí při nevyplněno): 50 %.
+ */
+const ZALOHA_MIN_FRACTION_SOUKROMA = 0.5;
+const ZALOHA_MIN_FRACTION_PRAVNICKA = 0.7;
+
 /** Today in YYYY-MM-DD for date input default */
 function todayString(): string {
   return new Date().toISOString().slice(0, 10);
@@ -599,7 +606,13 @@ export default function AdmfFormClient({
   const vatRate = (formData.vatRate ?? 12) as AdmfVatRate;
   const totalSDph = Math.round(totalBezDph * (1 + vatRate / 100));
   const zalohovaFaktura = formData.zalohovaFaktura ?? 0;
-  const minZaloha = Math.round(0.5 * totalSDph);
+  /** `pravnicka` → 70 % minimum; jinak (vč. výchozí soukromá) → 50 %. */
+  const zalohaMinFraction =
+    formData.typOsoby === "pravnicka"
+      ? ZALOHA_MIN_FRACTION_PRAVNICKA
+      : ZALOHA_MIN_FRACTION_SOUKROMA;
+  const minZaloha = Math.round(zalohaMinFraction * totalSDph);
+  const zalohaMinPercentLabel = Math.round(zalohaMinFraction * 100);
   const zalohaTooLow = totalSDph > 0 && zalohovaFaktura < minZaloha;
   const doplatek = Math.max(0, totalSDph - zalohovaFaktura);
 
@@ -1825,8 +1838,8 @@ export default function AdmfFormClient({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className={labelCls}>Zálohová faktura (s DPH)</label>
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <div className="relative min-w-0 flex-1">
                         <IntegerInput
                           value={formData.zalohovaFaktura ?? 0}
                           onCommit={(n) => updateField("zalohovaFaktura", n)}
@@ -1844,12 +1857,12 @@ export default function AdmfFormClient({
                         onClick={() => updateField("zalohovaFaktura", minZaloha)}
                         className="min-h-[44px] shrink-0 rounded-lg border border-primary bg-primary/20 px-4 py-2.5 text-sm font-medium text-primary hover:bg-primary/30"
                       >
-                        Nastavit na 50 %
+                        Nastavit {zalohaMinPercentLabel} %
                       </button>
                     </div>
                     {zalohaTooLow && totalSDph > 0 && (
                       <p className="mt-1.5 text-sm text-amber-400">
-                        Záloha by měla být alespoň 50 % celkové ceny ({minZaloha} Kč).
+                        Záloha by měla být alespoň {zalohaMinPercentLabel} % celkové ceny ({minZaloha} Kč).
                       </p>
                     )}
                   </div>

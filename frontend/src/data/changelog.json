@@ -4,7 +4,8 @@
   "changes": [
     "ADMF: opraveno zadávání číselných polí — při mazání nevzniká vedoucí nula",
     "Výrobní formulář: povinná pole pro výpočet ceny jsou lépe označená",
-    "Výrobní formulář: sloupec ks a rozměry jsou povinné"
+    "Výrobní formulář: sloupec ks a rozměry jsou povinné",
+    "ADMF: minimální záloha dle typu osoby — soukromá 50 %, právnická 70 % (předvolba tlačítka a kontrola)"
   ]
   },
   {
