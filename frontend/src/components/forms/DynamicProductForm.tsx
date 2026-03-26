@@ -12,6 +12,7 @@ import type {
 } from "@/types/json-schema-form.types";
 import { checkSizeLimits, type SizeLimitsResult } from "@/lib/size-limits-api";
 import {
+  buildEffectiveRequiredFieldCodes,
   hasAnyMissingPriceAffectingFields,
   isPriceAffectingFieldMissing,
   isRowFieldDisabledByDependency,
@@ -101,9 +102,15 @@ export default function DynamicProductForm({
   const getPropertyLabel = (prop: PropertyDefinition): string =>
     prop["label-form"] ?? prop.Name;
   const productPricingId = payload._product_pricing_id;
-  const priceAffectingEnums = React.useMemo(
-    () => new Set(payload.price_affecting_enums ?? []),
-    [payload.price_affecting_enums]
+  const formBodyPropertyCodes = React.useMemo(
+    () => formBodyProperties.map((p) => p.Code),
+    [formBodyProperties]
+  );
+
+  /** `price_affecting_enums` from catalog + `ks` when that column exists in form_body. */
+  const effectiveRequiredFieldCodes = React.useMemo(
+    () => buildEffectiveRequiredFieldCodes(formBodyPropertyCodes, payload.price_affecting_enums),
+    [formBodyPropertyCodes, payload.price_affecting_enums]
   );
 
   const linkPropertyCodes = React.useMemo(
@@ -211,8 +218,8 @@ export default function DynamicProductForm({
 
   const hasMissingRequired = React.useMemo(
     () =>
-      hasAnyMissingPriceAffectingFields(formData.rooms, priceAffectingEnums, dependencies),
-    [formData.rooms, priceAffectingEnums, dependencies]
+      hasAnyMissingPriceAffectingFields(formData.rooms, effectiveRequiredFieldCodes, dependencies),
+    [formData.rooms, effectiveRequiredFieldCodes, dependencies]
   );
 
   useEffect(() => {
@@ -221,12 +228,12 @@ export default function DynamicProductForm({
 
   /** Human-readable lines for inline validation summary (room + row + missing labels). */
   const missingRequiredLines = React.useMemo(() => {
-    if (!hasMissingRequired || priceAffectingEnums.size === 0) return [];
+    if (!hasMissingRequired || effectiveRequiredFieldCodes.size === 0) return [];
     const lines: string[] = [];
     for (const room of formData.rooms) {
       for (let ri = 0; ri < room.rows.length; ri++) {
         const row = room.rows[ri];
-        const missingCodes = Array.from(priceAffectingEnums).filter((code) =>
+        const missingCodes = Array.from(effectiveRequiredFieldCodes).filter((code) =>
           isPriceAffectingFieldMissing(row, code, dependencies)
         );
         if (missingCodes.length === 0) continue;
@@ -241,7 +248,7 @@ export default function DynamicProductForm({
     return lines;
   }, [
     hasMissingRequired,
-    priceAffectingEnums,
+    effectiveRequiredFieldCodes,
     formData.rooms,
     dependencies,
     formBodyProperties,
@@ -708,7 +715,7 @@ export default function DynamicProductForm({
           </div>
         )}
 
-        {priceAffectingEnums.size > 0 && (
+        {effectiveRequiredFieldCodes.size > 0 && (
           <p className="mb-3 flex flex-wrap items-start gap-2 text-sm text-zinc-600 dark:text-zinc-400">
             <span className="font-semibold text-red-600 dark:text-red-400" aria-hidden="true">
               *
@@ -792,7 +799,7 @@ export default function DynamicProductForm({
                           #
                         </th>
                         {formBodyProperties.map((prop) => {
-                          const requiredCol = priceAffectingEnums.has(prop.Code);
+                          const requiredCol = effectiveRequiredFieldCodes.has(prop.Code);
                           return (
                             <th
                               key={prop.ID}
@@ -855,7 +862,7 @@ export default function DynamicProductForm({
                           </td>
                           {formBodyProperties.map((prop) => {
                             const missingCell =
-                              priceAffectingEnums.has(prop.Code) &&
+                              effectiveRequiredFieldCodes.has(prop.Code) &&
                               isPriceAffectingFieldMissing(row, prop.Code, dependencies);
                             return (
                               <td
