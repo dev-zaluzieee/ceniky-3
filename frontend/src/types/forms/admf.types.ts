@@ -35,9 +35,13 @@ export interface AdmfPricingTraceAutomatedV1 {
   room_name?: string;
   room_index: number;
   row_index: number;
-  dimensions: AdmfPricingTraceDimensionsV1;
+  /** Omitted or null when variant is surcharge-only (no width×height grid). */
+  dimensions?: AdmfPricingTraceDimensionsV1 | null;
   pricing_variant_id: string;
+  /** True when matched pricing_variant has no dimension grid; `unit_price_grid` is 0, line price from příplatky. */
+  surcharge_only?: boolean;
   selector_applied: Record<string, string>;
+  /** Unit price from grid before quantity, without surcharges; 0 for surcharge-only variants. */
   unit_price_grid: number;
   ks: number;
   line_base: number;

@@ -181,14 +181,22 @@ export async function getPricingVariantsByProductId(
         selector = {};
       }
     }
-    let dimension_pricing: { prices?: Record<string, number> } = {};
-    if (r.dimension_pricing && typeof r.dimension_pricing === "object") {
-      dimension_pricing = r.dimension_pricing as { prices?: Record<string, number> };
-    } else if (typeof r.dimension_pricing === "string") {
-      try {
-        dimension_pricing = JSON.parse(r.dimension_pricing) as { prices?: Record<string, number> };
-      } catch {
-        dimension_pricing = {};
+    // SQL NULL → null (surcharge-only variants); object/string JSON → parsed grid object
+    let dimension_pricing: { prices?: Record<string, number> } | null = null;
+    const rawDp = r.dimension_pricing;
+    if (rawDp != null && rawDp !== "") {
+      if (typeof rawDp === "object" && !Array.isArray(rawDp)) {
+        dimension_pricing = rawDp as { prices?: Record<string, number> };
+      } else if (typeof rawDp === "string") {
+        try {
+          const parsed = JSON.parse(rawDp) as unknown;
+          dimension_pricing =
+            parsed != null && typeof parsed === "object" && !Array.isArray(parsed)
+              ? (parsed as { prices?: Record<string, number> })
+              : {};
+        } catch {
+          dimension_pricing = {};
+        }
       }
     }
     return { id: r.id, selector, dimension_pricing, surcharge_only: r.surcharge_only === true };
