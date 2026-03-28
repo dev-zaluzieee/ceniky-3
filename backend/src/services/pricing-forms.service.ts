@@ -153,7 +153,9 @@ export async function getProductPricingForResolve(
 export interface PricingVariantRow {
   id: string;
   selector: Record<string, string[]>;
-  dimension_pricing: { prices?: Record<string, number> };
+  dimension_pricing: { prices?: Record<string, number> } | null;
+  /** When true, this variant has no dimension grid — combinations are priced purely from surcharges. */
+  surcharge_only: boolean;
 }
 
 /**
@@ -165,7 +167,7 @@ export async function getPricingVariantsByProductId(
   productPricingId: string
 ): Promise<PricingVariantRow[]> {
   const result = await pool.query(
-    `SELECT id, selector, dimension_pricing FROM pricing_variant WHERE product_pricing_id = $1`,
+    `SELECT id, selector, dimension_pricing, surcharge_only FROM pricing_variant WHERE product_pricing_id = $1`,
     [productPricingId]
   );
   return result.rows.map((r) => {
@@ -189,7 +191,7 @@ export async function getPricingVariantsByProductId(
         dimension_pricing = {};
       }
     }
-    return { id: r.id, selector, dimension_pricing };
+    return { id: r.id, selector, dimension_pricing, surcharge_only: r.surcharge_only === true };
   });
 }
 

@@ -101,7 +101,10 @@ function findMatchingVariant(
 export interface ResolvePriceDetailedResult {
   unitPrice: number;
   pricing_variant_id: string;
-  dimensions: AdmfPricingTraceDimensionsV1;
+  /** Null for surcharge-only variants (no dimension grid). */
+  dimensions: AdmfPricingTraceDimensionsV1 | null;
+  /** When true, matched variant is surcharge-only (no dimension grid). */
+  surcharge_only?: boolean;
 }
 
 /**
@@ -134,6 +137,16 @@ export async function resolvePriceDetailed(
       `No pricing variant matches selector ${selStr} for product_pricing_id "${productPricingId}". ` +
         "Check that the form row has values for all price_affecting_enums."
     );
+  }
+
+  // Surcharge-only variant: no dimension grid, unit price is 0.
+  if (variant.surcharge_only) {
+    return {
+      unitPrice: 0,
+      pricing_variant_id: variant.id,
+      dimensions: null,
+      surcharge_only: true,
+    };
   }
 
   const prices = variant.dimension_pricing?.prices;

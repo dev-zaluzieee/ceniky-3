@@ -251,7 +251,7 @@ export async function extractFromCustom(
         dimStr
       );
       const resolvedAt = new Date().toISOString();
-      const { unitPrice: unitCenaBase, pricing_variant_id, dimensions } = await resolvePriceDetailed(
+      const { unitPrice: unitCenaBase, pricing_variant_id, dimensions, surcharge_only: variantSurchargeOnly } = await resolvePriceDetailed(
         pricingPool,
         productPricingId,
         selectorValues,
@@ -314,6 +314,7 @@ export async function extractFromCustom(
         row_index: rowIndex,
         dimensions,
         pricing_variant_id,
+        ...(variantSurchargeOnly && { surcharge_only: true }),
         selector_applied: { ...selectorValues },
         unit_price_grid: unitCenaBase,
         ks,

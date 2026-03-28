@@ -41,11 +41,14 @@ export interface AdmfPricingTraceAutomatedV1 {
   room_name?: string;
   room_index: number;
   row_index: number;
-  dimensions: AdmfPricingTraceDimensionsV1;
+  /** Null for surcharge-only variants (no dimension grid). */
+  dimensions?: AdmfPricingTraceDimensionsV1 | null;
   pricing_variant_id: string;
+  /** When true, matched variant is surcharge-only (no dimension grid, unit_price_grid is 0). */
+  surcharge_only?: boolean;
   /** Selector field codes → raw values used to match the variant. */
   selector_applied: Record<string, string>;
-  /** Unit price from dimension grid (before quantity), without surcharges. */
+  /** Unit price from dimension grid (before quantity), without surcharges. 0 for surcharge-only. */
   unit_price_grid: number;
   ks: number;
   /** `unit_price_grid * ks` before surcharges. */
