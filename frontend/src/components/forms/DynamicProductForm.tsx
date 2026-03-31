@@ -10,6 +10,7 @@ import type {
   EnumValue,
   EnumEntry,
 } from "@/types/json-schema-form.types";
+import { resolveProductNameFromPayload } from "@/lib/resolve-product-name";
 import { checkSizeLimits, type SizeLimitsResult } from "@/lib/size-limits-api";
 import {
   buildEffectiveRequiredFieldCodes,
@@ -64,8 +65,7 @@ export function buildInitialFormData(
     address: customerFromOrder?.address ?? "",
     city: customerFromOrder?.city ?? "",
     productCode: payload.product_code,
-    productName:
-      payload.form_body?.Name ?? payload.zahlavi?.Name ?? payload.zapati?.Name ?? payload.product_code,
+    productName: resolveProductNameFromPayload(payload),
     zahlaviValues: sectionInitialValues(payload.zahlavi),
     zapatiValues: sectionInitialValues(payload.zapati),
     rooms: [],

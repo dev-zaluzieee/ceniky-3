@@ -6,16 +6,31 @@
 import type { Pool } from "pg";
 
 /**
- * Human-readable label from ovt_export_json, aligned with frontend `buildInitialFormData`
- * (form_body.Name → zahlavi.Name → zapati.Name → product_code).
+ * Same resolution as frontend `resolveProductNameFromPayload` (empty/whitespace `Name` skips to next source).
+ * Keep behavior in sync with `frontend/src/lib/resolve-product-name.ts`.
  */
-export function extractDisplayNameFromOvtExport(ovtExportJson: unknown, productCode: string): string {
-  const fallback =
-    typeof productCode === "string" && productCode.trim().length > 0 ? productCode.trim() : "—";
+function resolveProductNameFromPayloadFields(
+  o: Record<string, unknown>,
+  productCode: string
+): string {
   const pick = (v: unknown): string | undefined => {
     if (typeof v === "string" && v.trim().length > 0) return v.trim();
     return undefined;
   };
+  const fallback =
+    typeof productCode === "string" && productCode.trim().length > 0 ? productCode.trim() : "—";
+  const formBody = o.form_body as Record<string, unknown> | undefined;
+  const zahlavi = o.zahlavi as Record<string, unknown> | undefined;
+  const zapati = o.zapati as Record<string, unknown> | undefined;
+  return (
+    pick(formBody?.Name) ?? pick(zahlavi?.Name) ?? pick(zapati?.Name) ?? fallback
+  );
+}
+
+/** Parses ovt snapshot JSON and resolves display name (see `resolveProductNameFromPayloadFields`). */
+export function extractDisplayNameFromOvtExport(ovtExportJson: unknown, productCode: string): string {
+  const fallback =
+    typeof productCode === "string" && productCode.trim().length > 0 ? productCode.trim() : "—";
   let parsed: unknown = ovtExportJson;
   if (typeof ovtExportJson === "string") {
     try {
@@ -25,13 +40,7 @@ export function extractDisplayNameFromOvtExport(ovtExportJson: unknown, productC
     }
   }
   if (!parsed || typeof parsed !== "object") return fallback;
-  const o = parsed as Record<string, unknown>;
-  const formBody = o.form_body as Record<string, unknown> | undefined;
-  const zahlavi = o.zahlavi as Record<string, unknown> | undefined;
-  const zapati = o.zapati as Record<string, unknown> | undefined;
-  return (
-    pick(formBody?.Name) ?? pick(zahlavi?.Name) ?? pick(zapati?.Name) ?? fallback
-  );
+  return resolveProductNameFromPayloadFields(parsed as Record<string, unknown>, productCode);
 }
 
 /** One row from list endpoint (includes display_name derived from ovt_export_json) */
