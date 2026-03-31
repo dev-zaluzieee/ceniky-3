@@ -5,11 +5,42 @@
 
 import type { Pool } from "pg";
 
-/** One row from list endpoint (id, manufacturer, product_code; no heavy JSON) */
+/**
+ * Human-readable label from ovt_export_json, aligned with frontend `buildInitialFormData`
+ * (form_body.Name → zahlavi.Name → zapati.Name → product_code).
+ */
+export function extractDisplayNameFromOvtExport(ovtExportJson: unknown, productCode: string): string {
+  const fallback =
+    typeof productCode === "string" && productCode.trim().length > 0 ? productCode.trim() : "—";
+  const pick = (v: unknown): string | undefined => {
+    if (typeof v === "string" && v.trim().length > 0) return v.trim();
+    return undefined;
+  };
+  let parsed: unknown = ovtExportJson;
+  if (typeof ovtExportJson === "string") {
+    try {
+      parsed = JSON.parse(ovtExportJson) as unknown;
+    } catch {
+      return fallback;
+    }
+  }
+  if (!parsed || typeof parsed !== "object") return fallback;
+  const o = parsed as Record<string, unknown>;
+  const formBody = o.form_body as Record<string, unknown> | undefined;
+  const zahlavi = o.zahlavi as Record<string, unknown> | undefined;
+  const zapati = o.zapati as Record<string, unknown> | undefined;
+  return (
+    pick(formBody?.Name) ?? pick(zahlavi?.Name) ?? pick(zapati?.Name) ?? fallback
+  );
+}
+
+/** One row from list endpoint (includes display_name derived from ovt_export_json) */
 export interface PricingFormListItem {
   id: string;
   manufacturer: string;
   product_code: string;
+  /** Same logic as custom form initial productName; falls back to product_code */
+  display_name: string;
 }
 
 /** Query params for listing OVT forms */
@@ -21,6 +52,7 @@ export interface ListPricingFormsQuery {
 /**
  * List OVT-available forms with optional manufacturer and product_code search.
  * Uses ILIKE for product_code when search is provided.
+ * Loads ovt_export_json to compute display_name (fallback: product_code).
  */
 export async function listOvtForms(
   pool: Pool,
@@ -42,18 +74,23 @@ export async function listOvtForms(
   }
 
   const sql = `
-    SELECT id, manufacturer, product_code
+    SELECT id, manufacturer, product_code, ovt_export_json
     FROM product_pricing
     WHERE ${conditions.join(" AND ")}
     ORDER BY manufacturer, product_code
     LIMIT 200
   `;
   const result = await pool.query(sql, values);
-  return result.rows.map((r) => ({
-    id: r.id,
-    manufacturer: r.manufacturer,
-    product_code: r.product_code,
-  }));
+  return result.rows.map((r) => {
+    const productCode = String(r.product_code ?? "");
+    const displayName = extractDisplayNameFromOvtExport(r.ovt_export_json, productCode);
+    return {
+      id: r.id,
+      manufacturer: r.manufacturer,
+      product_code: productCode,
+      display_name: displayName,
+    };
+  });
 }
 
 /** Single form with ovt_export_json for generating the custom form */

@@ -776,11 +776,14 @@ export default function OrderDetailClient({
               {pricingForms !== null && (() => {
                 const searchLower = modalSearch.toLowerCase().trim();
                 const filtered = searchLower
-                  ? pricingForms.filter(
-                      (item) =>
+                  ? pricingForms.filter((item) => {
+                      const display = (item.display_name ?? item.product_code).toLowerCase();
+                      return (
                         item.product_code.toLowerCase().includes(searchLower) ||
+                        display.includes(searchLower) ||
                         (item.manufacturer && item.manufacturer.toLowerCase().includes(searchLower))
-                    )
+                      );
+                    })
                   : pricingForms;
 
                 // Group by manufacturer
@@ -808,16 +811,26 @@ export default function OrderDetailClient({
                           {manufacturer}
                         </p>
                         <div className="space-y-2">
-                          {items.map((item) => (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => goToCustomFormWithPricing(item.id)}
-                              className="w-full rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-4 text-center text-sm font-medium text-zinc-800 transition-colors hover:border-primary hover:bg-primary/10 active:bg-primary/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:border-primary dark:hover:bg-primary/20"
-                            >
-                              {item.product_code}
-                            </button>
-                          ))}
+                          {items.map((item) => {
+                            const label = item.display_name?.trim() || item.product_code;
+                            const showCode =
+                              label.toLowerCase() !== item.product_code.toLowerCase();
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => goToCustomFormWithPricing(item.id)}
+                                className="w-full rounded-lg border border-zinc-200 bg-zinc-100 px-4 py-4 text-left text-sm font-medium text-zinc-800 transition-colors hover:border-primary hover:bg-primary/10 active:bg-primary/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:border-primary dark:hover:bg-primary/20"
+                              >
+                                <span className="block">{label}</span>
+                                {showCode && (
+                                  <span className="mt-1 block text-xs font-normal text-zinc-500 dark:text-zinc-400">
+                                    {item.product_code}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}

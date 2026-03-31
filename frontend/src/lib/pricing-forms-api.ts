@@ -8,6 +8,8 @@ export interface PricingFormListItem {
   id: string;
   manufacturer: string;
   product_code: string;
+  /** Derived from ovt_export_json on the server; falls back to product_code */
+  display_name: string;
 }
 
 /** Detail from GET /api/forms/pricing/[id] (includes ovt_export_json for form) */

@@ -175,7 +175,7 @@ router.post("/", authenticateToken, async (req: AuthenticatedRequest, res: Respo
  *         description: Fulltext/substring search on product_code
  *     responses:
  *       200:
- *         description: List of { id, manufacturer, product_code }
+ *         description: List of { id, manufacturer, product_code, display_name } (display_name from ovt_export_json, else product_code)
  *       401:
  *         description: Unauthorized
  *       503:
