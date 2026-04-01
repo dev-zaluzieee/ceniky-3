@@ -980,7 +980,7 @@ export default function AdmfFormClient({
           >
             <div className="max-w-md rounded-xl border border-zinc-700 bg-zinc-800 p-6 shadow-xl">
               <h2 id="send-modal-title" className="mb-4 text-lg font-semibold text-zinc-50">
-                Odeslat zákazníkovi
+                Export Raynet/ERP
               </h2>
               {mode === "PRODUCTION" ? (
                 <p className="mb-6 text-sm text-zinc-300">
