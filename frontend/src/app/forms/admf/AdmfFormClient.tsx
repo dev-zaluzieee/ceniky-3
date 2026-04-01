@@ -24,6 +24,20 @@ import { buildSpdString } from "@/lib/spd-qr";
 const ZALOHA_MIN_FRACTION_SOUKROMA = 0.5;
 const ZALOHA_MIN_FRACTION_PRAVNICKA = 0.7;
 
+/**
+ * Instalovaná PWA / iOS „přidat na plochu“ — náhled PDF v iframe často nejde posouvat prstem;
+ * řešení je otevřít stejný blob URL v systémovém prohlížeči (nová karta).
+ */
+function isStandaloneDisplayMode(): boolean {
+  if (typeof window === "undefined") return false;
+  const nav = window.navigator as Navigator & { standalone?: boolean };
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.matchMedia("(display-mode: fullscreen)").matches ||
+    nav.standalone === true
+  );
+}
+
 /** Výchozí montáž bez DPH — při režimu „automaticky“. */
 const DEFAULT_MONTAZ_CENA_BEZ_DPH = 1339;
 
@@ -379,6 +393,8 @@ export default function AdmfFormClient({
   const [pdfError, setPdfError] = useState<string | null>(null);
   /** Blob URL for PDF viewer modal; when set, modal is open. Revoke on close. */
   const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
+  /** `window.open` was blocked (e.g. popup policy); user can still use Stáhnout. */
+  const [pdfExternalTabBlocked, setPdfExternalTabBlocked] = useState(false);
   /** Bulk discount % (0–100); committed via IntegerInput, applied with “Nastavit slevu všem”. */
   const [bulkSlevaPercent, setBulkSlevaPercent] = useState(0);
   const [aresLoading, setAresLoading] = useState(false);
@@ -857,6 +873,7 @@ export default function AdmfFormClient({
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
+      setPdfExternalTabBlocked(false);
       setPdfViewerUrl(url);
     } catch {
       setPdfError("Nepodařilo se načíst PDF.");
@@ -869,6 +886,15 @@ export default function AdmfFormClient({
   const handleClosePdfModal = useCallback(() => {
     if (pdfViewerUrl) URL.revokeObjectURL(pdfViewerUrl);
     setPdfViewerUrl(null);
+    setPdfExternalTabBlocked(false);
+  }, [pdfViewerUrl]);
+
+  /** Otevře PDF v nové kartě — spolehlivé scrollování v PWA (iframe náhled na iOS často neposouvá). */
+  const handleOpenPdfExternalViewer = useCallback(() => {
+    if (!pdfViewerUrl) return;
+    setPdfExternalTabBlocked(false);
+    const w = window.open(pdfViewerUrl, "_blank", "noopener,noreferrer");
+    if (w == null) setPdfExternalTabBlocked(true);
   }, [pdfViewerUrl]);
 
   /** Close PDF modal on Escape key */
@@ -1126,11 +1152,21 @@ export default function AdmfFormClient({
             aria-labelledby="pdf-modal-title"
             onClick={(e) => { if (e.target === e.currentTarget) handleClosePdfModal(); }}
           >
-            <div className="flex shrink-0 items-center justify-between gap-4 border-b border-zinc-700 pb-3">
+            <div className="flex shrink-0 flex-col gap-2 border-b border-zinc-700 pb-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <h2 id="pdf-modal-title" className="text-lg font-semibold text-zinc-50">
                 Náhled PDF
               </h2>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenPdfExternalViewer}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-500"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  Otevřít v prohlížeči
+                </button>
                 <button
                   type="button"
                   onClick={handleDownloadPdfFromModal}
@@ -1150,11 +1186,21 @@ export default function AdmfFormClient({
                 </button>
               </div>
             </div>
-            <div className="min-h-0 flex-1 pt-3">
+            {isStandaloneDisplayMode() && (
+              <p className="shrink-0 pt-2 text-xs leading-snug text-zinc-400">
+                V aplikaci na ploše nemusí jít náhled posouvat — klepněte na „Otevřít v prohlížeči“ a PDF se otevře v Safari (nebo v systémovém prohlížeči) s normálním posuvem.
+              </p>
+            )}
+            {pdfExternalTabBlocked && (
+              <p className="shrink-0 pt-1 text-xs text-amber-400">
+                Nové okno bylo zablokováno. Povolte vyskakovací okna pro tuto stránku, nebo použijte Stáhnout.
+              </p>
+            )}
+            <div className="min-h-0 flex-1 overflow-auto pt-3 [-webkit-overflow-scrolling:touch]">
               <iframe
                 src={pdfViewerUrl}
                 title="Náhled administrativního formuláře"
-                className="h-full w-full rounded border border-zinc-700 bg-white"
+                className="h-full min-h-[50vh] w-full rounded border border-zinc-700 bg-white"
               />
             </div>
           </div>
