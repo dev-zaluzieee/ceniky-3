@@ -7,6 +7,12 @@ import fs from "fs/promises";
 import path from "path";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import {
+  computeAdmfCelkemBezDph,
+  computeAdmfCelkemSDph,
+  effectiveMontazBezDph,
+  sumProductRowsBezDph,
+} from "../utils/admf-order-totals";
 
 const MARGIN = 20;
 const FONT_SIZE_TITLE = 16;
@@ -56,6 +62,8 @@ interface AdmfPdfData {
   vatRate?: number;
   productRows?: AdmfProductRow[];
   montazCenaBezDph?: number;
+  /** auto = výchozí montáž, manual = vlastní `montazCenaBezDph` */
+  montazCenaZpusob?: "auto" | "manual";
   mngSleva?: boolean;
   mngSlevaCastka?: number;
   ovtSlevaCastka?: number;
@@ -258,41 +266,44 @@ export async function generateAdmfPdfBuffer(raw: Record<string, unknown>): Promi
 
   y = ((doc as unknown) as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
 
-  const totalProdukty = productRows.reduce((sum, r) => sum + (r.cenaPoSleve ?? 0) * (r.ks ?? 1), 0);
+  const fd = formData as Record<string, unknown>;
+  const totalProdukty = sumProductRowsBezDph(fd);
+  const produktySDph = Math.round(totalProdukty * (1 + vatRate / 100));
+  const produktyDphCastka = produktySDph - totalProdukty;
+
   setFont(FONT_SIZE_BODY);
   doc.text(`Součet produktů (bez DPH): ${totalProdukty} Kč`, MARGIN, y);
-  y += 6;
-
-  const montazBezDph = formData.montazCenaBezDph ?? 1339;
-  const montazSDph = Math.round(montazBezDph * (1 + vatRate / 100));
-  doc.text(`Montáž: ${montazBezDph} Kč (bez DPH), ${montazSDph} Kč (s DPH ${vatRate}%)`, MARGIN, y);
-  y += 6;
-
-  const totalBezDph = totalProdukty + montazBezDph;
-  const totalSDph = Math.round(totalBezDph * (1 + vatRate / 100));
-  doc.text(`Celkem bez DPH: ${totalBezDph} Kč`, MARGIN, y);
   y += 5;
-  doc.text(`Celkem s DPH (${vatRate}%): ${totalSDph} Kč`, MARGIN, y);
+  doc.text(`DPH z produktů (${vatRate}%): ${produktyDphCastka} Kč`, MARGIN, y);
+  y += 5;
+  doc.text(`Produkty s DPH: ${produktySDph} Kč`, MARGIN, y);
   y += 6;
 
-  // ---- Slevy ----
-  const hasDiscounts = (formData.ovtSlevaCastka ?? 0) > 0 || (formData.mngSleva && (formData.mngSlevaCastka ?? 0) > 0);
-  if (hasDiscounts) {
-    setFont(FONT_SIZE_HEADING);
-    doc.text("Slevy", MARGIN, y);
-    y += 6;
-    setFont(FONT_SIZE_BODY);
-    if ((formData.ovtSlevaCastka ?? 0) > 0) {
-      doc.text(`OVT sleva: ${formData.ovtSlevaCastka} Kč`, MARGIN, y);
-      y += 5;
-    }
-    if (formData.mngSleva && (formData.mngSlevaCastka ?? 0) > 0) {
-      doc.text(`MNG sleva: ${formData.mngSlevaCastka} Kč`, MARGIN, y);
-      y += 5;
-    }
-    y += 3;
+  const montazBezDph = effectiveMontazBezDph(fd);
+  const montazSDph = Math.round(montazBezDph * (1 + vatRate / 100));
+  doc.text(`Montáž (bez DPH): ${montazBezDph} Kč`, MARGIN, y);
+  y += 5;
+  doc.text(`Montáž (s DPH ${vatRate}%): ${montazSDph} Kč`, MARGIN, y);
+  y += 6;
+
+  if ((formData.ovtSlevaCastka ?? 0) > 0) {
+    doc.text(`OVT sleva (bez DPH): −${formData.ovtSlevaCastka} Kč`, MARGIN, y);
+    y += 5;
   }
-  y += 2;
+  if (formData.mngSleva && (formData.mngSlevaCastka ?? 0) > 0) {
+    doc.text(`MNG sleva (bez DPH): −${formData.mngSlevaCastka} Kč`, MARGIN, y);
+    y += 5;
+  }
+
+  const totalBezDph = computeAdmfCelkemBezDph(fd);
+  const totalSDph = computeAdmfCelkemSDph(fd);
+  const dphCelkem = totalSDph - totalBezDph;
+  doc.text(`Celkem bez DPH (objednávka): ${totalBezDph} Kč`, MARGIN, y);
+  y += 5;
+  doc.text(`DPH (${vatRate}%): ${dphCelkem} Kč`, MARGIN, y);
+  y += 5;
+  doc.text(`Celkem s DPH (objednávka): ${totalSDph} Kč`, MARGIN, y);
+  y += 6;
 
   const poznamkyVyroba = (formData.poznamkyVyroba ?? "").trim();
   const poznamkyMontaz = (formData.poznamkyMontaz ?? "").trim();

@@ -18,6 +18,11 @@ import {
   ErpCommentPayload,
 } from "../types/erp-export.types";
 import { BadRequestError, InternalServerError } from "../utils/errors";
+import {
+  computeAdmfCelkemBezDph,
+  computeAdmfCelkemSDph,
+  effectiveMontazBezDph,
+} from "../utils/admf-order-totals";
 
 // ── Enum mapping tables ──────────────────────────────────────────
 
@@ -44,15 +49,6 @@ interface ErpMappingResult {
   warnings: ErpExportWarning[];
 }
 
-function computeTotalBezDph(formJson: Record<string, any>): number {
-  const rows = formJson.productRows || [];
-  const productTotal = rows.reduce(
-    (sum: number, r: any) => sum + ((r.cenaPoSleve ?? 0) * (r.ks ?? 1)),
-    0
-  );
-  return productTotal + (formJson.montazCenaBezDph ?? 1339);
-}
-
 /**
  * Build all ERP payloads from ADMF form_json.
  * Also resolves manufacturer from linked custom forms if available.
@@ -65,8 +61,8 @@ export function buildErpPayloads(
   const columnValues: Record<string, unknown> = {};
 
   const vatRate = formJson.vatRate ?? 12;
-  const totalBezDph = computeTotalBezDph(formJson);
-  const totalSDph = Math.round(totalBezDph * (1 + vatRate / 100));
+  const totalBezDph = computeAdmfCelkemBezDph(formJson);
+  const totalSDph = computeAdmfCelkemSDph(formJson);
 
   // ── Finance column_values ──
 
@@ -109,8 +105,8 @@ export function buildErpPayloads(
     }
   }
 
-  // cena_za_montaz_s_dph
-  const montazBezDph = formJson.montazCenaBezDph ?? 0;
+  // cena_za_montaz_s_dph (effective montáž = auto default nebo vlastní částka)
+  const montazBezDph = effectiveMontazBezDph(formJson);
   if (montazBezDph > 0) {
     columnValues.cena_za_montaz_s_dph = Math.round(montazBezDph * (1 + vatRate / 100));
   }

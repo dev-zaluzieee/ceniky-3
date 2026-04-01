@@ -142,6 +142,11 @@ export interface AdmfFormData {
 
   /** Montáž: price without VAT (default 1339 → 1500 with 12% VAT) */
   montazCenaBezDph?: number;
+  /**
+   * `auto` = vždy výchozí částka montáže (1339 Kč bez DPH), `manual` = použít `montazCenaBezDph`.
+   * U starých záznamů bez pole se chová jako `manual`.
+   */
+  montazCenaZpusob?: "auto" | "manual";
 
   /** Slevy (total-level, not per-row) */
   /** MNG (manager) discount toggle */

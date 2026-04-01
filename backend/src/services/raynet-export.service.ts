@@ -15,6 +15,7 @@ import {
   RaynetEventUpdatePayload,
 } from "../types/raynet-export.types";
 import { BadRequestError, InternalServerError } from "../utils/errors";
+import { computeAdmfCelkemSDph } from "../utils/admf-order-totals";
 
 /** Raynet event category for ADMF exports */
 const RAYNET_CATEGORY_ID = 220;
@@ -81,8 +82,7 @@ export function buildRaynetPayload(
   }
 
   // ── Monetary: doplatek ──
-  const totalBezDph = computeTotalBezDph(formJson);
-  const totalSDph = Math.round(totalBezDph * (1 + vatRate / 100));
+  const totalSDph = computeAdmfCelkemSDph(formJson);
   const doplatek = formJson.doplatek ?? Math.max(0, totalSDph - (formJson.zalohovaFaktura ?? 0));
   cf.Doplatek_98b22 = doplatek;
 
@@ -145,15 +145,6 @@ export function buildRaynetPayload(
     },
     warnings,
   };
-}
-
-function computeTotalBezDph(formJson: Record<string, any>): number {
-  const rows = formJson.productRows || [];
-  const productTotal = rows.reduce(
-    (sum: number, r: any) => sum + ((r.cenaPoSleve ?? 0) * (r.ks ?? 1)),
-    0
-  );
-  return productTotal + (formJson.montazCenaBezDph ?? 1339);
 }
 
 function mapOptionalString(

@@ -24,6 +24,9 @@ import { buildSpdString } from "@/lib/spd-qr";
 const ZALOHA_MIN_FRACTION_SOUKROMA = 0.5;
 const ZALOHA_MIN_FRACTION_PRAVNICKA = 0.7;
 
+/** Výchozí montáž bez DPH — při režimu „automaticky“. */
+const DEFAULT_MONTAZ_CENA_BEZ_DPH = 1339;
+
 /** Today in YYYY-MM-DD for date input default */
 function todayString(): string {
   return new Date().toISOString().slice(0, 10);
@@ -60,7 +63,8 @@ function getDefaultFormData(): AdmfFormData {
     name: "Varianta 1",
     source_form_ids: [],
     productRows: [],
-    montazCenaBezDph: 1339,
+    montazCenaBezDph: DEFAULT_MONTAZ_CENA_BEZ_DPH,
+    montazCenaZpusob: "auto",
     poznamkyVyroba: "",
     poznamkyMontaz: "",
     platceDph: false,
@@ -160,20 +164,58 @@ function sanitizeDiscountInteger(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
+/** Efektivní montáž bez DPH podle režimu auto/manual. */
+function effectiveMontazCenaBezDph(data: AdmfFormData): number {
+  if (data.montazCenaZpusob === "auto") return DEFAULT_MONTAZ_CENA_BEZ_DPH;
+  return data.montazCenaBezDph ?? DEFAULT_MONTAZ_CENA_BEZ_DPH;
+}
+
+/** Souhrn částek objednávky (OVT/MNG slevy jako odečty bez DPH). */
+function computeAdmfOrderTotals(data: AdmfFormData): {
+  produktyBezDph: number;
+  montazBezDph: number;
+  ovtSlevaBezDph: number;
+  mngSlevaBezDph: number;
+  celkemBezDph: number;
+  dphCastka: number;
+  celkemSDph: number;
+} {
+  const produktyBezDph = data.productRows.reduce(
+    (sum, row) => sum + (row.cenaPoSleve || 0) * (row.ks || 1),
+    0
+  );
+  const montazBezDph = effectiveMontazCenaBezDph(data);
+  const ovtSlevaBezDph = Math.max(0, data.ovtSlevaCastka ?? 0);
+  const mngSlevaBezDph =
+    data.mngSleva && (data.mngSlevaCastka ?? 0) > 0 ? Math.max(0, data.mngSlevaCastka ?? 0) : 0;
+  const celkemBezDph = Math.max(
+    0,
+    produktyBezDph + montazBezDph - ovtSlevaBezDph - mngSlevaBezDph
+  );
+  const vatRate = (data.vatRate ?? 12) as number;
+  const celkemSDph = Math.round(celkemBezDph * (1 + vatRate / 100));
+  const dphCastka = celkemSDph - celkemBezDph;
+  return {
+    produktyBezDph,
+    montazBezDph,
+    ovtSlevaBezDph,
+    mngSlevaBezDph,
+    celkemBezDph,
+    dphCastka,
+    celkemSDph,
+  };
+}
+
 /**
  * Compute doplatek exactly the same way as submit/save path so dirty-state comparison
  * uses a stable payload shape (including computed-only fields).
  */
 function withComputedDoplatek(data: AdmfFormData): AdmfFormData {
-  const totalBezDph =
-    data.productRows.reduce((sum, row) => sum + (row.cenaPoSleve || 0) * (row.ks || 1), 0) +
-    (data.montazCenaBezDph ?? 1339);
-  const vatRate = (data.vatRate ?? 12) as AdmfVatRate;
-  const totalSDph = Math.round(totalBezDph * (1 + vatRate / 100));
+  const { celkemSDph } = computeAdmfOrderTotals(data);
   const zaloha = data.zalohovaFaktura ?? 0;
   return {
     ...data,
-    doplatek: Math.max(0, totalSDph - zaloha),
+    doplatek: Math.max(0, celkemSDph - zaloha),
   };
 }
 
@@ -303,6 +345,10 @@ export default function AdmfFormClient({
           id: r.id || defaultProductRow().id,
         })),
       };
+      /** Legacy uložené ADMF bez pole — nepřebírat výchozí „auto“ z getDefaultFormData, aby zůstala vlastní montáž. */
+      if (initialData.montazCenaZpusob === undefined) {
+        merged.montazCenaZpusob = "manual";
+      }
       // Prefill variabilniSymbol from phone if not already set
       if (merged.variabilniSymbol == null) {
         merged.variabilniSymbol = phoneToVariabilniSymbol(merged.telefon);
@@ -597,14 +643,24 @@ export default function AdmfFormClient({
   };
 
   /* ── Computed values ──────────────────────────────────── */
-  const totalProduktyBezDph = formData.productRows.reduce(
-    (sum, r) => sum + (r.cenaPoSleve || 0) * (r.ks || 1),
-    0
-  );
-  const montazBezDph = formData.montazCenaBezDph ?? 1339;
-  const totalBezDph = totalProduktyBezDph + montazBezDph;
   const vatRate = (formData.vatRate ?? 12) as AdmfVatRate;
-  const totalSDph = Math.round(totalBezDph * (1 + vatRate / 100));
+  const {
+    produktyBezDph: totalProduktyBezDph,
+    montazBezDph,
+    ovtSlevaBezDph,
+    mngSlevaBezDph,
+    celkemBezDph: totalBezDph,
+    dphCastka: orderDphCastka,
+    celkemSDph: totalSDph,
+  } = computeAdmfOrderTotals(formData);
+
+  /** Pouze produkty — pro patičku tabulky (bez montáže a řádkových slev OVT/MNG). */
+  const produktySDph = Math.round(totalProduktyBezDph * (1 + vatRate / 100));
+  const produktyDphCastka = produktySDph - totalProduktyBezDph;
+
+  /** Režim montáže: u legacy záznamů bez `montazCenaZpusob` = vlastní částka. */
+  const montazZpusob = formData.montazCenaZpusob ?? "manual";
+
   const zalohovaFaktura = formData.zalohovaFaktura ?? 0;
   /** `pravnicka` → 70 % minimum; jinak (vč. výchozí soukromá) → 50 %. */
   const zalohaMinFraction =
@@ -1537,15 +1593,25 @@ export default function AdmfFormClient({
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-600">
+                  <tr className="border-b border-zinc-600 align-bottom">
                     <th className="px-3 py-3 text-left text-xs font-medium text-zinc-400">Produkt</th>
                     <th className="w-20 px-3 py-3 text-center text-xs font-medium text-zinc-400">Počet ks</th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-zinc-400">{priceField1Label}</th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-zinc-400">{priceField2Label}</th>
-                    <th className="w-28 px-3 py-3 text-right text-xs font-medium text-zinc-400">Cena (bez DPH)</th>
+                    <th className="min-w-[5rem] px-3 py-3 text-left text-xs font-medium text-zinc-400">
+                      {priceField1Label}
+                    </th>
+                    <th className="min-w-[5rem] px-3 py-3 text-left text-xs font-medium text-zinc-400">
+                      {priceField2Label}
+                    </th>
+                    <th className="w-28 min-w-[7rem] px-3 py-3 text-right text-xs font-medium text-zinc-400">
+                      Cena (bez DPH)
+                    </th>
                     <th className="w-24 px-3 py-3 text-right text-xs font-medium text-zinc-400">Sleva %</th>
-                    <th className="w-32 px-3 py-3 text-right text-xs font-medium text-zinc-400">Cena po slevě (bez DPH)</th>
-                    <th className="w-32 px-3 py-3 text-right text-xs font-medium text-zinc-400">Cena po slevě (s DPH)</th>
+                    <th className="w-32 min-w-[6rem] px-3 py-3 text-right text-xs font-medium text-zinc-400">
+                      Cena po slevě (bez DPH)
+                    </th>
+                    <th className="w-32 min-w-[6rem] px-3 py-3 text-right text-xs font-medium text-zinc-400">
+                      Cena po slevě (s DPH)
+                    </th>
                     <th className="w-10 px-3 py-3" />
                   </tr>
                 </thead>
@@ -1561,89 +1627,60 @@ export default function AdmfFormClient({
                     const field1Value = row.priceAffectingFields?.[0]?.value ?? "";
                     const field2Value = row.priceAffectingFields?.[1]?.value ?? "";
                     return (
-                      <React.Fragment key={row.id}>
-                        <tr className="border-b border-zinc-700/50">
-                          <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              value={row.produkt}
-                              onChange={(e) => updateProductRow(row.id, { produkt: e.target.value })}
-                              className={inputCls}
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-center">
-                            <IntegerInput
-                              value={row.ks}
-                              onCommit={(n) => updateProductRow(row.id, { ks: n })}
-                              emptyBlurValue={1}
-                              min={1}
-                              className={`${inputCls} w-16 text-center`}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <span className="text-sm text-zinc-100">{field1Value}</span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <span className="text-sm text-zinc-100">{field2Value}</span>
-                          </td>
-                          <td className="px-3 py-2 text-right align-top">
-                            <IntegerInput
-                              value={row.cena}
-                              onCommit={(n) => updateProductRow(row.id, { cena: n })}
-                              emptyBlurValue={0}
-                              zeroAsEmpty
-                              min={0}
-                              className={`${inputCls} w-24 text-right`}
-                            />
-                            {hasSurcharges && (
-                              <p className="mt-1 text-[11px] text-zinc-500">
-                                Základ: {baseCena}, příplatky: {surchargeSum}
+                      <tr
+                        key={row.id}
+                        className="border-b border-zinc-600/80 align-top odd:bg-zinc-800/20 even:bg-transparent"
+                      >
+                        <td className="max-w-[14rem] px-3 py-2 align-top">
+                          <input
+                            type="text"
+                            value={row.produkt}
+                            onChange={(e) => updateProductRow(row.id, { produkt: e.target.value })}
+                            className={inputCls}
+                          />
+                        </td>
+                        <td className="w-20 px-3 py-2 align-top">
+                          <IntegerInput
+                            value={row.ks}
+                            onCommit={(n) => updateProductRow(row.id, { ks: n })}
+                            emptyBlurValue={1}
+                            min={1}
+                            className={`${inputCls} w-full min-w-[3.25rem] text-center`}
+                          />
+                        </td>
+                        <td className="min-w-[5rem] px-3 py-2 align-top">
+                          <span className="block text-sm leading-6 text-zinc-100">{field1Value}</span>
+                        </td>
+                        <td className="min-w-[5rem] px-3 py-2 align-top">
+                          <span className="block text-sm leading-6 text-zinc-100">{field2Value}</span>
+                        </td>
+                        {/* Cena + příplatky v jednom řádku tabulky — žádná „sirotkovská“ meziřádka */}
+                        <td className="w-28 min-w-[7rem] px-3 py-2 text-right align-top">
+                          <IntegerInput
+                            value={row.cena}
+                            onCommit={(n) => updateProductRow(row.id, { cena: n })}
+                            emptyBlurValue={0}
+                            zeroAsEmpty
+                            min={0}
+                            className={`${inputCls} w-full min-w-[5.5rem] text-right`}
+                          />
+                          {hasSurcharges && (
+                            <p className="mt-1 text-[11px] text-zinc-500">
+                              Základ: {baseCena}, příplatky: {surchargeSum}
+                            </p>
+                          )}
+                          {hasSurcharges && (
+                            <div className="mt-2 rounded-lg border border-zinc-600/90 bg-zinc-800/90 px-2.5 py-2 text-left">
+                              <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                                Příplatky
                               </p>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <IntegerInput
-                              value={row.sleva}
-                              onCommit={(n) => updateProductRow(row.id, { sleva: n })}
-                              emptyBlurValue={0}
-                              min={0}
-                              max={100}
-                              transform={sanitizeDiscountInteger}
-                              className={`${inputCls} w-20 text-right`}
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-right font-medium text-zinc-100 align-top">
-                            {cenaZaKsBezDph}
-                          </td>
-                          <td className="px-3 py-2 text-right text-zinc-400 align-top">
-                            {cenaZaKsSDph}
-                          </td>
-                          <td className="px-3 py-2 text-center align-top">
-                            <button
-                              type="button"
-                              onClick={() => removeProductRow(row.id)}
-                              className="min-h-[36px] min-w-[36px] rounded-lg text-red-400 hover:bg-red-900/20"
-                              title="Odebrat řádek"
-                            >
-                              <svg className="mx-auto h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </td>
-                        </tr>
-                        {hasSurcharges && (
-                          <tr className="border-b border-zinc-700/30 bg-zinc-800/60 text-xs text-zinc-400">
-                            <td className="px-3 py-2" colSpan={4}>
-                              Příplatky:
-                            </td>
-                            <td className="px-3 py-2" colSpan={3}>
-                              <div className="flex flex-wrap gap-3">
+                              <div className="flex flex-col gap-2">
                                 {row.surcharges?.map((s, idx) => (
                                   <div
                                     key={`${row.id}-s-${s.code}-${idx}`}
-                                    className="flex items-center gap-1"
+                                    className="flex flex-wrap items-center gap-1.5"
                                   >
-                                    <span className="text-[11px] text-zinc-500">
+                                    <span className="min-w-0 shrink text-[11px] text-zinc-400">
                                       {s.label ?? s.code}:
                                     </span>
                                     <IntegerInput
@@ -1664,29 +1701,76 @@ export default function AdmfFormClient({
                                       }}
                                       emptyBlurValue={0}
                                       min={0}
-                                      className="w-20 rounded-lg border border-zinc-600 bg-zinc-700 px-2 py-1 text-right text-[11px] text-zinc-50"
+                                      className="w-[4.5rem] rounded-md border border-zinc-600 bg-zinc-700 px-2 py-1 text-right text-[11px] text-zinc-50"
                                     />
                                     <span className="text-[11px] text-zinc-500">Kč</span>
                                   </div>
                                 ))}
                               </div>
-                            </td>
-                            <td className="px-3 py-2 text-[11px] text-zinc-500" colSpan={2}>
-                              {row.surchargeWarnings?.length
-                                ? row.surchargeWarnings.join(" ")
-                                : null}
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
+                              {row.surchargeWarnings?.length ? (
+                                <p className="mt-2 text-[11px] leading-snug text-amber-400/90">
+                                  {row.surchargeWarnings.join(" ")}
+                                </p>
+                              ) : null}
+                            </div>
+                          )}
+                        </td>
+                        <td className="w-24 px-3 py-2 text-right align-top">
+                          <IntegerInput
+                            value={row.sleva}
+                            onCommit={(n) => updateProductRow(row.id, { sleva: n })}
+                            emptyBlurValue={0}
+                            min={0}
+                            max={100}
+                            transform={sanitizeDiscountInteger}
+                            className={`${inputCls} w-full min-w-[3.75rem] text-right`}
+                          />
+                        </td>
+                        <td className="w-32 min-w-[6rem] px-3 py-2 text-right align-top font-medium tabular-nums text-zinc-100">
+                          {cenaZaKsBezDph}
+                        </td>
+                        <td className="w-32 min-w-[6rem] px-3 py-2 text-right align-top tabular-nums text-zinc-400">
+                          {cenaZaKsSDph}
+                        </td>
+                        <td className="w-10 px-3 py-2 text-center align-top">
+                          <button
+                            type="button"
+                            onClick={() => removeProductRow(row.id)}
+                            className="min-h-[36px] min-w-[36px] rounded-lg text-red-400 hover:bg-red-900/20"
+                            title="Odebrat řádek"
+                          >
+                            <svg className="mx-auto h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
-            {/* Total footer */}
-            <div className="mt-4 flex justify-end text-sm font-semibold text-zinc-100">
-              Celkem bez DPH: <span className="ml-2 font-bold">{totalProduktyBezDph} Kč</span>
+            {/* Souhrn jen za produkty (montáž + OVT/MNG až v „Platba a montáž“) */}
+            <div className="mt-4 space-y-1 text-right text-sm text-zinc-200">
+              <div className="flex justify-end gap-3">
+                <span className="text-zinc-400">Produkty bez DPH</span>
+                <span className="min-w-[5.5rem] font-medium tabular-nums text-zinc-100">
+                  {totalProduktyBezDph} Kč
+                </span>
+              </div>
+              <div className="flex justify-end gap-3">
+                <span className="text-zinc-400">DPH ({vatRate}%)</span>
+                <span className="min-w-[5.5rem] font-medium tabular-nums text-zinc-100">
+                  {produktyDphCastka} Kč
+                </span>
+              </div>
+              <div className="flex justify-end gap-3 border-t border-zinc-600/80 pt-2 font-semibold text-zinc-50">
+                <span>Produkty s DPH</span>
+                <span className="min-w-[5.5rem] tabular-nums">{produktySDph} Kč</span>
+              </div>
+              <p className="pt-2 text-left text-xs font-normal leading-snug text-zinc-500">
+                Uvedené částky jsou pouze za produkty v tabulce. Cena montáže je uvedena v části „Platba a montáž“.
+              </p>
             </div>
           </CollapsibleSection>
 
@@ -1695,7 +1779,7 @@ export default function AdmfFormClient({
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={labelCls}>OVT sleva (Kč)</label>
+                  <label className={labelCls}>OVT sleva (bez DPH, Kč)</label>
                   <div className="relative">
                     <IntegerInput
                       value={formData.ovtSlevaCastka ?? 0}
@@ -1724,7 +1808,7 @@ export default function AdmfFormClient({
               </div>
               {formData.mngSleva && (
                 <div className="max-w-xs">
-                  <label className={labelCls}>MNG sleva částka (Kč)</label>
+                  <label className={labelCls}>MNG sleva částka (bez DPH, Kč)</label>
                   <div className="relative">
                     <IntegerInput
                       value={formData.mngSlevaCastka ?? 0}
@@ -1777,8 +1861,8 @@ export default function AdmfFormClient({
           {/* ── Platba a montáž ── */}
           <CollapsibleSection title="Platba a montáž">
             <div className="space-y-5">
-              {/* General payment & delivery fields – 2-column grid for iPad */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Horní řádek: objednávka / záloha / režim montáže */}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <div>
                   <label className={labelCls}>K objednání</label>
                   <select
@@ -1792,11 +1876,11 @@ export default function AdmfFormClient({
                 </div>
                 <div>
                   <label className={labelCls}>Záloha zaplacena</label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={formData.zalohaZaplacena ?? "Hotově"}
                       onChange={(e) => updateField("zalohaZaplacena", e.target.value)}
-                      className={selectCls}
+                      className={`${selectCls} min-w-0 flex-1`}
                     >
                       <option value="Hotově">Hotově</option>
                       <option value="Terminálem">Terminálem</option>
@@ -1823,20 +1907,89 @@ export default function AdmfFormClient({
                     )}
                   </div>
                 </div>
+                <div className="space-y-2">
+                  <label className={labelCls}>Cena montáže</label>
+                  <select
+                    value={montazZpusob}
+                    onChange={(e) => {
+                      const v = e.target.value as "auto" | "manual";
+                      if (v === "auto") {
+                        updateField("montazCenaZpusob", "auto");
+                        updateField("montazCenaBezDph", DEFAULT_MONTAZ_CENA_BEZ_DPH);
+                      } else {
+                        updateField("montazCenaZpusob", "manual");
+                      }
+                    }}
+                    className={selectCls}
+                  >
+                    <option value="auto">
+                      Automaticky ({DEFAULT_MONTAZ_CENA_BEZ_DPH} Kč bez DPH)
+                    </option>
+                    <option value="manual">Vlastní částka</option>
+                  </select>
+                  {montazZpusob === "manual" ? (
+                    <div>
+                      <label className={labelCls}>Montáž bez DPH (Kč)</label>
+                      <div className="relative">
+                        <IntegerInput
+                          value={formData.montazCenaBezDph ?? DEFAULT_MONTAZ_CENA_BEZ_DPH}
+                          onCommit={(n) => updateField("montazCenaBezDph", n)}
+                          emptyBlurValue={DEFAULT_MONTAZ_CENA_BEZ_DPH}
+                          min={0}
+                          className={inputCls}
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">
+                          Kč
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs leading-snug text-zinc-500">
+                      Používá se výchozí částka {DEFAULT_MONTAZ_CENA_BEZ_DPH} Kč bez DPH (neukládá se vlastní
+                      přepsání, dokud nezvolíte „Vlastní částka“).
+                    </p>
+                  )}
+                </div>
               </div>
 
-              {/* ── Záloha & doplatek – visually distinct block ── */}
+              {/* Rozpis + záloha / doplatek */}
               <div className="rounded-lg border border-primary/30 bg-primary/5 p-5">
                 <h3 className="mb-4 text-sm font-semibold text-zinc-100">Kalkulace zálohy a doplatku</h3>
-                <div className="mb-4 flex flex-wrap gap-x-8 gap-y-1 text-sm">
-                  <p className="font-medium text-zinc-300">
-                    Celkem bez DPH: <span className="text-zinc-50">{totalBezDph} Kč</span>
-                  </p>
-                  <p className="font-medium text-zinc-300">
-                    Celkem s DPH ({vatRate}%): <span className="text-zinc-50">{totalSDph} Kč</span>
-                  </p>
+                <div className="mb-4 space-y-2 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-zinc-400">Produkty bez DPH</span>
+                    <span className="font-medium tabular-nums text-zinc-100">{totalProduktyBezDph} Kč</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-zinc-400">Montáž bez DPH</span>
+                    <span className="font-medium tabular-nums text-zinc-100">{montazBezDph} Kč</span>
+                  </div>
+                  {ovtSlevaBezDph > 0 && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-zinc-400">OVT sleva (bez DPH)</span>
+                      <span className="font-medium tabular-nums text-rose-300">−{ovtSlevaBezDph} Kč</span>
+                    </div>
+                  )}
+                  {mngSlevaBezDph > 0 && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-zinc-400">MNG sleva (bez DPH)</span>
+                      <span className="font-medium tabular-nums text-rose-300">−{mngSlevaBezDph} Kč</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-4 border-t border-zinc-600/70 pt-2">
+                    <span className="font-medium text-zinc-300">Celkem bez DPH</span>
+                    <span className="font-semibold tabular-nums text-zinc-50">{totalBezDph} Kč</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-zinc-400">DPH ({vatRate}%)</span>
+                    <span className="font-medium tabular-nums text-zinc-100">{orderDphCastka} Kč</span>
+                  </div>
+                  <div className="flex justify-between gap-4 border-t border-zinc-600/70 pt-2">
+                    <span className="font-semibold text-zinc-100">Celkem s DPH</span>
+                    <span className="text-base font-bold tabular-nums text-zinc-50">{totalSDph} Kč</span>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <label className={labelCls}>Zálohová faktura (s DPH)</label>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -1863,12 +2016,13 @@ export default function AdmfFormClient({
                     </div>
                     {zalohaTooLow && totalSDph > 0 && (
                       <p className="mt-1.5 text-sm text-amber-400">
-                        Záloha by měla být alespoň {zalohaMinPercentLabel} % celkové ceny ({minZaloha} Kč).
+                        Záloha by měla být alespoň {zalohaMinPercentLabel} % z celkové ceny s DPH ({minZaloha}{" "}
+                        Kč).
                       </p>
                     )}
                   </div>
                   <div>
-                    <label className={labelCls}>Doplatek</label>
+                    <label className={labelCls}>Doplatek (s DPH)</label>
                     <div className="relative">
                       <input
                         type="text"
