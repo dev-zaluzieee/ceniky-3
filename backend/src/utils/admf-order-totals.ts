@@ -5,6 +5,14 @@
 
 export const ADMF_DEFAULT_MONTAZ_BEZ_DPH = 1339;
 
+/** DPH sazba v % z `form_json`; výchozí 12 jen při chybějící nebo nečíselné hodnotě (0 % je platné). */
+export function parseAdmfVatRatePercent(raw: unknown): number {
+  if (raw === null || raw === undefined) return 12;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return 12;
+  return n;
+}
+
 /** Montáž částka used in totals: auto = fixed default, manual = stored `montazCenaBezDph`. */
 export function effectiveMontazBezDph(formJson: Record<string, unknown>): number {
   if (formJson.montazCenaZpusob === "auto") return ADMF_DEFAULT_MONTAZ_BEZ_DPH;
@@ -35,7 +43,7 @@ export function computeAdmfCelkemBezDph(formJson: Record<string, unknown>): numb
 }
 
 export function computeAdmfCelkemSDph(formJson: Record<string, unknown>): number {
-  const vatRate = Number(formJson.vatRate) || 12;
+  const vatRate = parseAdmfVatRatePercent(formJson.vatRate);
   const bez = computeAdmfCelkemBezDph(formJson);
   return Math.round(bez * (1 + vatRate / 100));
 }
