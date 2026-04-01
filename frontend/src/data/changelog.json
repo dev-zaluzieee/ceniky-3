@@ -1,5 +1,11 @@
 [  
   {
+    "date": "2026-03-30",
+    "changes": [
+      "Výrobní formulář: v nabídce „Přidat výrobní formulář“ se zobrazuje čitelnější název produktu"
+    ]
+  },
+  {
   "date": "2026-03-26",
   "changes": [
     "ADMF: opraveno zadávání číselných polí — při mazání nevzniká vedoucí nula",
