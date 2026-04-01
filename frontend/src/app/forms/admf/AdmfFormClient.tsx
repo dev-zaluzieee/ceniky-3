@@ -1028,6 +1028,7 @@ export default function AdmfFormClient({
           <ExportStatusModal
             result={exportResult}
             loading={exportLoading}
+            formId={formId}
             onClose={() => setShowExportStatusModal(false)}
           />
         )}

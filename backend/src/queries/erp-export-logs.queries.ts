@@ -122,6 +122,53 @@ export async function getLatestErpExportForForm(
   }
 }
 
+/**
+ * Get the most recent ERP export log for a form (any status).
+ * Used for progress polling and debugging.
+ */
+export async function getLatestErpExportLogForFormAnyStatus(
+  pool: Pool,
+  formId: number
+): Promise<ErpExportLogRecord | null> {
+  const query = `
+    SELECT *
+    FROM erp_export_logs
+    WHERE form_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  try {
+    const result = await pool.query(query, [formId]);
+    if (result.rows.length === 0) return null;
+    return mapRowToErpExportLog(result.rows[0]);
+  } catch (error: any) {
+    throw new DatabaseError(`Failed to get ERP export log: ${error.message}`, error);
+  }
+}
+
+/**
+ * Get the most recent ERP export log for a given export_batch_id (any status).
+ */
+export async function getLatestErpExportLogByBatchId(
+  pool: Pool,
+  exportBatchId: string
+): Promise<ErpExportLogRecord | null> {
+  const query = `
+    SELECT *
+    FROM erp_export_logs
+    WHERE export_batch_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  try {
+    const result = await pool.query(query, [exportBatchId]);
+    if (result.rows.length === 0) return null;
+    return mapRowToErpExportLog(result.rows[0]);
+  } catch (error: any) {
+    throw new DatabaseError(`Failed to get ERP export log: ${error.message}`, error);
+  }
+}
+
 function mapRowToErpExportLog(row: any): ErpExportLogRecord {
   return {
     id: row.id,

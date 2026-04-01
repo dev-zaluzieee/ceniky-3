@@ -7,6 +7,8 @@ import { Pool } from "pg";
 import * as exportLogsQueries from "../queries/raynet-export-logs.queries";
 import * as formsQueries from "../queries/forms.queries";
 import * as ordersQueries from "../queries/orders.queries";
+import { raynetFileUpload, raynetJsonRequest, type RaynetHttpLogEntry } from "./raynet-api.client";
+import { collectRaynetAttachmentCandidates } from "./raynet-attachments.service";
 import {
   ExportWarning,
   ExportErrorCode,
@@ -166,49 +168,6 @@ function mapOptionalString(
   }
 }
 
-// ── Raynet HTTP call ─────────────────────────────────────────────
-
-async function sendToRaynet(
-  eventId: number,
-  payload: RaynetEventUpdatePayload
-): Promise<{ status: number; body: Record<string, unknown> }> {
-  const authorization = process.env.RAYNET_AUTHORIZATION || process.env.RAYNET_BASIC_AUTH;
-  const instanceName = process.env.RAYNET_INSTANCE_NAME;
-
-  if (!authorization || !instanceName) {
-    throw Object.assign(
-      new InternalServerError("Raynet API is not configured (missing env vars)"),
-      { errorCode: "RAYNET_CONFIG_MISSING" as ExportErrorCode }
-    );
-  }
-
-  const authHeader = authorization.startsWith("Basic ")
-    ? authorization
-    : `Basic ${authorization}`;
-
-  const url = `https://app.raynet.cz/api/v2/event/${eventId}/`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: authHeader,
-      "X-Instance-Name": instanceName,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  let body: Record<string, unknown>;
-  try {
-    body = (await response.json()) as Record<string, unknown>;
-  } catch {
-    body = { rawText: await response.text().catch(() => "unreadable") };
-  }
-
-  return { status: response.status, body };
-}
-
 function classifyHttpError(status: number): ExportErrorCode {
   if (status === 401 || status === 403) return "RAYNET_AUTH_FAILED";
   if (status >= 400 && status < 500) return "RAYNET_VALIDATION_ERROR";
@@ -275,10 +234,19 @@ export async function exportFormToRaynet(
     // ── Build payload ──
     const { payload, warnings } = buildRaynetPayload(form.form_json, raynetName);
 
-    // ── Write 2: UPDATE log (SENDING) — store payload + warnings ──
+    const timeline: RaynetHttpLogEntry[] = [];
+    const attachmentAttempts: Array<Record<string, unknown>> = [];
+    const enabledAttachments = true;
+
+    // ── Write 2: UPDATE log (SENDING) — store payload + warnings (+ placeholders) ──
     await exportLogsQueries.updateExportLog(pool, logId, {
       status: "SENDING",
-      request_payload: payload as unknown as Record<string, unknown>,
+      request_payload: {
+        event_update: payload,
+        attachments_enabled: enabledAttachments,
+        timeline,
+        attachments: attachmentAttempts,
+      } as unknown as Record<string, unknown>,
       warnings,
     });
 
@@ -288,58 +256,153 @@ export async function exportFormToRaynet(
       await exportLogsQueries.updateExportLog(pool, logId, {
         status: "SUCCESS",
         response_status: 0,
-        response_body: { testMode: true, message: "Skipped — test mode" },
+        response_body: {
+          testMode: true,
+          message: "Skipped — test mode",
+          attachments: { enabled: enabledAttachments, skipped: true },
+        },
         duration_ms: Date.now() - startTime,
         completed_at: now,
       });
       return { logId, exportedAt: now, testMode: true, warnings };
     }
 
-    // ── Step 3: Call Raynet API ──
-    let httpResult: { status: number; body: Record<string, unknown> };
-    try {
-      httpResult = await sendToRaynet(raynetEventId, payload);
-    } catch (error: any) {
-      const isTimeout = error.name === "TimeoutError" || error.name === "AbortError";
-      const errorCode: ExportErrorCode = isTimeout ? "RAYNET_TIMEOUT" : "UNKNOWN_ERROR";
+    // ── Step 3: Event update (hard gate) ──
+    const eventRes = await raynetJsonRequest({
+      step: "raynet_event_update",
+      method: "POST",
+      path: `/api/v2/event/${raynetEventId}/`,
+      body: payload,
+    }).catch((err: any) => {
+      if (err?.raynetLog) timeline.push(err.raynetLog as RaynetHttpLogEntry);
+      throw err;
+    });
+    timeline.push(eventRes.log);
 
+    if (eventRes.status < 200 || eventRes.status >= 300) {
+      const errorCode = classifyHttpError(eventRes.status);
+      const errorMsg = `Raynet returned HTTP ${eventRes.status}`;
       await exportLogsQueries.updateExportLog(pool, logId, {
         status: "FAILED",
-        error_message: error.message,
-        error_code: errorCode,
-        duration_ms: Date.now() - startTime,
-        completed_at: new Date(),
-      });
-      throw new InternalServerError(
-        isTimeout ? "Raynet API request timed out" : `Raynet API call failed: ${error.message}`
-      );
-    }
-
-    // ── Write 3: Final status ──
-    if (httpResult.status >= 200 && httpResult.status < 300) {
-      const now = new Date();
-      await exportLogsQueries.updateExportLog(pool, logId, {
-        status: "SUCCESS",
-        response_status: httpResult.status,
-        response_body: httpResult.body,
-        duration_ms: Date.now() - startTime,
-        completed_at: now,
-      });
-      return { logId, exportedAt: now, testMode: false, warnings };
-    } else {
-      const errorCode = classifyHttpError(httpResult.status);
-      const errorMsg = `Raynet returned HTTP ${httpResult.status}`;
-      await exportLogsQueries.updateExportLog(pool, logId, {
-        status: "FAILED",
-        response_status: httpResult.status,
-        response_body: httpResult.body,
+        response_status: eventRes.status,
+        response_body: {
+          eventUpdate: eventRes.body,
+          timeline,
+        } as unknown as Record<string, unknown>,
         error_message: errorMsg,
         error_code: errorCode,
         duration_ms: Date.now() - startTime,
         completed_at: new Date(),
+        warnings,
       });
       throw new InternalServerError(errorMsg);
     }
+
+    // ── Step 4: Attachments (best-effort) ──
+    let attachmentsSummary: { enabled: boolean; total: number; uploaded: number; failed: number } = {
+      enabled: enabledAttachments,
+      total: 0,
+      uploaded: 0,
+      failed: 0,
+    };
+
+    if (enabledAttachments) {
+      const candidates = await collectRaynetAttachmentCandidates({ pool, admfFormId: formId, userId });
+      attachmentsSummary.total = candidates.length;
+
+      for (const candidate of candidates) {
+        const attempt: Record<string, unknown> = {
+          filename: candidate.filename,
+          contentType: candidate.contentType,
+          sizeBytes: candidate.sizeBytes,
+          source: candidate.source,
+          status: "PENDING",
+        };
+        attachmentAttempts.push(attempt);
+
+        try {
+          const uploadRes = await raynetFileUpload({
+            step: "raynet_file_upload",
+            filename: candidate.filename,
+            contentType: candidate.contentType,
+            buffer: candidate.buffer,
+          }).catch((err: any) => {
+            if (err?.raynetLog) timeline.push(err.raynetLog as RaynetHttpLogEntry);
+            throw err;
+          });
+          timeline.push(uploadRes.log);
+
+          if (uploadRes.status < 200 || uploadRes.status >= 300) {
+            throw new Error(`fileUpload returned HTTP ${uploadRes.status}`);
+          }
+
+          const fileInfo = uploadRes.body as Record<string, unknown>;
+          attempt.fileUpload = fileInfo;
+
+          const attachmentRes = await raynetJsonRequest({
+            step: "raynet_attachment_create",
+            method: "PUT",
+            path: `/api/v2/attachment/event/${raynetEventId}/`,
+            body: {
+              uuid: fileInfo.uuid,
+              fileName: fileInfo.fileName ?? candidate.filename,
+              contentType: fileInfo.contentType ?? candidate.contentType,
+              fileSize: fileInfo.fileSize ?? candidate.sizeBytes,
+            },
+          }).catch((err: any) => {
+            if (err?.raynetLog) timeline.push(err.raynetLog as RaynetHttpLogEntry);
+            throw err;
+          });
+          timeline.push(attachmentRes.log);
+
+          if (attachmentRes.status < 200 || attachmentRes.status >= 300) {
+            throw new Error(`attachment create returned HTTP ${attachmentRes.status}`);
+          }
+
+          attempt.attachment = attachmentRes.body;
+          attempt.status = "SUCCESS";
+          attachmentsSummary.uploaded += 1;
+        } catch (error: any) {
+          attempt.status = "FAILED";
+          attempt.error = { message: error?.message ?? "Unknown error" };
+          attachmentsSummary.failed += 1;
+          warnings.push({
+            code: "FIELD_SKIPPED",
+            field: `attachment:${candidate.filename}`,
+            reason: error?.message ?? "Attachment upload failed",
+          });
+        } finally {
+          // Persist progress periodically (keeps polling UI responsive)
+          await exportLogsQueries.updateExportLog(pool, logId, {
+            request_payload: {
+              event_update: payload,
+              attachments_enabled: enabledAttachments,
+              timeline,
+              attachments: attachmentAttempts,
+              attachments_summary: attachmentsSummary,
+            } as unknown as Record<string, unknown>,
+            warnings,
+          });
+        }
+      }
+    }
+
+    // ── Write 3: Final status ──
+    const now = new Date();
+    const finalStatus = enabledAttachments && attachmentsSummary.failed > 0 ? "PARTIAL_SUCCESS" : "SUCCESS";
+    await exportLogsQueries.updateExportLog(pool, logId, {
+      status: finalStatus,
+      response_status: eventRes.status,
+      response_body: {
+        eventUpdate: eventRes.body,
+        attachments: attachmentsSummary,
+        timeline,
+      } as unknown as Record<string, unknown>,
+      warnings,
+      duration_ms: Date.now() - startTime,
+      completed_at: now,
+    });
+    return { logId, exportedAt: now, testMode: false, warnings };
   } catch (error: any) {
     // Catch-all: if anything above threw without updating the log, update it now
     if (error.statusCode) {
@@ -347,10 +410,12 @@ export async function exportFormToRaynet(
       throw error;
     }
     // Unexpected error — log it
+    const isTimeout = error.name === "TimeoutError" || error.name === "AbortError";
+    const errorCode: ExportErrorCode = isTimeout ? "RAYNET_TIMEOUT" : "UNKNOWN_ERROR";
     await exportLogsQueries.updateExportLog(pool, logId, {
       status: "FAILED",
       error_message: error.message ?? "Unknown error",
-      error_code: "UNKNOWN_ERROR",
+      error_code: errorCode,
       duration_ms: Date.now() - startTime,
       completed_at: new Date(),
     });

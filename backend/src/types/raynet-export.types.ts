@@ -2,7 +2,13 @@
  * Type definitions for Raynet export pipeline
  */
 
-export type ExportLogStatus = "PENDING" | "MAPPING" | "SENDING" | "SUCCESS" | "FAILED";
+export type ExportLogStatus =
+  | "PENDING"
+  | "MAPPING"
+  | "SENDING"
+  | "SUCCESS"
+  | "PARTIAL_SUCCESS"
+  | "FAILED";
 
 export type ExportErrorCode =
   | "MISSING_EVENT_ID"

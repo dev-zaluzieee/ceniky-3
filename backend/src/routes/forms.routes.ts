@@ -845,6 +845,69 @@ router.get("/:id/export-status", authenticateToken, async (req: AuthenticatedReq
 });
 
 /**
+ * GET /api/forms/:id/export-latest
+ * Get the latest export log for both Raynet and ERP (any status).
+ * Intended for progress polling UI.
+ */
+router.get("/:id/export-latest", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const id = parseInt(idParam, 10);
+
+    if (isNaN(id)) {
+      return res.status(400).json({ success: false, error: "Invalid form ID" });
+    }
+
+    const [raynetLog, erpLog] = await Promise.all([
+      exportLogsQueries.getLatestExportLogForFormAnyStatus(pool, id),
+      erpExportLogsQueries.getLatestErpExportLogForFormAnyStatus(pool, id),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        raynet: raynetLog,
+        erp: erpLog,
+      },
+    });
+  } catch (error: any) {
+    handleError(error, res);
+  }
+});
+
+/**
+ * GET /api/forms/exports/:exportBatchId
+ * Get the latest export logs for Raynet + ERP by export batch ID (any status).
+ * Intended for progress polling UI after calling unified POST /api/forms/:id/export.
+ */
+router.get("/exports/:exportBatchId", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPool();
+    const exportBatchId = req.params.exportBatchId;
+    if (!exportBatchId || typeof exportBatchId !== "string") {
+      return res.status(400).json({ success: false, error: "Invalid exportBatchId" });
+    }
+
+    const [raynetLog, erpLog] = await Promise.all([
+      exportLogsQueries.getLatestExportLogByBatchId(pool, exportBatchId),
+      erpExportLogsQueries.getLatestErpExportLogByBatchId(pool, exportBatchId),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        exportBatchId,
+        raynet: raynetLog,
+        erp: erpLog,
+      },
+    });
+  } catch (error: any) {
+    handleError(error, res);
+  }
+});
+
+/**
  * Error handler for routes
  * Converts errors to appropriate HTTP responses
  */

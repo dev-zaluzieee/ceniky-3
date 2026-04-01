@@ -17,9 +17,20 @@ export interface ExportResult {
   erp: ExportTargetResult;
 }
 
+type ExportLogRecord = {
+  id: number;
+  status: string;
+  test_mode: boolean;
+  request_payload: Record<string, unknown> | null;
+  warnings: Array<{ code: string; field: string; reason: string }> | null;
+  created_at: string | Date;
+  completed_at: string | Date | null;
+};
+
 interface ExportStatusModalProps {
   result: ExportResult | null;
   loading: boolean;
+  formId?: number | null;
   onClose: () => void;
 }
 
@@ -74,8 +85,49 @@ function TargetStatus({ name, data }: { name: string; data: ExportTargetResult }
   );
 }
 
-export default function ExportStatusModal({ result, loading, onClose }: ExportStatusModalProps) {
+function statusLabel(status: string | undefined | null): string {
+  if (!status) return "";
+  if (status === "SUCCESS") return "OK";
+  if (status === "PARTIAL_SUCCESS") return "Částečně OK";
+  if (status === "FAILED") return "Chyba";
+  if (status === "SENDING" || status === "PENDING" || status === "MAPPING") return "Probíhá";
+  return status;
+}
+
+export default function ExportStatusModal({ result, loading, formId, onClose }: ExportStatusModalProps) {
   const allSuccess = result?.raynet.success && result?.erp.success;
+  const [latestRaynetLog, setLatestRaynetLog] = React.useState<ExportLogRecord | null>(null);
+  const [latestErpLog, setLatestErpLog] = React.useState<ExportLogRecord | null>(null);
+
+  React.useEffect(() => {
+    if (!loading) return;
+    if (!formId) return;
+
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/forms/${formId}/export-latest`, { credentials: "include" });
+        const json = await res.json();
+        if (!res.ok || !json?.success) return;
+        if (cancelled) return;
+        setLatestRaynetLog(json.data?.raynet ?? null);
+        setLatestErpLog(json.data?.erp ?? null);
+      } catch {
+        // ignore polling errors
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [loading, formId]);
+
+  const raynetProgress = (latestRaynetLog?.request_payload as any)?.attachments_summary as
+    | { enabled?: boolean; total?: number; uploaded?: number; failed?: number }
+    | undefined;
 
   return (
     <div
@@ -96,6 +148,34 @@ export default function ExportStatusModal({ result, loading, onClose }: ExportSt
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
             <p className="text-sm text-zinc-400">Synchronizuji data s Raynetem a ERP...</p>
+
+            {(latestRaynetLog || latestErpLog) && (
+              <div className="mt-2 w-full max-w-sm space-y-2">
+                {latestRaynetLog && (
+                  <div className="rounded-lg border border-zinc-700 bg-zinc-900/30 px-3 py-2 text-xs text-zinc-300">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-zinc-200">Raynet</span>
+                      <span className="text-zinc-400">{statusLabel(latestRaynetLog.status)}</span>
+                    </div>
+                    {raynetProgress?.enabled && typeof raynetProgress.total === "number" && (
+                      <div className="mt-1 text-zinc-400">
+                        Přílohy: {raynetProgress.uploaded ?? 0}/{raynetProgress.total} hotovo
+                        {(raynetProgress.failed ?? 0) > 0 ? `, chyby: ${raynetProgress.failed}` : ""}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {latestErpLog && (
+                  <div className="rounded-lg border border-zinc-700 bg-zinc-900/30 px-3 py-2 text-xs text-zinc-300">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-zinc-200">ERP</span>
+                      <span className="text-zinc-400">{statusLabel(latestErpLog.status)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

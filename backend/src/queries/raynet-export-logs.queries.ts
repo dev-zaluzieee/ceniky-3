@@ -110,12 +110,59 @@ export async function getLatestExportForForm(
   const query = `
     SELECT *
     FROM raynet_export_logs
-    WHERE form_id = $1 AND status = 'SUCCESS'
+    WHERE form_id = $1 AND status IN ('SUCCESS', 'PARTIAL_SUCCESS')
     ORDER BY created_at DESC
     LIMIT 1
   `;
   try {
     const result = await pool.query(query, [formId]);
+    if (result.rows.length === 0) return null;
+    return mapRowToExportLog(result.rows[0]);
+  } catch (error: any) {
+    throw new DatabaseError(`Failed to get export log: ${error.message}`, error);
+  }
+}
+
+/**
+ * Get the most recent Raynet export log for a form (any status).
+ * Used for progress polling and debugging.
+ */
+export async function getLatestExportLogForFormAnyStatus(
+  pool: Pool,
+  formId: number
+): Promise<ExportLogRecord | null> {
+  const query = `
+    SELECT *
+    FROM raynet_export_logs
+    WHERE form_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  try {
+    const result = await pool.query(query, [formId]);
+    if (result.rows.length === 0) return null;
+    return mapRowToExportLog(result.rows[0]);
+  } catch (error: any) {
+    throw new DatabaseError(`Failed to get export log: ${error.message}`, error);
+  }
+}
+
+/**
+ * Get the most recent Raynet export log for a given export_batch_id (any status).
+ */
+export async function getLatestExportLogByBatchId(
+  pool: Pool,
+  exportBatchId: string
+): Promise<ExportLogRecord | null> {
+  const query = `
+    SELECT *
+    FROM raynet_export_logs
+    WHERE export_batch_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+  try {
+    const result = await pool.query(query, [exportBatchId]);
     if (result.rows.length === 0) return null;
     return mapRowToExportLog(result.rows[0]);
   } catch (error: any) {
