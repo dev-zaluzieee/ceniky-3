@@ -10,14 +10,14 @@ interface ModeContextValue {
 }
 
 const ModeContext = createContext<ModeContextValue>({
-  mode: "TEST",
+  mode: "PRODUCTION",
   setMode: () => {},
 });
 
 const STORAGE_KEY = "app-mode";
 
 export function ModeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setModeState] = useState<AppMode>("TEST");
+  const [mode, setModeState] = useState<AppMode>("PRODUCTION");
 
   // Load persisted mode on mount
   useEffect(() => {
