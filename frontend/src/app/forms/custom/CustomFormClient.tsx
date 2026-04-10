@@ -6,8 +6,27 @@ import { useRouter } from "next/navigation";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import { getPricingFormById } from "@/lib/pricing-forms-api";
 import DynamicProductForm, { buildInitialFormData } from "@/components/forms/DynamicProductForm";
+import { emptyValuesForProductSchema } from "@/lib/merge-product-switch";
+import { normalizeCustomFormOnLoad } from "@/lib/normalize-custom-form-load";
 import type { ProductPayload } from "@/types/json-schema-form.types";
 import type { CustomFormJson, JsonSchemaFormData } from "@/types/json-schema-form.types";
+
+function newEntityId(): string {
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/** Single normalize pass for edit-mode initial state */
+function customFormInitialState(initialData?: CustomFormJson): {
+  schema: ProductPayload | null;
+  product_schemas: Record<string, ProductPayload>;
+  formData: JsonSchemaFormData | null;
+} {
+  if (!initialData) {
+    return { schema: null, product_schemas: {}, formData: null };
+  }
+  const n = normalizeCustomFormOnLoad(initialData);
+  return { schema: n.schema, product_schemas: n.product_schemas, formData: n.data };
+}
 
 export interface CustomFormClientProps {
   /** Create mode: no formId, orderId required. Edit mode: formId + orderId. */
@@ -50,11 +69,12 @@ export default function CustomFormClient({
 
   /* Create mode: step 1 = paste JSON or load from pricingId, step 2 = form */
   const [rawJson, setRawJson] = useState<string>("");
-  const [schema, setSchema] = useState<ProductPayload | null>(() => initialData?.schema ?? null);
-  const [formData, setFormData] = useState<JsonSchemaFormData | null>(() => {
-    if (initialData?.data) return initialData.data;
-    return null;
-  });
+  const editInit = customFormInitialState(initialData);
+  const [schema, setSchema] = useState<ProductPayload | null>(() => editInit.schema);
+  const [productSchemas, setProductSchemas] = useState<Record<string, ProductPayload>>(
+    () => editInit.product_schemas
+  );
+  const [formData, setFormData] = useState<JsonSchemaFormData | null>(() => editInit.formData);
   /** When creating from catalog (pricingId), loading or error state */
   const [pricingLoadError, setPricingLoadError] = useState<string | null>(null);
   const [pricingLoading, setPricingLoading] = useState(false);
@@ -84,8 +104,25 @@ export default function CustomFormClient({
         _product_manufacturer: res.data.manufacturer,
         price_affecting_enums: res.data.price_affecting_enums ?? [],
       };
+      const pid = pricingId.trim();
       setSchema(schemaWithPricingId);
-      setFormData(buildInitialFormData(schemaWithPricingId, customerFromOrder));
+      setProductSchemas({ [pid]: schemaWithPricingId });
+      setFormData({
+        ...buildInitialFormData(schemaWithPricingId, customerFromOrder),
+        rooms: [
+          {
+            id: newEntityId(),
+            name: "",
+            rows: [
+              {
+                id: newEntityId(),
+                product_pricing_id: pid,
+                values: emptyValuesForProductSchema(schemaWithPricingId),
+              },
+            ],
+          },
+        ],
+      });
     })();
     return () => {
       cancelled = true;
@@ -124,6 +161,7 @@ export default function CustomFormClient({
   const handleGenerateForm = () => {
     if (!payloadFromPaste) return;
     setSchema(payloadFromPaste);
+    setProductSchemas({});
     setFormData(buildInitialFormData(payloadFromPaste, customerFromOrder));
   };
 
@@ -137,12 +175,14 @@ export default function CustomFormClient({
   const [isDirty, setIsDirty] = useState(false);
   const initialFormDataRef = useRef<string | null>(null);
   const latestFormDataRef = useRef<JsonSchemaFormData | null>(null);
+  const latestProductSchemasRef = useRef(productSchemas);
+  latestProductSchemasRef.current = productSchemas;
 
   useEffect(() => {
-    if (formData && initialFormDataRef.current === null) {
-      initialFormDataRef.current = JSON.stringify(formData);
+    if (formData && schema && initialFormDataRef.current === null) {
+      initialFormDataRef.current = JSON.stringify({ data: formData, productSchemas });
     }
-  }, [formData]);
+  }, [formData, schema, productSchemas]);
 
   useEffect(() => {
     latestFormDataRef.current = formData;
@@ -150,8 +190,8 @@ export default function CustomFormClient({
 
   useEffect(() => {
     if (!formData || initialFormDataRef.current === null) return;
-    setIsDirty(JSON.stringify(formData) !== initialFormDataRef.current);
-  }, [formData]);
+    setIsDirty(JSON.stringify({ data: formData, productSchemas }) !== initialFormDataRef.current);
+  }, [formData, productSchemas]);
 
   /** Autosave: debounced save 3s after last change (edit mode only) */
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -168,22 +208,32 @@ export default function CustomFormClient({
     autosaveTimerRef.current = setTimeout(async () => {
       const latest = latestFormDataRef.current;
       if (!latest) return;
-      const snapshot = JSON.stringify(latest);
-      if (snapshot === initialFormDataRef.current) return;
+      const snap = JSON.stringify({ data: latest, productSchemas: latestProductSchemasRef.current });
+      if (snap === initialFormDataRef.current) return;
 
       setIsAutosaving(true);
       try {
-        const formJson: CustomFormJson = { schema, data: latest };
+        const formJson: CustomFormJson = {
+          schema,
+          product_schemas: latestProductSchemasRef.current,
+          data: latest,
+        };
         const res = await updateForm(formId, formJson);
         if (res.success) {
           autosaveFailCountRef.current = 0;
           setAutosaveError(false);
           setAutosaveSuccess(true);
-          const savedSnapshot = JSON.stringify(latest);
+          const savedSnapshot = JSON.stringify({
+            data: latest,
+            productSchemas: latestProductSchemasRef.current,
+          });
           initialFormDataRef.current = savedSnapshot;
           const currentData = latestFormDataRef.current;
+          const currentPs = latestProductSchemasRef.current;
           setIsDirty(
-            currentData ? JSON.stringify(currentData) !== savedSnapshot : false
+            currentData
+              ? JSON.stringify({ data: currentData, productSchemas: currentPs }) !== savedSnapshot
+              : false
           );
         } else {
           autosaveFailCountRef.current++;
@@ -200,7 +250,17 @@ export default function CustomFormClient({
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
-  }, [formData, isEditMode, formId, schema, isDirty, isSubmitting, hasSizeLimitError, hasRequiredFieldsError]);
+  }, [
+    formData,
+    productSchemas,
+    isEditMode,
+    formId,
+    schema,
+    isDirty,
+    isSubmitting,
+    hasSizeLimitError,
+    hasRequiredFieldsError,
+  ]);
 
   const handleSizeLimitErrorChange = useCallback((hasError: boolean) => {
     setHasSizeLimitError(hasError);
@@ -219,7 +279,7 @@ export default function CustomFormClient({
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      const formJson: CustomFormJson = { schema: payload, data };
+      const formJson: CustomFormJson = { schema: payload, product_schemas: productSchemas, data };
       if (isEditMode && formId != null) {
         const result = await updateForm(formId, formJson);
         if (result.success) {
@@ -341,9 +401,13 @@ export default function CustomFormClient({
             <p className="mb-4 text-sm text-red-600 dark:text-red-400">{submitError}</p>
           )}
           <DynamicProductForm
-            payload={schema}
+            headerSchema={schema}
+            productSchemas={productSchemas}
+            setProductSchemas={setProductSchemas}
             formData={formData}
             setFormData={setFormDataForForm}
+            shouldPinHeaderToFirstProduct={!schema._product_pricing_id?.trim()}
+            onPinHeaderFromProduct={setSchema}
             onSizeLimitErrorChange={handleSizeLimitErrorChange}
             onWarrantyErrorChange={setHasWarrantyError}
             onRequiredFieldsErrorChange={setHasRequiredFieldsError}
@@ -440,9 +504,13 @@ export default function CustomFormClient({
           <p className="mb-4 text-sm text-red-600 dark:text-red-400">{submitError}</p>
         )}
         <DynamicProductForm
-          payload={schema}
+          headerSchema={schema}
+          productSchemas={productSchemas}
+          setProductSchemas={setProductSchemas}
           formData={formData}
           setFormData={setFormDataForForm}
+          shouldPinHeaderToFirstProduct={!schema._product_pricing_id?.trim()}
+          onPinHeaderFromProduct={setSchema}
           onSizeLimitErrorChange={handleSizeLimitErrorChange}
           onWarrantyErrorChange={setHasWarrantyError}
           onRequiredFieldsErrorChange={setHasRequiredFieldsError}

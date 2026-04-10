@@ -5,7 +5,7 @@
  * Aliases align with backend `product-extractors` and size-limit lookup in `DynamicProductForm`.
  */
 
-import type { FormRow, PayloadDependency } from "@/types/json-schema-form.types";
+import type { CatalogFormRow, FormRow, PayloadDependency, ProductPayload } from "@/types/json-schema-form.types";
 
 /** Canonical code for quantity column in form_body (when present). */
 export const KS_PROPERTY_CODE = "ks";
@@ -114,4 +114,65 @@ export function hasAnyMissingPriceAffectingFields(
       )
     )
   );
+}
+
+/** Flatten `CatalogFormRow` for dependency / missing checks (same shape as `FormRow`). */
+export function catalogRowToFormRow(row: CatalogFormRow): FormRow {
+  const base: FormRow = { id: row.id, ...row.values };
+  if (row.linkGroupId !== undefined) base.linkGroupId = row.linkGroupId;
+  return base;
+}
+
+/**
+ * Multi-product rooms: each row has its own `form_body` codes and `price_affecting_enums`.
+ */
+export function hasAnyMissingPriceAffectingFieldsMulti(
+  rooms: { name?: string; rows: CatalogFormRow[] }[],
+  getRowSchema: (row: CatalogFormRow) => ProductPayload | undefined
+): boolean {
+  return rooms.some((room) =>
+    room.rows.some((row) => {
+      const rowSchema = getRowSchema(row);
+      if (!rowSchema) return true;
+      const codes = (rowSchema.form_body?.Properties ?? []).map((p) => p.Code);
+      const required = buildEffectiveRequiredFieldCodes(codes, rowSchema.price_affecting_enums);
+      if (required.size === 0) return false;
+      const flat = catalogRowToFormRow(row);
+      const deps = rowSchema.dependencies;
+      return Array.from(required).some((code) => isPriceAffectingFieldMissing(flat, code, deps));
+    })
+  );
+}
+
+/** Build human-readable missing lines for multi-product validation. */
+export function missingRequiredLinesMulti(
+  rooms: { name?: string; rows: CatalogFormRow[] }[],
+  getRowSchema: (row: CatalogFormRow) => ProductPayload | undefined,
+  getPropertyLabel: (schema: ProductPayload, code: string) => string
+): string[] {
+  const lines: string[] = [];
+  for (const room of rooms) {
+    for (let ri = 0; ri < room.rows.length; ri++) {
+      const row = room.rows[ri];
+      const rowSchema = getRowSchema(row);
+      if (!rowSchema) {
+        lines.push(
+          `${room.name?.trim() || "Místnost bez názvu"}, řádek ${ri + 1}: chybí šablona produktu (obnovte stránku nebo znovu vyberte produkt)`
+        );
+        continue;
+      }
+      const codes = (rowSchema.form_body?.Properties ?? []).map((p) => p.Code);
+      const required = buildEffectiveRequiredFieldCodes(codes, rowSchema.price_affecting_enums);
+      const flat = catalogRowToFormRow(row);
+      const deps = rowSchema.dependencies;
+      const missingCodes = Array.from(required).filter((code) =>
+        isPriceAffectingFieldMissing(flat, code, deps)
+      );
+      if (missingCodes.length === 0) continue;
+      const labels = missingCodes.map((code) => getPropertyLabel(rowSchema, code));
+      const roomLabel = room.name?.trim() || "Místnost bez názvu";
+      lines.push(`${roomLabel}, řádek ${ri + 1}: ${labels.join(", ")}`);
+    }
+  }
+  return lines;
 }

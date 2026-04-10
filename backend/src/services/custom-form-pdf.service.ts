@@ -161,7 +161,7 @@ function customerRows(data: Record<string, unknown>): string[][] {
   return rows;
 }
 
-const ROW_INTERNAL_KEYS = new Set(["id", "linkGroupId"]);
+const ROW_INTERNAL_KEYS = new Set(["id", "linkGroupId", "product_pricing_id", "values"]);
 
 function formBodyPropertyColumns(schema: ProductPayload): PropertyDefinition[] {
   const props = (schema.form_body?.Properties ?? []) as PropertyDefinition[];
@@ -197,6 +197,35 @@ function roomTableIsNonEmpty(
   return false;
 }
 
+/** Multi-product row: `{ values, product_pricing_id }` or legacy flat row. */
+function flattenPdfDataRow(row: Record<string, unknown>): FormRow {
+  const values = row.values;
+  if (values && typeof values === "object" && !Array.isArray(values)) {
+    const out: FormRow = { ...(values as FormRow) };
+    if (row.linkGroupId !== undefined) {
+      (out as Record<string, unknown>).linkGroupId = row.linkGroupId as string | boolean;
+    }
+    return out;
+  }
+  return row as FormRow;
+}
+
+function rowSchemaForPdfRow(
+  rawRow: Record<string, unknown>,
+  productSchemas: Record<string, ProductPayload>,
+  topSchema: ProductPayload
+): ProductPayload | null {
+  const pid = typeof rawRow.product_pricing_id === "string" ? rawRow.product_pricing_id.trim() : "";
+  if (pid && productSchemas[pid]) return productSchemas[pid];
+  const topPid =
+    typeof topSchema.product_code === "string"
+      ? (topSchema as { _product_pricing_id?: string })._product_pricing_id
+      : undefined;
+  if (pid && topPid === pid) return topSchema;
+  if (!pid && formBodyPropertyColumns(topSchema).length > 0) return topSchema;
+  return null;
+}
+
 function getLastTableBottom(doc: jsPDF): number {
   const last = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
   return last?.finalY ?? MARGIN;
@@ -215,6 +244,10 @@ export async function generateCustomFormPdfBuffer(raw: Record<string, unknown>):
   const formJson = raw as Record<string, unknown>;
   const schema = (formJson.schema ?? {}) as ProductPayload;
   const data = (formJson.data ?? formJson) as Record<string, unknown>;
+  const productSchemas =
+    formJson.product_schemas && typeof formJson.product_schemas === "object"
+      ? (formJson.product_schemas as Record<string, ProductPayload>)
+      : {};
 
   const productNameRaw = data.productName;
   const productName =
@@ -301,19 +334,24 @@ export async function generateCustomFormPdfBuffer(raw: Record<string, unknown>):
     startY = getLastTableBottom(doc) + 8;
   }
 
-  const columns = formBodyPropertyColumns(schema);
   const rooms = Array.isArray(data.rooms) ? (data.rooms as Room[]) : [];
 
-  /** True if at least one room row has any non-empty form_body cell. */
-  const hasRenderableRoomRows =
-    columns.length > 0 &&
-    rooms.some((room) =>
-      (room.rows ?? []).some((row) => roomTableIsNonEmpty(columns, row as FormRow, enums))
-    );
+  const hasRenderableRoomRows = rooms.some((room) =>
+    (room.rows ?? []).some((rawRow) => {
+      const rowObj = rawRow as Record<string, unknown>;
+      const rowSchema = rowSchemaForPdfRow(rowObj, productSchemas, schema);
+      if (!rowSchema) return false;
+      const cols = formBodyPropertyColumns(rowSchema);
+      if (cols.length === 0) return false;
+      const flat = flattenPdfDataRow(rowObj);
+      const rowEnums = rowSchema.enums ?? {};
+      return roomTableIsNonEmpty(cols, flat, rowEnums);
+    })
+  );
 
   /** Rooms with data but no form_body in schema — fallback layout. */
   const hasSchemaLessContent =
-    columns.length === 0 &&
+    formBodyPropertyColumns(schema).length === 0 &&
     rooms.some((room) =>
       (room.rows ?? []).some((row) => {
         const keys = Object.keys(row).filter((k) => !ROW_INTERNAL_KEYS.has(k));
@@ -321,40 +359,50 @@ export async function generateCustomFormPdfBuffer(raw: Record<string, unknown>):
       })
     );
 
-  if (columns.length > 0 && rooms.length > 0 && hasRenderableRoomRows) {
+  if (rooms.length > 0 && hasRenderableRoomRows) {
     doc.setFontSize(11);
     doc.text("Místnosti a položky", MARGIN, startY);
     startY += 6;
 
-    const head = columns.map((c) => propertyLabel(c));
-
     rooms.forEach((room, idx) => {
-      const roomLabel = (room.name && String(room.name).trim() !== "" ? String(room.name).trim() : null) ?? `Místnost ${idx + 1}`;
+      const roomLabel =
+        (room.name && String(room.name).trim() !== "" ? String(room.name).trim() : null) ?? `Místnost ${idx + 1}`;
       const rows = room.rows ?? [];
-      const body: string[][] = [];
-
-      for (const row of rows) {
-        if (!roomTableIsNonEmpty(columns, row as FormRow, enums)) continue;
-        const line = columns.map((col) => formatPrimitiveForPdf(col, row[col.Code], enums));
-        body.push(line);
-      }
-
-      if (body.length === 0) return;
+      if (rows.length === 0) return;
 
       doc.setFontSize(10);
       doc.text(roomLabel, MARGIN, startY);
       startY += 5;
 
-      autoTable(doc, {
-        startY,
-        head: [head],
-        body,
-        margin: { left: MARGIN, right: MARGIN },
-        theme: "grid",
-        styles: { fontSize: 8, font: CZECH_FONT_NAME, fontStyle: "normal", cellPadding: 1.5, overflow: "linebreak" },
-        headStyles: { fillColor: [220, 220, 220], font: CZECH_FONT_NAME, fontStyle: "normal" },
+      rows.forEach((rawRow, ri) => {
+        const rowObj = rawRow as Record<string, unknown>;
+        const rowSchema = rowSchemaForPdfRow(rowObj, productSchemas, schema);
+        if (!rowSchema) return;
+        const columns = formBodyPropertyColumns(rowSchema);
+        if (columns.length === 0) return;
+        const flat = flattenPdfDataRow(rowObj);
+        const rowEnums = rowSchema.enums ?? {};
+        if (!roomTableIsNonEmpty(columns, flat, rowEnums)) return;
+
+        const fbName = (rowSchema.form_body?.Name ?? "").trim();
+        const rowTitle = fbName || rowSchema.product_code || `Řádek ${ri + 1}`;
+        doc.setFontSize(9);
+        doc.text(rowTitle, MARGIN, startY);
+        startY += 4;
+
+        const head = columns.map((c) => propertyLabel(c));
+        const line = columns.map((col) => formatPrimitiveForPdf(col, flat[col.Code], rowEnums));
+        autoTable(doc, {
+          startY,
+          head: [head],
+          body: [line],
+          margin: { left: MARGIN, right: MARGIN },
+          theme: "grid",
+          styles: { fontSize: 8, font: CZECH_FONT_NAME, fontStyle: "normal", cellPadding: 1.5, overflow: "linebreak" },
+          headStyles: { fillColor: [220, 220, 220], font: CZECH_FONT_NAME, fontStyle: "normal" },
+        });
+        startY = getLastTableBottom(doc) + 8;
       });
-      startY = getLastTableBottom(doc) + 8;
     });
   } else if (rooms.length > 0 && hasSchemaLessContent) {
     /** Schema missing form_body: list rooms as compact key: value lines (no schema labels). */
@@ -366,10 +414,11 @@ export async function generateCustomFormPdfBuffer(raw: Record<string, unknown>):
         (room.name && String(room.name).trim() !== "" ? String(room.name).trim() : null) ?? `Místnost ${idx + 1}`;
       const rows = room.rows ?? [];
       for (const row of rows) {
-        const keys = Object.keys(row).filter((k) => !ROW_INTERNAL_KEYS.has(k));
+        const flat = flattenPdfDataRow(row as Record<string, unknown>);
+        const keys = Object.keys(flat).filter((k) => !ROW_INTERNAL_KEYS.has(k));
         const parts = keys
           .map((k) => {
-            const v = formatPrimitiveForPdf(undefined, row[k], enums);
+            const v = formatPrimitiveForPdf(undefined, flat[k], enums);
             return isEmptyDisplay(v) ? null : `${k}: ${v}`;
           })
           .filter((p): p is string => p !== null);
@@ -416,7 +465,7 @@ export async function generateCustomFormPdfBuffer(raw: Record<string, unknown>):
     zahlaviBody.length > 0 ||
     zapatiBody.length > 0 ||
     hasRenderableRoomRows ||
-    (columns.length === 0 && rooms.length > 0 && hasSchemaLessContent);
+    (formBodyPropertyColumns(schema).length === 0 && rooms.length > 0 && hasSchemaLessContent);
 
   /** Nothing beyond title / kód produktu */
   if (!hasAnyPdfContent) {

@@ -4,6 +4,13 @@ import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import type { JsonSchemaFormData, ProductPayload, PropertyDefinition } from "@/types/json-schema-form.types";
 import DynamicProductForm, { buildInitialFormData } from "@/components/forms/DynamicProductForm";
+import { emptyValuesForProductSchema } from "@/lib/merge-product-switch";
+
+const DEBUG_PRICING_ID = "debug-local-schema";
+
+function debugEntityId(): string {
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
 
 /**
  * Debug tool: paste a product JSON payload (from the experimental validation app)
@@ -15,6 +22,8 @@ import DynamicProductForm, { buildInitialFormData } from "@/components/forms/Dyn
 export default function DebugJsonFormPage() {
   const [rawJson, setRawJson] = useState<string>("");
   const [showForm, setShowForm] = useState(false);
+  const [headerSchema, setHeaderSchema] = useState<ProductPayload | null>(null);
+  const [productSchemas, setProductSchemas] = useState<Record<string, ProductPayload>>({});
   const [formData, setFormData] = useState<ReturnType<typeof buildInitialFormData> | null>(null);
 
   /** Setter compatible with DynamicProductForm (only updates when formData is non-null) */
@@ -64,7 +73,26 @@ export default function DebugJsonFormPage() {
   /** Initialize form from payload and show form view */
   const handleGenerateForm = () => {
     if (!payload) return;
-    setFormData(buildInitialFormData(payload));
+    /** Synthetic pricing id so multi-product form shape works without a real catalog row */
+    const h: ProductPayload = { ...payload, _product_pricing_id: DEBUG_PRICING_ID };
+    setHeaderSchema(h);
+    setProductSchemas({ [DEBUG_PRICING_ID]: h });
+    setFormData({
+      ...buildInitialFormData(h),
+      rooms: [
+        {
+          id: debugEntityId(),
+          name: "Debug",
+          rows: [
+            {
+              id: debugEntityId(),
+              product_pricing_id: DEBUG_PRICING_ID,
+              values: emptyValuesForProductSchema(h),
+            },
+          ],
+        },
+      ],
+    });
     setShowForm(true);
   };
 
@@ -177,11 +205,15 @@ export default function DebugJsonFormPage() {
         ) : (
           /* Form Section – shared DynamicProductForm + debug-only data preview */
           <div className="space-y-6">
-            {payload && formData && (
+            {headerSchema && formData && (
               <DynamicProductForm
-                payload={payload}
+                headerSchema={headerSchema}
+                productSchemas={productSchemas}
+                setProductSchemas={setProductSchemas}
                 formData={formData}
                 setFormData={setFormDataForForm}
+                shouldPinHeaderToFirstProduct={false}
+                onPinHeaderFromProduct={setHeaderSchema}
                 actionsFooter={
                   <>
                     <button
@@ -196,6 +228,8 @@ export default function DebugJsonFormPage() {
                       onClick={() => {
                         setShowForm(false);
                         setFormData(null);
+                        setHeaderSchema(null);
+                        setProductSchemas({});
                       }}
                       className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
                     >

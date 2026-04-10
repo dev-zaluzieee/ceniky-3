@@ -1,42 +1,111 @@
 "use client";
 
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-  ProductPayload,
+  CatalogFormRow,
+  EnumEntry,
+  EnumValue,
   JsonSchemaFormData,
-  FormRow,
+  ProductPayload,
   PropertyDefinition,
   SectionBlock,
-  EnumValue,
-  EnumEntry,
 } from "@/types/json-schema-form.types";
 import { resolveProductNameFromPayload } from "@/lib/resolve-product-name";
 import { checkSizeLimits, type SizeLimitsResult } from "@/lib/size-limits-api";
 import {
   buildEffectiveRequiredFieldCodes,
-  hasAnyMissingPriceAffectingFields,
+  catalogRowToFormRow,
+  hasAnyMissingPriceAffectingFieldsMulti,
   isHeightPropertyCode,
   isPriceAffectingFieldMissing,
   isRowFieldDisabledByDependency,
   isWidthPropertyCode,
+  missingRequiredLinesMulti,
 } from "@/lib/price-affecting-validation";
+import { emptyValuesForProductSchema, mergeValuesForProductSwitch } from "@/lib/merge-product-switch";
+import { getRowPricePreview, type RowPricePreview } from "@/lib/price-preview-api";
+import { productPayloadFromPricingDetail } from "@/lib/product-schema-from-pricing-detail";
+import type { PricingFormDetail } from "@/lib/pricing-forms-api";
+import ProductPickerModal from "@/components/forms/ProductPickerModal";
+import PricePreviewModal from "@/components/forms/PricePreviewModal";
+import ProductSwitchLossModal from "@/components/forms/ProductSwitchLossModal";
 
-/** Debounce for size-limit API; width/height columns resolved via `isWidthPropertyCode` / `isHeightPropertyCode` (first match in form_body). */
 const SIZE_LIMITS_DEBOUNCE_MS = 400;
 
-/** Generate unique ID for rows/rooms */
 function generateId(): string {
   return `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+/** Consecutive rows with the same `product_pricing_id` render as one multi-row table. */
+type RoomRowRun =
+  | { kind: "missing"; row: CatalogFormRow }
+  | { kind: "group"; rows: CatalogFormRow[]; schema: ProductPayload };
+
 /**
- * Build initial form data from payload; optionally prefill customer from order.
+ * Split room rows into runs: same catalog product in adjacent rows → single UI block with one `<thead>`.
+ */
+function groupRoomRowsIntoRuns(
+  rows: CatalogFormRow[],
+  productSchemas: Record<string, ProductPayload>
+): RoomRowRun[] {
+  const runs: RoomRowRun[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const row = rows[i];
+    const schema = productSchemas[row.product_pricing_id];
+    if (!schema) {
+      runs.push({ kind: "missing", row });
+      i += 1;
+      continue;
+    }
+    const pid = row.product_pricing_id;
+    const chunk: CatalogFormRow[] = [row];
+    let j = i + 1;
+    while (j < rows.length) {
+      const next = rows[j];
+      if (next.product_pricing_id !== pid) break;
+      if (!productSchemas[next.product_pricing_id]) break;
+      chunk.push(next);
+      j += 1;
+    }
+    runs.push({ kind: "group", rows: chunk, schema });
+    i = j;
+  }
+  return runs;
+}
+
+/** Czech plural for “N řádek/řádky/řádků”. */
+function czechRowCountLabel(n: number): string {
+  if (n === 1) return "1 řádek";
+  if (n < 1) return "0 řádků";
+  if (n >= 2 && n <= 4) return `${n} řádky`;
+  return `${n} řádků`;
+}
+
+/** Compact badge text for counts in room / product headers. */
+function czechProductCountLabel(n: number): string {
+  if (n === 1) return "1 produkt";
+  if (n >= 2 && n <= 4) return `${n} produkty`;
+  return `${n} produktů`;
+}
+
+function roomProductCount(room: JsonSchemaFormData["rooms"][number]): number {
+  return new Set(room.rows.map((row) => row.product_pricing_id)).size;
+}
+
+function shouldHideProductTableProperty(prop: PropertyDefinition): boolean {
+  const label = (prop["label-form"] ?? prop.Name ?? "").trim().toLowerCase();
+  const code = (prop.Code ?? "").trim().toLowerCase();
+  return label === "výrobce" || label === "vyrobce" || code === "manufacturer" || code === "vyrobce";
+}
+
+/**
+ * Build initial `data` for custom form; **rooms start empty** — user adds products per row.
  */
 export function buildInitialFormData(
-  payload: ProductPayload,
+  headerSchema: ProductPayload,
   customerFromOrder?: { name?: string; email?: string; phone?: string; address?: string; city?: string }
 ): JsonSchemaFormData {
-  const formBodyProperties = (payload.form_body?.Properties ?? []) as PropertyDefinition[];
   const sectionInitialValues = (section: SectionBlock | undefined): Record<string, string | number | boolean> => {
     const out: Record<string, string | number | boolean> = {};
     if (!section) return out;
@@ -48,132 +117,160 @@ export function buildInitialFormData(
     });
     return out;
   };
-  const createEmptyRow = (): FormRow => {
-    const row: FormRow = { id: generateId() };
-    formBodyProperties.forEach((prop) => {
-      if (prop.Value !== undefined) row[prop.Code] = prop.Value;
-      else if (prop.DataType === "boolean") row[prop.Code] = false;
-      else if (prop.DataType === "numeric") row[prop.Code] = "";
-      else row[prop.Code] = "";
-    });
-    return row;
-  };
   return {
     name: customerFromOrder?.name ?? "",
     email: customerFromOrder?.email ?? "",
     phone: customerFromOrder?.phone ?? "",
     address: customerFromOrder?.address ?? "",
     city: customerFromOrder?.city ?? "",
-    productCode: payload.product_code,
-    productName: resolveProductNameFromPayload(payload),
-    zahlaviValues: sectionInitialValues(payload.zahlavi),
-    zapatiValues: sectionInitialValues(payload.zapati),
+    productCode: headerSchema.product_code,
+    productName: resolveProductNameFromPayload(headerSchema),
+    zahlaviValues: sectionInitialValues(headerSchema.zahlavi),
+    zapatiValues: sectionInitialValues(headerSchema.zapati),
     rooms: [],
   };
 }
 
-/** Common room name presets */
 const ROOM_PRESETS = ["Obývák", "Kuchyň", "Pracovna", "Chodba", "Ložnice", "Dětský pokoj", "Koupelna", "Jídelna"];
 
 export interface DynamicProductFormProps {
-  payload: ProductPayload;
+  /** Záhlaví / zápatí + jejich enums — z prvního výběru katalogu; nemění se při jiných produktech */
+  headerSchema: ProductPayload;
+  productSchemas: Record<string, ProductPayload>;
+  setProductSchemas: React.Dispatch<React.SetStateAction<Record<string, ProductPayload>>>;
   formData: JsonSchemaFormData;
   setFormData: React.Dispatch<React.SetStateAction<JsonSchemaFormData>>;
-  /** Rendered after the zapati section (e.g. Submit button) */
+  /** Paste JSON bez katalogu — při prvním výběru produktu doplníme záhlaví/zápatí z katalogu */
+  shouldPinHeaderToFirstProduct: boolean;
+  onPinHeaderFromProduct: (payload: ProductPayload) => void;
   actionsFooter?: React.ReactNode;
-  /** Called when any row is outside manufacturing range (true = block submit) */
   onSizeLimitErrorChange?: (hasError: boolean) => void;
-  /** Called when any row is outside warranty range but inside manufacturing range */
   onWarrantyErrorChange?: (hasError: boolean) => void;
-  /** Called when any row has missing required (price-affecting) fields (true = block submit) */
   onRequiredFieldsErrorChange?: (hasError: boolean) => void;
 }
 
+type PickerTarget =
+  | { kind: "add"; roomId: string }
+  | { kind: "switch"; roomId: string; rowId: string };
+
+type RowPricePreviewState =
+  | { status: "loading" }
+  | { status: "error"; error: string }
+  | { status: "success"; data: RowPricePreview };
+
+type ActivePricePreviewModal = {
+  rowId: string;
+  title: string;
+};
+
 export default function DynamicProductForm({
-  payload,
+  headerSchema,
+  productSchemas,
+  setProductSchemas,
   formData,
   setFormData,
+  shouldPinHeaderToFirstProduct,
+  onPinHeaderFromProduct,
   actionsFooter,
   onSizeLimitErrorChange,
   onWarrantyErrorChange,
   onRequiredFieldsErrorChange,
 }: DynamicProductFormProps) {
-  const formBodyProperties = (payload.form_body?.Properties ?? []) as PropertyDefinition[];
-  const getPropertyLabel = (prop: PropertyDefinition): string =>
-    prop["label-form"] ?? prop.Name;
-  const productPricingId = payload._product_pricing_id;
-  const formBodyPropertyCodes = React.useMemo(
-    () => formBodyProperties.map((p) => p.Code),
-    [formBodyProperties]
+  const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
+  const pickerTargetRef = useRef<PickerTarget | null>(null);
+  pickerTargetRef.current = pickerTarget;
+  const [switchLossOpen, setSwitchLossOpen] = useState(false);
+  const [switchPending, setSwitchPending] = useState<{
+    roomId: string;
+    rowId: string;
+    newPricingId: string;
+    newPayload: ProductPayload;
+    merged: Record<string, string | number | boolean>;
+    lostFields: ReturnType<typeof mergeValuesForProductSwitch>["lostFields"];
+  } | null>(null);
+
+  const headerPinnedRef = useRef(!shouldPinHeaderToFirstProduct);
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+  const productSchemasRef = useRef(productSchemas);
+  productSchemasRef.current = productSchemas;
+
+  const getRowSchema = useCallback(
+    (row: CatalogFormRow): ProductPayload | undefined => productSchemas[row.product_pricing_id],
+    [productSchemas]
   );
 
-  /** `price_affecting_enums` from catalog + `ks` when that column exists in form_body. */
-  const effectiveRequiredFieldCodes = React.useMemo(
-    () => buildEffectiveRequiredFieldCodes(formBodyPropertyCodes, payload.price_affecting_enums),
-    [formBodyPropertyCodes, payload.price_affecting_enums]
-  );
-
-  const linkPropertyCodes = React.useMemo(
-    () =>
-      [
-        ...(payload.zahlavi?.Properties ?? []),
-        ...(payload.form_body?.Properties ?? []),
-        ...(payload.zapati?.Properties ?? []),
-      ]
-        .filter((p) => p.DataType === "link")
-        .map((p) => p.Code),
-    [payload]
-  );
-
-  const widthCode = formBodyProperties.find((p) => isWidthPropertyCode(p.Code))?.Code;
-  const heightCode = formBodyProperties.find((p) => isHeightPropertyCode(p.Code))?.Code;
+  const getPropertyLabelInSchema = useCallback((schema: ProductPayload, code: string): string => {
+    const props = [
+      ...(schema.form_body?.Properties ?? []),
+      ...(schema.zahlavi?.Properties ?? []),
+      ...(schema.zapati?.Properties ?? []),
+    ] as PropertyDefinition[];
+    const p = props.find((x) => x.Code === code);
+    return (p?.["label-form"] ?? p?.Name ?? code).trim() || code;
+  }, []);
 
   const [sizeLimitByRow, setSizeLimitByRow] = useState<Record<string, SizeLimitsResult>>({});
+  const [pricePreviewByRow, setPricePreviewByRow] = useState<Record<string, RowPricePreviewState>>({});
+  const [pricePreviewModal, setPricePreviewModal] = useState<ActivePricePreviewModal | null>(null);
   const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const currencyFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat("cs-CZ", {
+        style: "currency",
+        currency: "CZK",
+        maximumFractionDigits: 0,
+      }),
+    []
+  );
 
-  // Collapsible sections
   const [basicInfoOpen, setBasicInfoOpen] = useState(true);
   const [zahlaviOpen, setZahlaviOpen] = useState(true);
   const [roomsOpen, setRoomsOpen] = useState(true);
   const [zapatiOpen, setZapatiOpen] = useState(true);
-
-  // Add room panel
   const [showAddRoomPanel, setShowAddRoomPanel] = useState(false);
   const [customRoomName, setCustomRoomName] = useState("");
 
-  const getRowValues = useCallback((row: FormRow): Record<string, string> => {
+  const getRowValuesForApi = useCallback((row: CatalogFormRow): Record<string, string> => {
     const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(row)) {
-      if (k === "id") continue;
+    for (const [k, v] of Object.entries(row.values)) {
       out[k] = v !== undefined && v !== null ? String(v).trim() : "";
     }
     return out;
   }, []);
 
-  const getWidthHeight = useCallback(
-    (row: FormRow): { width: number; height: number } | null => {
+  const getWidthHeightForRow = useCallback(
+    (row: CatalogFormRow, rowSchema: ProductPayload): { width: number; height: number } | null => {
+      const props = (rowSchema.form_body?.Properties ?? []) as PropertyDefinition[];
+      const widthCode = props.find((p) => isWidthPropertyCode(p.Code))?.Code;
+      const heightCode = props.find((p) => isHeightPropertyCode(p.Code))?.Code;
       if (!widthCode || !heightCode) return null;
-      const rawW = row[widthCode];
-      const rawH = row[heightCode];
+      const rawW = row.values[widthCode];
+      const rawH = row.values[heightCode];
       if (rawW === "" || rawH === "" || rawW == null || rawH == null) return null;
       const w = Number(rawW);
       const h = Number(rawH);
       if (Number.isNaN(w) || Number.isNaN(h) || w <= 0 || h <= 0) return null;
       return { width: w, height: h };
     },
-    [widthCode, heightCode]
+    []
   );
 
   useEffect(() => {
-    if (!productPricingId || !widthCode || !heightCode) {
-      setSizeLimitByRow({});
-      onSizeLimitErrorChange?.(false);
-      return;
-    }
     const timeouts = debounceRef.current;
     formData.rooms.forEach((room) => {
       room.rows.forEach((row) => {
-        const dims = getWidthHeight(row);
+        const rowSchema = getRowSchema(row);
+        const pid = rowSchema?._product_pricing_id;
+        if (!rowSchema || !pid) {
+          setSizeLimitByRow((prev) => {
+            const next = { ...prev };
+            delete next[row.id];
+            return next;
+          });
+          return;
+        }
+        const dims = getWidthHeightForRow(row, rowSchema);
         if (!dims) {
           setSizeLimitByRow((prev) => {
             const next = { ...prev };
@@ -184,15 +281,12 @@ export default function DynamicProductForm({
         }
         if (timeouts[row.id]) clearTimeout(timeouts[row.id]);
         const rowId = row.id;
-        const width = dims.width;
-        const height = dims.height;
-        const row_values = getRowValues(row);
         timeouts[rowId] = setTimeout(() => {
           checkSizeLimits({
-            product_pricing_id: productPricingId,
-            width,
-            height,
-            row_values,
+            product_pricing_id: pid,
+            width: dims.width,
+            height: dims.height,
+            row_values: getRowValuesForApi(row),
           }).then((res) => {
             if (!res.success || !res.data) return;
             setSizeLimitByRow((prev) => ({ ...prev, [rowId]: res.data! }));
@@ -205,73 +299,81 @@ export default function DynamicProductForm({
       Object.values(timeouts).forEach((t) => clearTimeout(t));
       Object.keys(timeouts).forEach((k) => delete timeouts[k]);
     };
-  }, [formData, productPricingId, widthCode, heightCode, getWidthHeight, getRowValues]);
+  }, [formData.rooms, getRowSchema, getWidthHeightForRow, getRowValuesForApi]);
 
   useEffect(() => {
     const hasManufacturingError = Object.values(sizeLimitByRow).some((r) => !r.in_manufacturing_range);
-    const hasWarrantyError = Object.values(sizeLimitByRow).some((r) => r.in_manufacturing_range && !r.in_warranty_range);
+    const hasWarrantyError = Object.values(sizeLimitByRow).some(
+      (r) => r.in_manufacturing_range && !r.in_warranty_range
+    );
     onSizeLimitErrorChange?.(hasManufacturingError);
     onWarrantyErrorChange?.(hasWarrantyError);
   }, [sizeLimitByRow, onSizeLimitErrorChange, onWarrantyErrorChange]);
 
-  const dependencies = payload.dependencies ?? [];
+  useEffect(() => {
+    setPricePreviewByRow({});
+    setPricePreviewModal(null);
+  }, [formData.rooms]);
 
-  const hasMissingRequired = React.useMemo(
-    () =>
-      hasAnyMissingPriceAffectingFields(formData.rooms, effectiveRequiredFieldCodes, dependencies),
-    [formData.rooms, effectiveRequiredFieldCodes, dependencies]
+  const hasMissingRequired = useMemo(
+    () => hasAnyMissingPriceAffectingFieldsMulti(formData.rooms, getRowSchema),
+    [formData.rooms, getRowSchema]
   );
 
   useEffect(() => {
     onRequiredFieldsErrorChange?.(hasMissingRequired);
   }, [hasMissingRequired, onRequiredFieldsErrorChange]);
 
-  /** Human-readable lines for inline validation summary (room + row + missing labels). */
-  const missingRequiredLines = React.useMemo(() => {
-    if (!hasMissingRequired || effectiveRequiredFieldCodes.size === 0) return [];
-    const lines: string[] = [];
-    for (const room of formData.rooms) {
-      for (let ri = 0; ri < room.rows.length; ri++) {
-        const row = room.rows[ri];
-        const missingCodes = Array.from(effectiveRequiredFieldCodes).filter((code) =>
-          isPriceAffectingFieldMissing(row, code, dependencies)
-        );
-        if (missingCodes.length === 0) continue;
-        const labels = missingCodes.map((code) => {
-          const p = formBodyProperties.find((x) => x.Code === code);
-          return p ? getPropertyLabel(p) : code;
-        });
-        const roomLabel = room.name?.trim() || "Místnost bez názvu";
-        lines.push(`${roomLabel}, řádek ${ri + 1}: ${labels.join(", ")}`);
-      }
-    }
-    return lines;
-  }, [
-    hasMissingRequired,
-    effectiveRequiredFieldCodes,
-    formData.rooms,
-    dependencies,
-    formBodyProperties,
-  ]);
+  const missingRequiredLines = useMemo(
+    () => missingRequiredLinesMulti(formData.rooms, getRowSchema, getPropertyLabelInSchema),
+    [formData.rooms, getRowSchema, getPropertyLabelInSchema]
+  );
+  const missingRequiredPreview = useMemo(() => missingRequiredLines.slice(0, 3), [missingRequiredLines]);
+  const hiddenMissingRequiredCount = Math.max(0, missingRequiredLines.length - missingRequiredPreview.length);
 
-  const createEmptyFormBodyRow = (): FormRow => {
-    const row: FormRow = { id: generateId() };
-    formBodyProperties.forEach((prop) => {
-      if (prop.Value !== undefined) row[prop.Code] = prop.Value;
-      else if (prop.DataType === "boolean" || prop.DataType === "link") row[prop.Code] = false;
-      else if (prop.DataType === "numeric") row[prop.Code] = "";
-      else row[prop.Code] = "";
-    });
-    return row;
-  };
+  const handlePricePreview = useCallback(
+    async (
+      row: CatalogFormRow,
+      rowSchema: ProductPayload,
+      effectiveRequired: Set<string>
+    ) => {
+      const flat = catalogRowToFormRow(row);
+      setPricePreviewModal({
+        rowId: row.id,
+        title: resolveProductNameFromPayload(rowSchema),
+      });
+      const missingCodes = Array.from(effectiveRequired).filter((code) =>
+        isPriceAffectingFieldMissing(flat, code, rowSchema.dependencies)
+      );
+      if (missingCodes.length > 0) {
+        const labels = missingCodes.map((code) => getPropertyLabelInSchema(rowSchema, code));
+        setPricePreviewByRow((prev) => ({
+          ...prev,
+          [row.id]: { status: "error", error: `Doplňte pole: ${labels.join(", ")}` },
+        }));
+        return;
+      }
+
+      setPricePreviewByRow((prev) => ({ ...prev, [row.id]: { status: "loading" } }));
+      const result = await getRowPricePreview({
+        product_pricing_id: row.product_pricing_id,
+        row_values: row.values,
+        row_schema: rowSchema,
+      });
+      setPricePreviewByRow((prev) => ({
+        ...prev,
+        [row.id]: result.success && result.data
+          ? { status: "success", data: result.data }
+          : { status: "error", error: result.error ?? "Nepodařilo se načíst cenu." },
+      }));
+    },
+    [getPropertyLabelInSchema]
+  );
 
   const handleAddRoom = (name: string = "") => {
     setFormData((prev) => ({
       ...prev,
-      rooms: [
-        ...prev.rooms,
-        { id: generateId(), name, rows: [createEmptyFormBodyRow()] },
-      ],
+      rooms: [...prev.rooms, { id: generateId(), name, rows: [] }],
     }));
     setShowAddRoomPanel(false);
     setCustomRoomName("");
@@ -281,17 +383,24 @@ export default function DynamicProductForm({
     setFormData((prev) => {
       const source = prev.rooms.find((r) => r.id === roomId);
       if (!source) return prev;
+      const gidMap = new Map<string, string>();
+      const newRows: CatalogFormRow[] = source.rows.map((row) => {
+        let newGid = row.linkGroupId;
+        if (row.linkGroupId) {
+          if (!gidMap.has(row.linkGroupId)) gidMap.set(row.linkGroupId, generateId());
+          newGid = gidMap.get(row.linkGroupId);
+        }
+        return {
+          id: generateId(),
+          product_pricing_id: row.product_pricing_id,
+          values: { ...row.values },
+          ...(newGid ? { linkGroupId: newGid } : {}),
+        };
+      });
       const newRoom = {
         id: generateId(),
         name: source.name ? `${source.name} (kopie)` : "",
-        rows: source.rows.map((row) => {
-          const newRow: FormRow = { id: generateId() };
-          for (const [k, v] of Object.entries(row)) {
-            if (k === "id") continue;
-            newRow[k] = v;
-          }
-          return newRow;
-        }),
+        rows: newRows,
       };
       return { ...prev, rooms: [...prev.rooms, newRoom] };
     });
@@ -312,38 +421,161 @@ export default function DynamicProductForm({
     }));
   };
 
-  /** Clone row values (new id, no linkGroupId) for "add row" – new row copies previous row. */
-  const cloneRowForAdd = (sourceRow: FormRow): FormRow => {
-    const row: FormRow = { id: generateId() };
-    formBodyProperties.forEach((prop) => {
-      const v = sourceRow[prop.Code];
-      if (v !== undefined && v !== null) row[prop.Code] = v;
-      else if (prop.DataType === "boolean" || prop.DataType === "link") row[prop.Code] = false;
-      else if (prop.DataType === "numeric") row[prop.Code] = "";
-      else row[prop.Code] = "";
-    });
-    return row;
-  };
+  const applyPickedProduct = (detail: PricingFormDetail) => {
+    const target = pickerTargetRef.current;
+    if (!target) return;
+    const newPayload = productPayloadFromPricingDetail(detail.id, detail);
+    const pricingId = newPayload._product_pricing_id!;
 
-  const handleAddRow = (roomId: string) => {
+    if (target.kind === "add") {
+      setProductSchemas((prev) => ({ ...prev, [pricingId]: newPayload }));
+      const rowCount = formDataRef.current.rooms.reduce((n, r) => n + r.rows.length, 0);
+      const isFirstRowOnForm = rowCount === 0;
+      if (shouldPinHeaderToFirstProduct && isFirstRowOnForm && !headerPinnedRef.current) {
+        headerPinnedRef.current = true;
+        onPinHeaderFromProduct(newPayload);
+        setFormData((prev) => ({
+          ...prev,
+          productCode: newPayload.product_code,
+          productName: resolveProductNameFromPayload(newPayload),
+          zahlaviValues: emptyZahlaviZapatiValues(newPayload.zahlavi),
+          zapatiValues: emptyZahlaviZapatiValues(newPayload.zapati),
+        }));
+      }
+      const newRow: CatalogFormRow = {
+        id: generateId(),
+        product_pricing_id: pricingId,
+        values: emptyValuesForProductSchema(newPayload),
+      };
+      setFormData((prev) => ({
+        ...prev,
+        rooms: prev.rooms.map((r) =>
+          r.id === target.roomId ? { ...r, rows: [...r.rows, newRow] } : r
+        ),
+      }));
+      setPickerTarget(null);
+      return;
+    }
+
+    /** switch — use refs so async picker sees current rows */
+    const fd = formDataRef.current;
+    const room = fd.rooms.find((r) => r.id === target.roomId);
+    const row = room?.rows.find((x) => x.id === target.rowId);
+    const oldSchema = row ? productSchemasRef.current[row.product_pricing_id] : undefined;
+    if (!row || !oldSchema) {
+      setPickerTarget(null);
+      return;
+    }
+    const { merged, lostFields } = mergeValuesForProductSwitch(oldSchema, newPayload, row.values);
+    if (lostFields.length > 0) {
+      setSwitchPending({
+        roomId: target.roomId,
+        rowId: target.rowId,
+        newPricingId: pricingId,
+        newPayload,
+        merged,
+        lostFields,
+      });
+      setSwitchLossOpen(true);
+      setPickerTarget(null);
+      return;
+    }
+    setProductSchemas((prev) => ({ ...prev, [pricingId]: newPayload }));
     setFormData((prev) => ({
       ...prev,
       rooms: prev.rooms.map((r) => {
-        if (r.id !== roomId) return r;
-        const lastRow = r.rows[r.rows.length - 1];
-        const newRow = lastRow ? cloneRowForAdd(lastRow) : createEmptyFormBodyRow();
-        return { ...r, rows: [...r.rows, newRow] };
+        if (r.id !== target.roomId) return r;
+        return {
+          ...r,
+          rows: r.rows.map((x) =>
+            x.id === target.rowId
+              ? { id: x.id, product_pricing_id: pricingId, values: merged, linkGroupId: x.linkGroupId }
+              : x
+          ),
+        };
       }),
     }));
+    setPickerTarget(null);
+  };
+
+  const confirmSwitchLoss = () => {
+    if (!switchPending) return;
+    const p = switchPending;
+    setProductSchemas((prev) => ({ ...prev, [p.newPricingId]: p.newPayload }));
+    setFormData((prev) => ({
+      ...prev,
+      rooms: prev.rooms.map((r) => {
+        if (r.id !== p.roomId) return r;
+        return {
+          ...r,
+          rows: r.rows.map((x) =>
+            x.id === p.rowId
+              ? { id: x.id, product_pricing_id: p.newPricingId, values: p.merged, linkGroupId: x.linkGroupId }
+              : x
+          ),
+        };
+      }),
+    }));
+    setSwitchPending(null);
+    setSwitchLossOpen(false);
+  };
+
+  const handleDuplicateRow = (roomId: string, rowId: string) => {
+    setFormData((prev) => {
+      const room = prev.rooms.find((r) => r.id === roomId);
+      if (!room) return prev;
+      const idx = room.rows.findIndex((x) => x.id === rowId);
+      if (idx < 0) return prev;
+      const source = room.rows[idx];
+      const groupId = source.linkGroupId;
+      if (groupId) {
+        const indices = room.rows
+          .map((r, i) => (r.linkGroupId === groupId ? i : -1))
+          .filter((i) => i >= 0)
+          .sort((a, b) => a - b);
+        const newGroupId = generateId();
+        const newRows = [...room.rows];
+        const insertAt = Math.max(...indices) + 1;
+        const clones: CatalogFormRow[] = indices.map((i) => {
+          const r = room.rows[i];
+          return {
+            id: generateId(),
+            product_pricing_id: r.product_pricing_id,
+            values: { ...r.values },
+            linkGroupId: newGroupId,
+          };
+        });
+        newRows.splice(insertAt, 0, ...clones);
+        return {
+          ...prev,
+          rooms: prev.rooms.map((r) => (r.id === roomId ? { ...r, rows: newRows } : r)),
+        };
+      }
+      const clone: CatalogFormRow = {
+        id: generateId(),
+        product_pricing_id: source.product_pricing_id,
+        values: { ...source.values },
+      };
+      const newRows = [...room.rows.slice(0, idx + 1), clone, ...room.rows.slice(idx + 1)];
+      return {
+        ...prev,
+        rooms: prev.rooms.map((r) => (r.id === roomId ? { ...r, rows: newRows } : r)),
+      };
+    });
   };
 
   const handleRemoveRow = (roomId: string, rowId: string) => {
     if (!confirm("Opravdu chcete odstranit tento řádek?")) return;
     setFormData((prev) => ({
       ...prev,
-      rooms: prev.rooms.map((r) =>
-        r.id === roomId ? { ...r, rows: r.rows.filter((row) => row.id !== rowId) } : r
-      ),
+      rooms: prev.rooms.map((r) => {
+        if (r.id !== roomId) return r;
+        const row = r.rows.find((x) => x.id === rowId);
+        if (!row) return r;
+        const gid = row.linkGroupId;
+        const rows = gid ? r.rows.filter((x) => x.linkGroupId !== gid) : r.rows.filter((x) => x.id !== rowId);
+        return { ...r, rows };
+      }),
     }));
   };
 
@@ -365,70 +597,76 @@ export default function DynamicProductForm({
     roomId: string,
     rowId: string,
     propertyCode: string,
-    value: string | number | boolean
+    value: string | number | boolean,
+    rowSchema: ProductPayload
   ) => {
-    setFormData((prev) => {
-      const rooms = prev.rooms.map((room) => {
+    const formBodyProperties = (rowSchema.form_body?.Properties ?? []) as PropertyDefinition[];
+    const linkPropertyCodes = formBodyProperties.filter((p) => p.DataType === "link").map((p) => p.Code);
+
+    setFormData((prev) => ({
+      ...prev,
+      rooms: prev.rooms.map((room) => {
         if (room.id !== roomId) return room;
-        const rows: FormRow[] = [];
-        for (let i = 0; i < room.rows.length; i++) {
-          const row = room.rows[i];
-          if (row.id !== rowId) {
-            rows.push(row);
-            continue;
-          }
-          const prevValue = row[propertyCode];
-          const updatedRow: FormRow = { ...row, [propertyCode]: value };
+        const idx = room.rows.findIndex((r) => r.id === rowId);
+        if (idx < 0) return room;
+        const row = room.rows[idx];
+        const prevValue = row.values[propertyCode];
+        let updatedValues = { ...row.values, [propertyCode]: value };
+        let updatedRow: CatalogFormRow = { ...row, values: updatedValues };
+        let flat = catalogRowToFormRow(updatedRow);
 
-          // Auto-select dependent enum fields that are narrowed to a single option
-          const affectedDeps = (payload.dependencies ?? []).filter(
-            (d) => d.source_enum === propertyCode
-          );
-          for (const dep of affectedDeps) {
-            const targetProp = formBodyProperties.find((p) => p.Code === dep.target_property);
-            if (!targetProp || targetProp.DataType !== "enum") continue;
-            const opts = getEnumOptionsForRow(dep.target_property, updatedRow);
-            if (opts.length === 1) {
-              updatedRow[dep.target_property] = opts[0].code;
-            } else {
-              // If the current value is no longer valid, clear it
-              const currentVal = String(updatedRow[dep.target_property] ?? "");
-              if (currentVal && !opts.some((o) => o.code === currentVal)) {
-                updatedRow[dep.target_property] = "";
-              }
-            }
-          }
-
-          rows.push(updatedRow);
-
-          if (linkPropertyCodes.includes(propertyCode)) {
-            const turnedOn = !prevValue && Boolean(value);
-            const turnedOff = Boolean(prevValue) && !value;
-            if (turnedOn) {
-              const groupId = row.linkGroupId || generateId();
-              updatedRow.linkGroupId = groupId as any;
-              const child: FormRow = { ...createEmptyFormBodyRow(), linkGroupId: groupId as any };
-              rows.push(child);
-            } else if (turnedOff && row.linkGroupId) {
-              const groupId = row.linkGroupId;
-              updatedRow.linkGroupId = undefined as any;
-              for (let j = rows.length - 1; j >= 0; j--) {
-                const r = rows[j] as any;
-                if (r.id !== rowId && r.linkGroupId === groupId) {
-                  rows.splice(j, 1);
-                }
-              }
+        const affectedDeps = (rowSchema.dependencies ?? []).filter((d) => d.source_enum === propertyCode);
+        for (const dep of affectedDeps) {
+          const targetProp = formBodyProperties.find((p) => p.Code === dep.target_property);
+          if (!targetProp || targetProp.DataType !== "enum") continue;
+          const opts = getEnumOptionsForRow(rowSchema, dep.target_property, flat);
+          if (opts.length === 1) {
+            updatedValues[dep.target_property] = opts[0].code;
+          } else {
+            const currentVal = String(updatedValues[dep.target_property] ?? "");
+            if (currentVal && !opts.some((o) => o.code === currentVal)) {
+              updatedValues[dep.target_property] = "";
             }
           }
         }
+        updatedRow = { ...row, values: updatedValues };
+        flat = catalogRowToFormRow(updatedRow);
+
+        let rows = [...room.rows];
+
+        if (linkPropertyCodes.includes(propertyCode)) {
+          const turnedOn = !prevValue && Boolean(value);
+          const turnedOff = Boolean(prevValue) && !value;
+          if (turnedOn) {
+            const groupId = row.linkGroupId || generateId();
+            updatedRow = { ...updatedRow, linkGroupId: groupId };
+            rows[idx] = updatedRow;
+            const emptyChild: CatalogFormRow = {
+              id: generateId(),
+              product_pricing_id: row.product_pricing_id,
+              values: emptyValuesForProductSchema(rowSchema),
+              linkGroupId: groupId,
+            };
+            rows.splice(idx + 1, 0, emptyChild);
+            return { ...room, rows };
+          }
+          if (turnedOff && row.linkGroupId) {
+            const groupId = row.linkGroupId;
+            updatedRow = { ...updatedRow, linkGroupId: undefined };
+            rows[idx] = updatedRow;
+            rows = rows.filter((r) => !(r.linkGroupId === groupId && r.id !== rowId));
+            return { ...room, rows };
+          }
+        }
+
+        rows[idx] = updatedRow;
         return { ...room, rows };
-      });
-    return { ...prev, rooms };
-    });
+      }),
+    }));
   };
 
-  const getEnumOptions = (propertyCode: string, groupKey?: string): EnumValue[] => {
-    const entry = payload.enums[propertyCode] as EnumEntry | undefined;
+  const getEnumOptions = (schema: ProductPayload, propertyCode: string, groupKey?: string): EnumValue[] => {
+    const entry = schema.enums[propertyCode] as EnumEntry | undefined;
     if (!entry) return [];
     let list: EnumValue[] | undefined;
     if (groupKey && Array.isArray(entry[groupKey])) {
@@ -440,11 +678,15 @@ export default function DynamicProductForm({
     return raw.filter((opt) => opt.active !== false);
   };
 
-  const getEnumOptionsForRow = (propertyCode: string, row: FormRow): EnumValue[] => {
-    let options = getEnumOptions(propertyCode);
-    const deps = payload.dependencies?.filter((d) => d.target_property === propertyCode) ?? [];
+  const getEnumOptionsForRow = (
+    schema: ProductPayload,
+    propertyCode: string,
+    flatRow: ReturnType<typeof catalogRowToFormRow>
+  ): EnumValue[] => {
+    let options = getEnumOptions(schema, propertyCode);
+    const deps = schema.dependencies?.filter((d) => d.target_property === propertyCode) ?? [];
     for (const dep of deps) {
-      if (row[dep.source_enum] !== dep.source_value) continue;
+      if (flatRow[dep.source_enum] !== dep.source_value) continue;
       if (Array.isArray(dep.allowed_values) && dep.allowed_values.length > 0) {
         const allowedSet = new Set(dep.allowed_values);
         options = options.filter((opt) => allowedSet.has(opt.code));
@@ -454,24 +696,24 @@ export default function DynamicProductForm({
     return options;
   };
 
-  const isFieldDisabledByDependency = (propertyCode: string, row: FormRow): boolean =>
-    isRowFieldDisabledByDependency(row, propertyCode, payload.dependencies);
-
   const renderFormField = (
+    schema: ProductPayload,
     property: PropertyDefinition,
     value: string | number | boolean,
     onChange: (value: string | number | boolean) => void,
-    context?: { row?: FormRow }
+    context?: { flatRow: ReturnType<typeof catalogRowToFormRow> }
   ) => {
-    const disabled = context?.row ? isFieldDisabledByDependency(property.Code, context.row) : false;
+    const disabled = context?.flatRow
+      ? isRowFieldDisabledByDependency(context.flatRow, property.Code, schema.dependencies)
+      : false;
     const disabledClass = disabled
       ? "cursor-not-allowed opacity-60 bg-zinc-100 dark:bg-zinc-800"
       : "";
 
     if (property.DataType === "enum") {
-      const options = context?.row
-        ? getEnumOptionsForRow(property.Code, context.row)
-        : getEnumOptions(property.Code);
+      const options = context?.flatRow
+        ? getEnumOptionsForRow(schema, property.Code, context.flatRow)
+        : getEnumOptions(schema, property.Code);
       const currentCode = String(value);
       const valueInOptions = options.some((o) => o.code === currentCode);
       return (
@@ -547,403 +789,542 @@ export default function DynamicProductForm({
     );
   };
 
+  const getPropertyLabel = (prop: PropertyDefinition): string => prop["label-form"] ?? prop.Name;
+
   return (
     <div className="space-y-6">
-      {/* Customer block */}
+      <ProductPickerModal
+        open={pickerTarget !== null}
+        title={pickerTarget?.kind === "switch" ? "Vyberte nový produkt" : "Vyberte produkt (řádek)"}
+        onClose={() => setPickerTarget(null)}
+        onPicked={(detail) => applyPickedProduct(detail)}
+      />
+      <ProductSwitchLossModal
+        open={switchLossOpen}
+        lostFields={switchPending?.lostFields ?? []}
+        onCancel={() => {
+          setSwitchLossOpen(false);
+          setSwitchPending(null);
+        }}
+        onConfirm={confirmSwitchLoss}
+      />
+      <PricePreviewModal
+        open={pricePreviewModal !== null}
+        title={pricePreviewModal?.title ?? ""}
+        previewState={pricePreviewModal ? pricePreviewByRow[pricePreviewModal.rowId] ?? null : null}
+        currencyFormatter={currencyFormatter}
+        onClose={() => setPricePreviewModal(null)}
+      />
+
       <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-        <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <button
+          type="button"
+          onClick={() => setBasicInfoOpen((o) => !o)}
+          className="mb-4 flex w-full items-center justify-between text-left text-xl font-semibold text-zinc-900 dark:text-zinc-50"
+        >
           Základní informace
-        </h2>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Jméno
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-              placeholder="Jméno a příjmení"
-            />
+          <span className="text-sm font-normal text-zinc-500">{basicInfoOpen ? "▼" : "▶"}</span>
+        </button>
+        {basicInfoOpen && (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Jméno</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Email</label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Telefon</label>
+              <input
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Adresa</label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={(e) => setFormData((p) => ({ ...p, address: e.target.value }))}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">Město</label>
+              <input
+                type="text"
+                value={formData.city}
+                onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))}
+                className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Produkt (hlavička)
+              </label>
+              <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700/50 dark:text-zinc-300">
+                {formData.productName || formData.productCode || "—"}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">Z prvního výběru katalogu; řádky mohou mít jiné produkty.</p>
+            </div>
           </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Email
-            </label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-              placeholder="email@example.com"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Telefon
-            </label>
-            <input
-              type="tel"
-              inputMode="tel"
-              value={formData.phone}
-              onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-              placeholder="+420 ..."
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Adresa
-            </label>
-            <input
-              type="text"
-              value={formData.address}
-              onChange={(e) => setFormData((p) => ({ ...p, address: e.target.value }))}
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-              placeholder="Ulice a číslo"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Město
-            </label>
-            <input
-              type="text"
-              value={formData.city}
-              onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))}
-              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
-              placeholder="Město"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Produkt
-            </label>
-            <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700/50 dark:text-zinc-300">
-              {formData.productName || formData.productCode || "—"}
-            </p>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Zahlavi */}
-      {payload.zahlavi && payload.zahlavi.Properties.length > 0 && (
+      {headerSchema.zahlavi && headerSchema.zahlavi.Properties.length > 0 && (
         <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-          <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+          <button
+            type="button"
+            onClick={() => setZahlaviOpen((o) => !o)}
+            className="mb-4 flex w-full items-center justify-between text-left text-xl font-semibold text-zinc-900 dark:text-zinc-50"
+          >
             Záhlaví (zahlavi)
-          </h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {(payload.zahlavi.Properties as PropertyDefinition[]).map((prop) => (
-              <div key={prop.ID}>
-                <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  {getPropertyLabel(prop)}
-                </label>
-                <div className="rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700">
-                  {renderFormField(
-                    prop,
-                    formData.zahlaviValues[prop.Code] ?? "",
-                    (value) => handleZahlaviChange(prop.Code, value)
-                  )}
+            <span className="text-sm font-normal text-zinc-500">{zahlaviOpen ? "▼" : "▶"}</span>
+          </button>
+          {zahlaviOpen && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {(headerSchema.zahlavi.Properties as PropertyDefinition[]).map((prop) => (
+                <div key={prop.ID}>
+                  <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    {getPropertyLabel(prop)}
+                  </label>
+                  <div className="rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700">
+                    {renderFormField(
+                      headerSchema,
+                      prop,
+                      formData.zahlaviValues[prop.Code] ?? "",
+                      (value) => handleZahlaviChange(prop.Code, value)
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Rooms */}
       <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-            Místnosti (mistnosti)
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setShowAddRoomPanel((v) => !v)}
-              className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              Přidat místnost
-            </button>
-          </div>
-        </div>
-
-        {/* Room preset panel */}
-        {showAddRoomPanel && (
-          <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-700/50">
-            <p className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Vyberte typ místnosti nebo zadejte vlastní název:
-            </p>
-            <div className="mb-3 flex flex-wrap gap-2">
-              {ROOM_PRESETS.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => handleAddRoom(name)}
-                  className="min-h-[44px] touch-manipulation rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:border-primary hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:border-primary dark:hover:bg-primary/20"
-                >
-                  {name}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={customRoomName}
-                onChange={(e) => setCustomRoomName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && customRoomName.trim()) {
-                    e.preventDefault();
-                    handleAddRoom(customRoomName.trim());
-                  }
-                }}
-                className="min-h-[44px] flex-1 rounded-md border border-zinc-300 px-3 py-2.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-                placeholder="Vlastní název..."
-              />
+        <button
+          type="button"
+          onClick={() => setRoomsOpen((o) => !o)}
+          className="mb-4 flex w-full items-center justify-between text-left text-xl font-semibold text-zinc-900 dark:text-zinc-50"
+        >
+          Místnosti
+          <span className="text-sm font-normal text-zinc-500">{roomsOpen ? "▼" : "▶"}</span>
+        </button>
+        {roomsOpen && (
+          <>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                Přidejte místnost, poté produktové řádky přes „Přidat produkt“. Stejný produkt vedle sebe se zobrazí v
+                jedné tabulce; „Duplikovat řádek“ přidá další řádek do ní.
+              </p>
               <button
                 type="button"
-                onClick={() => {
-                  if (customRoomName.trim()) handleAddRoom(customRoomName.trim());
-                }}
-                disabled={!customRoomName.trim()}
-                className="min-h-[44px] touch-manipulation rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                onClick={() => setShowAddRoomPanel((v) => !v)}
+                className="min-h-[44px] rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-white"
               >
-                Přidat
+                Přidat místnost
               </button>
             </div>
-          </div>
-        )}
 
-        {effectiveRequiredFieldCodes.size > 0 && (
-          <p className="mb-3 flex flex-wrap items-start gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-            <span className="font-semibold text-red-600 dark:text-red-400" aria-hidden="true">
-              *
-            </span>
-            <span>
-              Označuje pole <strong className="font-medium text-zinc-800 dark:text-zinc-200">povinná pro výpočet ceny</strong> — v každém řádku je nutné je vyplnit (pokud není pole podle výběru skryté).
-            </span>
-          </p>
-        )}
-
-        {hasMissingRequired && missingRequiredLines.length > 0 && (
-          <div
-            role="alert"
-            aria-live="polite"
-            className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950/40 dark:text-red-100"
-          >
-            <p className="mb-2 font-semibold">Chybí povinná pole pro výpočet ceny:</p>
-            <ul className="list-inside list-disc space-y-1 text-red-800 dark:text-red-200">
-              {missingRequiredLines.map((line, idx) => (
-                <li key={`req-${idx}-${line.slice(0, 48)}`}>{line}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {formData.rooms.length === 0 ? (
-          <div className="rounded-lg border border-zinc-200 bg-white p-12 text-center dark:border-zinc-700 dark:bg-zinc-800">
-            <p className="text-zinc-500 dark:text-zinc-400">
-              Zatím nejsou přidány žádné místnosti. Klikněte na „Přidat místnost“.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {formData.rooms.map((room) => (
-              <div
-                key={room.id}
-                className="rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800"
-              >
-                <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-700/50">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <input
-                        type="text"
-                        value={room.name}
-                        onChange={(e) => handleRoomNameChange(room.id, e.target.value)}
-                        className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-                        placeholder="Název místnosti"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleAddRow(room.id)}
-                        className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-                      >
-                        Přidat řádek
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDuplicateRoom(room.id)}
-                        className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/20 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
-                      >
-                        Duplikovat
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveRoom(room.id)}
-                        className="min-h-[44px] min-w-[44px] touch-manipulation rounded-md border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
-                      >
-                        Odstranit místnost
-                      </button>
-                    </div>
-                  </div>
+            {showAddRoomPanel && (
+              <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-700/50">
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {ROOM_PRESETS.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => handleAddRoom(name)}
+                      className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                    >
+                      {name}
+                    </button>
+                  ))}
                 </div>
-                {/* Horizontal scroll so full text in fields is visible; sticky header + sticky # and Akce columns for tablet */}
-                <div className="overflow-x-auto overflow-y-visible">
-                  <table className="w-full min-w-max border-collapse text-xs">
-                    <thead className="sticky top-0 z-10 bg-zinc-100 dark:bg-zinc-700">
-                      <tr>
-                        <th className="sticky left-0 z-20 border border-zinc-300 bg-zinc-100 px-2 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
-                          #
-                        </th>
-                        {formBodyProperties.map((prop) => {
-                          const requiredCol = effectiveRequiredFieldCodes.has(prop.Code);
-                          return (
-                            <th
-                              key={prop.ID}
-                              className="whitespace-nowrap border border-zinc-300 px-2 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-300"
-                              title={
-                                requiredCol
-                                  ? `${getPropertyLabel(prop)} — povinné pro výpočet ceny`
-                                  : prop.Name
-                              }
-                            >
-                              {requiredCol ? (
-                                <span className="inline-flex items-baseline gap-0.5">
-                                  <span
-                                    className="font-bold leading-none text-red-600 dark:text-red-400"
-                                    aria-hidden="true"
-                                  >
-                                    *
-                                  </span>
-                                  <span>{getPropertyLabel(prop)}</span>
-                                  <span className="sr-only"> — povinné pro výpočet ceny</span>
-                                </span>
-                              ) : (
-                                getPropertyLabel(prop)
-                              )}
-                            </th>
-                          );
-                        })}
-                        <th className="sticky right-0 z-20 border border-zinc-300 bg-zinc-100 px-2 py-2 text-left font-semibold text-zinc-700 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
-                          Akce
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {room.rows.map((row, rowIndex) => {
-                        const limit = sizeLimitByRow[row.id];
-                        const outOfManufacturing = limit && !limit.in_manufacturing_range;
-                        const outOfWarranty = limit && limit.in_manufacturing_range && !limit.in_warranty_range;
-                        const rowClassName = outOfManufacturing
-                          ? "bg-red-50 dark:bg-red-950/30 border-l-4 border-red-500"
-                          : outOfWarranty
-                            ? "bg-amber-50 dark:bg-amber-950/20 border-l-4 border-amber-500"
-                            : "hover:bg-zinc-50 dark:hover:bg-zinc-700/50";
-                        const stickyCellBg = outOfManufacturing
-                          ? "bg-red-50 dark:bg-red-950/30"
-                          : outOfWarranty
-                            ? "bg-amber-50 dark:bg-amber-950/20"
-                            : "bg-white dark:bg-zinc-800";
-                        const message =
-                          outOfManufacturing && limit
-                            ? `Mimo výrobní rozsah. Povoleno: šířka ${limit.mezni_sirka_min}–${limit.mezni_sirka_max} mm, výška ${limit.mezni_vyska_min}–${limit.mezni_vyska_max} mm.`
-                            : outOfWarranty && limit
-                              ? `Mimo záruční rozsah. Záruka: šířka ${limit.zarucni_sirka_min}–${limit.zarucni_sirka_max} mm, výška ${limit.zarucni_vyska_min}–${limit.zarucni_vyska_max} mm.`
-                              : null;
-                        const colSpan = formBodyProperties.length + 2;
-                        return (
-                          <React.Fragment key={row.id}>
-                            <tr className={rowClassName}>
-                          <td className={`sticky left-0 z-10 border border-zinc-300 px-2 py-1 text-center text-zinc-600 dark:border-zinc-600 dark:text-zinc-400 ${stickyCellBg}`}>
-                            {rowIndex + 1}
-                          </td>
-                          {formBodyProperties.map((prop) => {
-                            const missingCell =
-                              effectiveRequiredFieldCodes.has(prop.Code) &&
-                              isPriceAffectingFieldMissing(row, prop.Code, dependencies);
-                            return (
-                              <td
-                                key={prop.ID}
-                                className={`border border-zinc-300 px-1 py-1 dark:border-zinc-600 ${
-                                  missingCell
-                                    ? "rounded-md ring-2 ring-red-500 ring-offset-1 ring-offset-white dark:ring-red-400 dark:ring-offset-zinc-800"
-                                    : ""
-                                }`}
-                              >
-                                {renderFormField(
-                                  prop,
-                                  row[prop.Code] ?? "",
-                                  (value) => handleRowChange(room.id, row.id, prop.Code, value),
-                                  { row }
-                                )}
-                              </td>
-                            );
-                          })}
-                          <td className={`sticky right-0 z-10 border border-zinc-300 px-1 py-1 dark:border-zinc-600 ${stickyCellBg}`}>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveRow(room.id, row.id)}
-                              className="min-h-[44px] min-w-[44px] touch-manipulation rounded border border-red-300 bg-white px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-1 focus:ring-red-500/20 dark:border-red-600 dark:bg-zinc-700 dark:text-red-400 dark:hover:bg-zinc-600"
-                            >
-                              Odstranit
-                            </button>
-                          </td>
-                        </tr>
-                            {message && (
-                              <tr>
-                                <td
-                                  colSpan={colSpan}
-                                  className={`border border-zinc-300 px-2 py-1.5 text-xs dark:border-zinc-600 ${
-                                    outOfManufacturing
-                                      ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200"
-                                      : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
-                                  }`}
-                                >
-                                  {message}
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customRoomName}
+                    onChange={(e) => setCustomRoomName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && customRoomName.trim()) {
+                        e.preventDefault();
+                        handleAddRoom(customRoomName.trim());
+                      }
+                    }}
+                    className="min-h-[44px] flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800"
+                    placeholder="Vlastní název…"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => customRoomName.trim() && handleAddRoom(customRoomName.trim())}
+                    disabled={!customRoomName.trim()}
+                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    Přidat
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
+            )}
+
+            {hasMissingRequired && missingRequiredLines.length > 0 && (
+              <div
+                role="alert"
+                className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-700 dark:bg-red-950/30 dark:text-red-100"
+              >
+                <p className="font-semibold">Některé řádky ještě nejsou připravené pro výpočet ceny.</p>
+                <p className="mt-1 text-xs text-red-800/80 dark:text-red-200/80">
+                  Chybějící buňky zůstávají přímo zvýrazněné v tabulce. Přehled níže ukazuje jen první problematické
+                  řádky.
+                </p>
+                <ul className="mt-2 list-inside list-disc space-y-1 text-xs">
+                  {missingRequiredPreview.map((line, idx) => (
+                    <li key={`req-${idx}`}>{line}</li>
+                  ))}
+                </ul>
+                {hiddenMissingRequiredCount > 0 ? (
+                  <p className="mt-2 text-xs font-medium text-red-800/80 dark:text-red-200/80">
+                    A další {czechRowCountLabel(hiddenMissingRequiredCount)} v tabulce.
+                  </p>
+                ) : null}
+              </div>
+            )}
+
+            {formData.rooms.length === 0 ? (
+              <p className="text-center text-zinc-500">Přidejte místnost a k ní produktové řádky.</p>
+            ) : (
+              <div className="space-y-8">
+                {formData.rooms.map((room) => (
+                  <div
+                    key={room.id}
+                    className="rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800"
+                  >
+                    <div className="border-b border-zinc-200 bg-zinc-50/80 px-4 py-4 dark:border-zinc-700 dark:bg-zinc-700/30">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <input
+                            type="text"
+                            value={room.name}
+                            onChange={(e) => handleRoomNameChange(room.id, e.target.value)}
+                            className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium dark:border-zinc-600 dark:bg-zinc-800"
+                            placeholder="Název místnosti"
+                          />
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                            <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-700">
+                              {czechRowCountLabel(room.rows.length)}
+                            </span>
+                            <span className="rounded-full bg-zinc-100 px-2.5 py-1 dark:bg-zinc-700">
+                              {czechProductCountLabel(roomProductCount(room))}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPickerTarget({ kind: "add", roomId: room.id })}
+                            className="min-h-[40px] rounded-md border border-primary bg-primary/10 px-4 py-2 text-sm font-medium text-primary"
+                          >
+                            Přidat produkt
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateRoom(room.id)}
+                            className="min-h-[40px] rounded-md border border-zinc-300 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-600 dark:text-zinc-200"
+                          >
+                            Duplikovat místnost
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRoom(room.id)}
+                            className="min-h-[40px] rounded-md border border-red-300 px-4 py-2 text-sm text-red-600"
+                          >
+                            Smazat místnost
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6 p-4">
+                      {room.rows.length === 0 ? (
+                        <p className="text-sm text-zinc-500">Žádné řádky — použijte „Přidat produkt“.</p>
+                      ) : (
+                        groupRoomRowsIntoRuns(room.rows, productSchemas).map((run, runIdx) => {
+                          if (run.kind === "missing") {
+                            const { row } = run;
+                            return (
+                              <div
+                                key={row.id}
+                                className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900"
+                              >
+                                Chybí šablona produktu pro ID „{row.product_pricing_id}“ — vyberte produkt znovu.
+                              </div>
+                            );
+                          }
+
+                          const { rows: runRows, schema: rowSchema } = run;
+                          const props = (rowSchema.form_body?.Properties ?? []) as PropertyDefinition[];
+                          const visibleProps = props.filter((prop) => !shouldHideProductTableProperty(prop));
+                          const codes = visibleProps.map((p) => p.Code);
+                          const effectiveRequired = buildEffectiveRequiredFieldCodes(
+                            codes,
+                            rowSchema.price_affecting_enums
+                          );
+                          const samplePid = runRows[0].product_pricing_id;
+                          const groupKey = `${room.id}-${samplePid}-${runIdx}`;
+                          const rowsWithMissingRequired = runRows.filter((row) =>
+                            visibleProps.some((prop) => {
+                              if (!effectiveRequired.has(prop.Code)) return false;
+                              return isPriceAffectingFieldMissing(
+                                catalogRowToFormRow(row),
+                                prop.Code,
+                                rowSchema.dependencies
+                              );
+                            })
+                          ).length;
+
+                          const anyOutM = runRows.some(
+                            (r) => sizeLimitByRow[r.id] && !sizeLimitByRow[r.id]!.in_manufacturing_range
+                          );
+                          const anyOutW = runRows.some((r) => {
+                            const lim = sizeLimitByRow[r.id];
+                            return lim && lim.in_manufacturing_range && !lim.in_warranty_range;
+                          });
+
+                          return (
+                            <div
+                              key={groupKey}
+                              className={`rounded-xl border ${
+                                anyOutM
+                                  ? "border-red-300 bg-red-50/30 dark:border-red-800 dark:bg-red-950/15"
+                                  : anyOutW
+                                    ? "border-amber-300 bg-amber-50/30 dark:border-amber-800 dark:bg-amber-950/15"
+                                    : "border-zinc-200 dark:border-zinc-700"
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-700">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                                    {resolveProductNameFromPayload(rowSchema)}
+                                    {runRows.length > 1 ? (
+                                      <span className="ml-1 font-normal text-zinc-500 dark:text-zinc-400">
+                                        ({czechRowCountLabel(runRows.length)})
+                                      </span>
+                                    ) : null}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-2 text-xs">
+                                  <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                                    {czechRowCountLabel(runRows.length)}
+                                  </span>
+                                  {rowsWithMissingRequired > 0 ? (
+                                    <span className="rounded-full bg-red-100 px-2.5 py-1 text-red-700 dark:bg-red-950/40 dark:text-red-200">
+                                      Chybí pole: {rowsWithMissingRequired}
+                                    </span>
+                                  ) : null}
+                                  {anyOutM ? (
+                                    <span className="rounded-full bg-red-100 px-2.5 py-1 text-red-700 dark:bg-red-950/40 dark:text-red-200">
+                                      Mimo výrobu
+                                    </span>
+                                  ) : anyOutW ? (
+                                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                                      Mimo záruku
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+
+                              <div className="overflow-x-auto px-4 py-3">
+                                <table className="w-full min-w-max border-separate border-spacing-0 text-xs">
+                                  <thead>
+                                    <tr className="bg-zinc-50 dark:bg-zinc-800/80">
+                                      {visibleProps.map((prop) => {
+                                        const req = effectiveRequired.has(prop.Code);
+                                        return (
+                                          <th
+                                            key={prop.ID}
+                                            className="border border-zinc-200 px-2 py-2 text-left font-medium text-zinc-600 first:rounded-l-md dark:border-zinc-700 dark:text-zinc-300"
+                                          >
+                                            {req ? (
+                                              <span className="text-red-600 dark:text-red-400">* </span>
+                                            ) : null}
+                                            {getPropertyLabel(prop)}
+                                          </th>
+                                        );
+                                      })}
+                                      <th className="min-w-[10rem] rounded-r-md border border-l-0 border-zinc-200 px-2 py-2 text-left font-medium text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+                                        Akce
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {runRows.map((row) => {
+                                      const flat = catalogRowToFormRow(row);
+                                      const limit = sizeLimitByRow[row.id];
+                                      const previewState = pricePreviewByRow[row.id];
+                                      const isPreviewLoading =
+                                        pricePreviewModal?.rowId === row.id && previewState?.status === "loading";
+                                      const outM = limit && !limit.in_manufacturing_range;
+                                      const outW = limit && limit.in_manufacturing_range && !limit.in_warranty_range;
+                                      const rowTone = outM
+                                        ? "bg-red-50/60 dark:bg-red-950/20"
+                                        : outW
+                                          ? "bg-amber-50/50 dark:bg-amber-950/15"
+                                          : "bg-transparent";
+
+                                      return (
+                                        <tr key={row.id} className={rowTone}>
+                                          {visibleProps.map((prop) => {
+                                            const missing =
+                                              effectiveRequired.has(prop.Code) &&
+                                              isPriceAffectingFieldMissing(
+                                                flat,
+                                                prop.Code,
+                                                rowSchema.dependencies
+                                              );
+                                            return (
+                                              <td
+                                                key={prop.ID}
+                                                className={`border-b border-zinc-200 px-1 py-2 align-top dark:border-zinc-700 ${
+                                                  missing ? "ring-2 ring-red-500 ring-offset-1" : ""
+                                                }`}
+                                              >
+                                                {renderFormField(
+                                                  rowSchema,
+                                                  prop,
+                                                  row.values[prop.Code] ?? "",
+                                                  (v) => handleRowChange(room.id, row.id, prop.Code, v, rowSchema),
+                                                  { flatRow: flat }
+                                                )}
+                                              </td>
+                                            );
+                                          })}
+                                          <td className="border-b border-zinc-200 px-2 py-2 align-top dark:border-zinc-700">
+                                            <div className="flex flex-wrap gap-1.5">
+                                              <button
+                                                type="button"
+                                                onClick={() => handlePricePreview(row, rowSchema, effectiveRequired)}
+                                                aria-label="Zobrazit náhled ceny pro tento řádek"
+                                                disabled={isPreviewLoading}
+                                                className="rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+                                              >
+                                                {isPreviewLoading ? "Načítám..." : "Cena"}
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setPickerTarget({ kind: "switch", roomId: room.id, rowId: row.id })
+                                                }
+                                                aria-label="Změnit produkt pro tento řádek"
+                                                className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-[11px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                              >
+                                                Změnit
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleDuplicateRow(room.id, row.id)}
+                                                aria-label="Duplikovat tento řádek"
+                                                className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-[11px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                                              >
+                                                Kopie
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveRow(room.id, row.id)}
+                                                aria-label="Odstranit tento řádek"
+                                                className="rounded-md border border-red-300 px-2.5 py-1.5 text-[11px] font-medium text-red-600 transition-colors hover:bg-red-50 dark:hover:bg-red-950/20"
+                                              >
+                                                Smazat
+                                              </button>
+                                            </div>
+                                            {(outM || outW) && limit ? (
+                                              <p
+                                                className={`mt-2 text-[10px] leading-tight ${outM ? "text-red-800 dark:text-red-200" : "text-amber-800 dark:text-amber-200"}`}
+                                              >
+                                                {outM
+                                                  ? `Rozměr je mimo výrobu (${limit.mezni_sirka_min}–${limit.mezni_sirka_max} × ${limit.mezni_vyska_min}–${limit.mezni_vyska_max}).`
+                                                  : "Rozměr je mimo záruční rozsah."}
+                                              </p>
+                                            ) : null}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Zapati */}
-      {payload.zapati && payload.zapati.Properties.length > 0 && (
+      {headerSchema.zapati && headerSchema.zapati.Properties.length > 0 && (
         <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-          <h2 className="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+          <button
+            type="button"
+            onClick={() => setZapatiOpen((o) => !o)}
+            className="mb-4 flex w-full items-center justify-between text-left text-xl font-semibold text-zinc-900 dark:text-zinc-50"
+          >
             Zápatí (zapati)
-          </h2>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {(payload.zapati.Properties as PropertyDefinition[]).map((prop) => (
-              <div key={prop.ID}>
-                <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  {getPropertyLabel(prop)}
-                </label>
-                <div className="rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700">
-                  {renderFormField(
-                    prop,
-                    formData.zapatiValues[prop.Code] ?? "",
-                    (value) => handleZapatiChange(prop.Code, value)
-                  )}
+            <span className="text-sm font-normal text-zinc-500">{zapatiOpen ? "▼" : "▶"}</span>
+          </button>
+          {zapatiOpen && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {(headerSchema.zapati.Properties as PropertyDefinition[]).map((prop) => (
+                <div key={prop.ID}>
+                  <label className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    {getPropertyLabel(prop)}
+                  </label>
+                  <div className="rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-700">
+                    {renderFormField(
+                      headerSchema,
+                      prop,
+                      formData.zapatiValues[prop.Code] ?? "",
+                      (value) => handleZapatiChange(prop.Code, value)
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
       {actionsFooter && <div className="flex flex-wrap gap-2">{actionsFooter}</div>}
     </div>
   );
+}
+
+function emptyZahlaviZapatiValues(section: SectionBlock | undefined): Record<string, string | number | boolean> {
+  const out: Record<string, string | number | boolean> = {};
+  if (!section?.Properties) return out;
+  for (const prop of section.Properties as PropertyDefinition[]) {
+    if (prop.Value !== undefined) out[prop.Code] = prop.Value;
+    else if (prop.DataType === "boolean") out[prop.Code] = false;
+    else if (prop.DataType === "numeric") out[prop.Code] = "";
+    else out[prop.Code] = "";
+  }
+  return out;
 }

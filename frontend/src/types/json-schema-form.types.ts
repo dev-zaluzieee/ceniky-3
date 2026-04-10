@@ -55,15 +55,31 @@ export interface ProductPayload {
   price_affecting_enums?: string[];
 }
 
+/**
+ * Flat row shape (legacy / helpers): `id` plus dynamic property codes.
+ * Multi-product forms use `CatalogFormRow` in persisted `data.rooms`.
+ */
 export interface FormRow {
   id: string;
-  [key: string]: string | number | boolean;
+  [key: string]: string | number | boolean | undefined;
+}
+
+/**
+ * One line in a room: tied to a catalog product; field values live in `values`.
+ * `linkGroupId` couples link-type columns (same semantics as flat FormRow).
+ */
+export interface CatalogFormRow {
+  id: string;
+  /** `product_pricing.id` — key into `product_schemas` on the same form_json */
+  product_pricing_id: string;
+  values: Record<string, string | number | boolean>;
+  linkGroupId?: string;
 }
 
 export interface Room {
   id: string;
   name: string;
-  rows: FormRow[];
+  rows: CatalogFormRow[];
 }
 
 export interface JsonSchemaFormData {
@@ -79,8 +95,14 @@ export interface JsonSchemaFormData {
   rooms: Room[];
 }
 
-/** Stored form_json for custom form type: schema + filled data */
+/**
+ * Stored form_json for custom form type.
+ * `schema` — záhlaví/zápatí (and enums for those sections) from the **first** catalog pick; never replaced when adding other products.
+ * `product_schemas` — full OVT payload per catalog id, used for row `form_body` + extraction.
+ */
 export interface CustomFormJson {
   schema: ProductPayload;
+  /** Maps `product_pricing_id` → merged catalog payload (same shape as single-product schema before) */
+  product_schemas: Record<string, ProductPayload>;
   data: JsonSchemaFormData;
 }

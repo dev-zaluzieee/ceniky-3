@@ -8,6 +8,7 @@ import { getPool, getPricingPool } from "../config/database";
 import * as formsService from "../services/forms.service";
 import * as pricingFormsService from "../services/pricing-forms.service";
 import * as sizeLimitsService from "../services/size-limits.service";
+import * as productExtractorsService from "../services/product-extractors";
 import * as admfPdfService from "../services/admf-pdf.service";
 import * as raynetExportService from "../services/raynet-export.service";
 import * as erpExportService from "../services/erp-export.service";
@@ -314,6 +315,52 @@ router.post("/size-limits", authenticateToken, async (req: AuthenticatedRequest,
     }
     console.error("Size limits resolve error:", error);
     return res.status(500).json({ success: false, error: "Failed to resolve size limits" });
+  }
+});
+
+/**
+ * POST /api/forms/price-preview – resolve line price for one custom-form row without generating ADMF.
+ * Body: { product_pricing_id, row_values, row_schema }.
+ */
+router.post("/price-preview", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const pool = getPricingPool();
+    const body = req.body as {
+      product_pricing_id?: string;
+      row_values?: Record<string, unknown>;
+      row_schema?: Record<string, unknown>;
+    };
+    const productPricingId = body.product_pricing_id;
+    const rowValues = body.row_values ?? {};
+    const rowSchema = body.row_schema;
+    if (!productPricingId || typeof productPricingId !== "string") {
+      return res.status(400).json({ success: false, error: "product_pricing_id is required" });
+    }
+    if (!rowSchema || typeof rowSchema !== "object" || Array.isArray(rowSchema)) {
+      return res.status(400).json({ success: false, error: "row_schema is required" });
+    }
+    const data = await productExtractorsService.previewCustomRowPrice({
+      pricingPool: pool,
+      productPricingId,
+      rowSchema,
+      rowValues,
+    });
+    return res.json({ success: true, data });
+  } catch (error: any) {
+    if (error.message?.includes("PRICING_DATABASE_URL")) {
+      return res.status(503).json({ success: false, error: "Pricing database not configured" });
+    }
+    const message = typeof error?.message === "string" ? error.message : "Failed to resolve preview price";
+    if (
+      message.includes("missing price-affecting fields") ||
+      message.includes("No pricing variant matches selector") ||
+      message.includes("Product pricing not found") ||
+      message.includes("No price for dimensions")
+    ) {
+      return res.status(400).json({ success: false, error: message });
+    }
+    console.error("Price preview resolve error:", error);
+    return res.status(500).json({ success: false, error: "Failed to resolve preview price" });
   }
 });
 
