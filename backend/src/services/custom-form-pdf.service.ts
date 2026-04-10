@@ -354,8 +354,9 @@ export async function generateCustomFormPdfBuffer(raw: Record<string, unknown>):
     formBodyPropertyColumns(schema).length === 0 &&
     rooms.some((room) =>
       (room.rows ?? []).some((row) => {
-        const keys = Object.keys(row).filter((k) => !ROW_INTERNAL_KEYS.has(k));
-        return keys.some((k) => !isEmptyDisplay(formatPrimitiveForPdf(undefined, row[k], enums)));
+        const flat = flattenPdfDataRow(row as Record<string, unknown>);
+        const keys = Object.keys(flat).filter((k) => !ROW_INTERNAL_KEYS.has(k));
+        return keys.some((k) => !isEmptyDisplay(formatPrimitiveForPdf(undefined, flat[k], enums)));
       })
     );
 
