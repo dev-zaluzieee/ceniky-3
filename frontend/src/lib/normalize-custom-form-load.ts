@@ -10,6 +10,8 @@ import type {
   ProductPayload,
 } from "@/types/json-schema-form.types";
 
+const LEGACY_LOCAL_SCHEMA_PID = "__legacy_local_schema__";
+
 export interface NormalizedCustomLoad {
   schema: ProductPayload;
   product_schemas: Record<string, ProductPayload>;
@@ -21,9 +23,15 @@ export interface NormalizedCustomLoad {
  */
 export function normalizeCustomFormOnLoad(json: CustomFormJson): NormalizedCustomLoad {
   const pid = json.schema._product_pricing_id?.trim() ?? "";
+  const fallbackPid = pid || (json.schema.form_body?.Properties?.length ? LEGACY_LOCAL_SCHEMA_PID : "");
   let product_schemas: Record<string, ProductPayload> = { ...(json.product_schemas ?? {}) };
-  if (pid && !product_schemas[pid]) {
-    product_schemas = { ...product_schemas, [pid]: json.schema };
+  if (fallbackPid && !product_schemas[fallbackPid]) {
+    /**
+     * Legacy custom forms could have flat room rows without any catalog pricing id.
+     * Keep those rows editable by attaching them to a synthetic local schema id
+     * instead of normalizing them into an invalid empty product_pricing_id.
+     */
+    product_schemas = { ...product_schemas, [fallbackPid]: json.schema };
   }
 
   const rooms = json.data.rooms.map((room) => ({
@@ -49,7 +57,8 @@ export function normalizeCustomFormOnLoad(json: CustomFormJson): NormalizedCusto
           values[k] = v;
         }
       }
-      const usePid = pid || (typeof r.product_pricing_id === "string" ? r.product_pricing_id : "");
+      const rowPid = typeof r.product_pricing_id === "string" ? r.product_pricing_id.trim() : "";
+      const usePid = rowPid || fallbackPid;
       return {
         id,
         product_pricing_id: usePid,
