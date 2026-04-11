@@ -12,6 +12,13 @@ import type {
 
 const LEGACY_LOCAL_SCHEMA_PID = "__legacy_local_schema__";
 
+function normalizedRowId(rawId: unknown, roomIndex: number, rowIndex: number): string {
+  const existingId = rawId != null ? String(rawId).trim() : "";
+  if (existingId) return existingId;
+  /** Deterministic fallback keeps legacy rows addressable during this load. */
+  return `legacy-row-${roomIndex}-${rowIndex}`;
+}
+
 export interface NormalizedCustomLoad {
   schema: ProductPayload;
   product_schemas: Record<string, ProductPayload>;
@@ -34,9 +41,9 @@ export function normalizeCustomFormOnLoad(json: CustomFormJson): NormalizedCusto
     product_schemas = { ...product_schemas, [fallbackPid]: json.schema };
   }
 
-  const rooms = json.data.rooms.map((room) => ({
+  const rooms = json.data.rooms.map((room, roomIndex) => ({
     ...room,
-    rows: room.rows.map((row): CatalogFormRow => {
+    rows: room.rows.map((row, rowIndex): CatalogFormRow => {
       const r = row as unknown as Record<string, unknown>;
       if (
         r &&
@@ -46,9 +53,12 @@ export function normalizeCustomFormOnLoad(json: CustomFormJson): NormalizedCusto
         r.values !== null &&
         typeof r.product_pricing_id === "string"
       ) {
-        return row as CatalogFormRow;
+        return {
+          ...(row as CatalogFormRow),
+          id: normalizedRowId((row as CatalogFormRow).id, roomIndex, rowIndex),
+        };
       }
-      const id = String(r.id ?? "");
+      const id = normalizedRowId(r.id, roomIndex, rowIndex);
       const linkGroupId = r.linkGroupId != null ? String(r.linkGroupId) : undefined;
       const values: Record<string, string | number | boolean> = {};
       for (const [k, v] of Object.entries(r)) {
