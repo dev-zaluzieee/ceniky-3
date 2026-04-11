@@ -218,8 +218,8 @@ function rowSchemaForPdfRow(
   const pid = typeof rawRow.product_pricing_id === "string" ? rawRow.product_pricing_id.trim() : "";
   if (pid && productSchemas[pid]) return productSchemas[pid];
   const topPid =
-    typeof topSchema.product_code === "string"
-      ? (topSchema as { _product_pricing_id?: string })._product_pricing_id
+    typeof (topSchema as { _product_pricing_id?: string })._product_pricing_id === "string"
+      ? (topSchema as { _product_pricing_id?: string })._product_pricing_id?.trim()
       : undefined;
   if (pid && topPid === pid) return topSchema;
   if (!pid && formBodyPropertyColumns(topSchema).length > 0) return topSchema;
