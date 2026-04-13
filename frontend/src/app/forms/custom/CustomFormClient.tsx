@@ -283,19 +283,32 @@ export default function CustomFormClient({
       if (isEditMode && formId != null) {
         const result = await updateForm(formId, formJson);
         if (result.success) {
-          router.push(`/orders/${orderId}`);
+          // Stay on the form after save: reset dirty state and show success indicator.
+          const savedSnapshot = JSON.stringify({ data, productSchemas });
+          initialFormDataRef.current = savedSnapshot;
+          const currentData = latestFormDataRef.current;
+          const currentPs = latestProductSchemasRef.current;
+          setIsDirty(
+            currentData
+              ? JSON.stringify({ data: currentData, productSchemas: currentPs }) !== savedSnapshot
+              : false
+          );
+          setAutosaveSuccess(true);
           return;
         }
         setSubmitError(result.error ?? "Uložení se nepodařilo.");
       } else {
         const result = await submitForm("custom", formJson, orderId);
-        if (result.success) {
-          router.push(`/orders/${orderId}`);
+        if (result.success && result.data?.id != null) {
+          // First save on a new form: transition URL to the edit route (same form, edit mode).
+          // `replace` (not `push`) keeps the back button pointing at the previous page,
+          // not at the "create" URL that would produce a duplicate.
+          router.replace(`/orders/${orderId}/forms/${result.data.id}`);
           return;
         }
         setSubmitError(result.error ?? "Uložení se nepodařilo.");
       }
-    } catch (e) {
+    } catch {
       setSubmitError("Došlo k neočekávané chybě.");
     } finally {
       setIsSubmitting(false);
