@@ -83,16 +83,10 @@ export interface Room {
   /**
    * Shared default values per catalog product. Outer key: `product_pricing_id`.
    * Inner key: field code → value. Fields like `ks`, `width`, `height`, and `link`
-   * are never shared — always per-row. Rows inherit these values unless the field
-   * code is listed in `rowOverrides[rowId]`.
+   * are never shared — always per-row. Setting a value here overwrites that field
+   * on every row of the same product in this room.
    */
   sharedValues?: Record<string, Record<string, string | number | boolean>>;
-  /**
-   * Explicit per-row field overrides. Key: `row.id` → list of field codes the user
-   * has explicitly set on that row (so propagation from `sharedValues` skips them).
-   * When a row's value equals its shared default, the field is auto-removed from this list.
-   */
-  rowOverrides?: Record<string, string[]>;
 }
 
 export interface JsonSchemaFormData {

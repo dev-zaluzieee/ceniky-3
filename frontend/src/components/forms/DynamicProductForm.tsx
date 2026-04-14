@@ -131,14 +131,6 @@ function getSharedForProduct(
   return room.sharedValues?.[pricingId] ?? {};
 }
 
-/** True when the user has explicitly set this field on this row (propagation skips it). */
-function isRowFieldOverridden(
-  room: { rowOverrides?: Record<string, string[]> },
-  rowId: string,
-  code: string
-): boolean {
-  return Boolean(room.rowOverrides?.[rowId]?.includes(code));
-}
 
 /**
  * Build initial `data` for custom form; **rooms start empty** — user adds products per row.
@@ -488,17 +480,7 @@ export default function DynamicProductForm({
           product_pricing_id: pricingId,
           values: initialValues,
         };
-        // Copy override state from the source row so inherited/overridden indicators match.
-        const sourceOverrides = lastRow ? r.rowOverrides?.[lastRow.id] : undefined;
-        const nextOverrides =
-          sourceOverrides && sourceOverrides.length > 0
-            ? { ...(r.rowOverrides ?? {}), [newRowId]: [...sourceOverrides] }
-            : r.rowOverrides;
-        return {
-          ...r,
-          rows: [...r.rows, newRow],
-          ...(nextOverrides !== undefined && { rowOverrides: nextOverrides }),
-        };
+        return { ...r, rows: [...r.rows, newRow] };
       }),
     }));
   };
@@ -508,10 +490,8 @@ export default function DynamicProductForm({
       const source = prev.rooms.find((r) => r.id === roomId);
       if (!source) return prev;
       const gidMap = new Map<string, string>();
-      const rowIdMap = new Map<string, string>();
       const newRows: CatalogFormRow[] = source.rows.map((row) => {
         const newRowId = generateId();
-        rowIdMap.set(row.id, newRowId);
         let newGid = row.linkGroupId;
         if (row.linkGroupId) {
           if (!gidMap.has(row.linkGroupId)) gidMap.set(row.linkGroupId, generateId());
@@ -524,18 +504,11 @@ export default function DynamicProductForm({
           ...(newGid ? { linkGroupId: newGid } : {}),
         };
       });
-      // Remap rowOverrides to new row ids
-      const newRowOverrides: Record<string, string[]> = {};
-      for (const [oldRowId, codes] of Object.entries(source.rowOverrides ?? {})) {
-        const newRowId = rowIdMap.get(oldRowId);
-        if (newRowId) newRowOverrides[newRowId] = [...codes];
-      }
       const newRoom: Room = {
         id: generateId(),
         name: source.name ? `${source.name} (kopie)` : "",
         rows: newRows,
         ...(source.sharedValues && { sharedValues: JSON.parse(JSON.stringify(source.sharedValues)) }),
-        ...(Object.keys(newRowOverrides).length > 0 && { rowOverrides: newRowOverrides }),
       };
       return { ...prev, rooms: [...prev.rooms, newRoom] };
     });
@@ -696,9 +669,7 @@ export default function DynamicProductForm({
         // Clean up shared values: remove old product's shared values, reset overrides for affected rows
         const nextSharedValues = { ...(r.sharedValues ?? {}) };
         delete nextSharedValues[target.pricingId];
-        const nextRowOverrides = { ...(r.rowOverrides ?? {}) };
-        for (const row of affectedRows) delete nextRowOverrides[row.id];
-        return { ...r, rows: nextRows, sharedValues: nextSharedValues, rowOverrides: nextRowOverrides };
+        return { ...r, rows: nextRows, sharedValues: nextSharedValues };
       }),
     }));
     setPickerTarget(null);
@@ -726,9 +697,7 @@ export default function DynamicProductForm({
           });
           const nextSharedValues = { ...(r.sharedValues ?? {}) };
           if (p.oldPricingId) delete nextSharedValues[p.oldPricingId];
-          const nextRowOverrides = { ...(r.rowOverrides ?? {}) };
-          for (const rowId of Object.keys(p.bulkMerged!)) delete nextRowOverrides[rowId];
-          return { ...r, rows: nextRows, sharedValues: nextSharedValues, rowOverrides: nextRowOverrides };
+          return { ...r, rows: nextRows, sharedValues: nextSharedValues };
         }),
       }));
     } else {
@@ -769,11 +738,9 @@ export default function DynamicProductForm({
         const newGroupId = generateId();
         const newRows = [...room.rows];
         const insertAt = Math.max(...indices) + 1;
-        const cloneIdMap = new Map<string, string>();
         const clones: CatalogFormRow[] = indices.map((i) => {
           const r = room.rows[i];
           const newRowId = generateId();
-          cloneIdMap.set(r.id, newRowId);
           return {
             id: newRowId,
             product_pricing_id: r.product_pricing_id,
@@ -782,16 +749,10 @@ export default function DynamicProductForm({
           };
         });
         newRows.splice(insertAt, 0, ...clones);
-        // Copy override entries for cloned rows (duplicated values = same override state)
-        const nextOverrides = { ...(room.rowOverrides ?? {}) };
-        for (const [oldId, newId] of cloneIdMap) {
-          const codes = room.rowOverrides?.[oldId];
-          if (codes && codes.length > 0) nextOverrides[newId] = [...codes];
-        }
         return {
           ...prev,
           rooms: prev.rooms.map((r) =>
-            r.id === roomId ? { ...r, rows: newRows, rowOverrides: nextOverrides } : r
+            r.id === roomId ? { ...r, rows: newRows } : r
           ),
         };
       }
@@ -802,17 +763,10 @@ export default function DynamicProductForm({
         values: { ...source.values },
       };
       const newRows = [...room.rows.slice(0, idx + 1), clone, ...room.rows.slice(idx + 1)];
-      const sourceOverrides = room.rowOverrides?.[source.id];
-      const nextOverrides =
-        sourceOverrides && sourceOverrides.length > 0
-          ? { ...(room.rowOverrides ?? {}), [cloneId]: [...sourceOverrides] }
-          : room.rowOverrides;
       return {
         ...prev,
         rooms: prev.rooms.map((r) =>
-          r.id === roomId
-            ? { ...r, rows: newRows, ...(nextOverrides !== undefined && { rowOverrides: nextOverrides }) }
-            : r
+          r.id === roomId ? { ...r, rows: newRows } : r
         ),
       };
     });
@@ -827,28 +781,10 @@ export default function DynamicProductForm({
         const row = r.rows.find((x) => x.id === rowId);
         if (!row) return r;
         const gid = row.linkGroupId;
-        const removedIds = new Set<string>();
         const rows = gid
-          ? r.rows.filter((x) => {
-              if (x.linkGroupId === gid) {
-                removedIds.add(x.id);
-                return false;
-              }
-              return true;
-            })
-          : r.rows.filter((x) => {
-              if (x.id === rowId) {
-                removedIds.add(x.id);
-                return false;
-              }
-              return true;
-            });
-        let nextOverrides = r.rowOverrides;
-        if (r.rowOverrides && removedIds.size > 0) {
-          nextOverrides = { ...r.rowOverrides };
-          for (const id of removedIds) delete nextOverrides[id];
-        }
-        return { ...r, rows, ...(nextOverrides !== undefined && { rowOverrides: nextOverrides }) };
+          ? r.rows.filter((x) => x.linkGroupId !== gid)
+          : r.rows.filter((x) => x.id !== rowId);
+        return { ...r, rows };
       }),
     }));
   };
@@ -876,8 +812,6 @@ export default function DynamicProductForm({
   ) => {
     const formBodyProperties = (rowSchema.form_body?.Properties ?? []) as PropertyDefinition[];
     const linkPropertyCodes = formBodyProperties.filter((p) => p.DataType === "link").map((p) => p.Code);
-    const propDef = formBodyProperties.find((p) => p.Code === propertyCode);
-    const isShareableField = propDef ? isFieldShareable(propDef) : false;
 
     setFormData((prev) => ({
       ...prev,
@@ -908,27 +842,6 @@ export default function DynamicProductForm({
         updatedRow = { ...row, values: updatedValues };
         flat = catalogRowToFormRow(updatedRow);
 
-        // Maintain override tracking for shareable fields only.
-        // If new value equals shared default → auto-clear override (treat as inherited).
-        // Otherwise → mark field as explicitly overridden.
-        let nextRowOverrides = room.rowOverrides;
-        if (isShareableField) {
-          const shared = getSharedForProduct(room, row.product_pricing_id);
-          const sharedVal = shared[propertyCode];
-          const matchesShared = hasValue(sharedVal) && sharedVal === value;
-          const current = room.rowOverrides?.[rowId] ?? [];
-          const isListed = current.includes(propertyCode);
-          if (matchesShared && isListed) {
-            const filtered = current.filter((c) => c !== propertyCode);
-            nextRowOverrides = { ...(room.rowOverrides ?? {}), [rowId]: filtered };
-          } else if (!matchesShared && !isListed) {
-            nextRowOverrides = {
-              ...(room.rowOverrides ?? {}),
-              [rowId]: [...current, propertyCode],
-            };
-          }
-        }
-
         let rows = [...room.rows];
 
         if (linkPropertyCodes.includes(propertyCode)) {
@@ -945,19 +858,19 @@ export default function DynamicProductForm({
               linkGroupId: groupId,
             };
             rows.splice(idx + 1, 0, emptyChild);
-            return { ...room, rows, ...(nextRowOverrides !== undefined && { rowOverrides: nextRowOverrides }) };
+            return { ...room, rows,  };
           }
           if (turnedOff && row.linkGroupId) {
             const groupId = row.linkGroupId;
             updatedRow = { ...updatedRow, linkGroupId: undefined };
             rows[idx] = updatedRow;
             rows = rows.filter((r) => !(r.linkGroupId === groupId && r.id !== rowId));
-            return { ...room, rows, ...(nextRowOverrides !== undefined && { rowOverrides: nextRowOverrides }) };
+            return { ...room, rows,  };
           }
         }
 
         rows[idx] = updatedRow;
-        return { ...room, rows, ...(nextRowOverrides !== undefined && { rowOverrides: nextRowOverrides }) };
+        return { ...room, rows,  };
       }),
     }));
   };
@@ -989,12 +902,9 @@ export default function DynamicProductForm({
           [pricingId]: nextSharedForProduct,
         };
 
-        // 2. Propagate to non-overridden rows of this product
-        const hasShareValue = hasValue(value);
+        // 2. Propagate to non-overridden rows of this product (including clearing to empty)
         const nextRows: CatalogFormRow[] = room.rows.map((row) => {
           if (row.product_pricing_id !== pricingId) return row;
-          if (isRowFieldOverridden(room, row.id, propertyCode)) return row;
-          if (!hasShareValue) return row; // clearing shared: leave row values as-is
 
           const updatedValues = { ...row.values, [propertyCode]: value };
 
@@ -1023,36 +933,6 @@ export default function DynamicProductForm({
           rows: nextRows,
           sharedValues: nextSharedValues,
         };
-      }),
-    }));
-  };
-
-  /**
-   * Reset a single row's field back to its shared default (inherit again).
-   * Clears the override marker and copies the shared value into the row.
-   */
-  const handleResetRowField = (roomId: string, rowId: string, propertyCode: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      rooms: prev.rooms.map((room) => {
-        if (room.id !== roomId) return room;
-        const idx = room.rows.findIndex((r) => r.id === rowId);
-        if (idx < 0) return room;
-        const row = room.rows[idx];
-        const shared = getSharedForProduct(room, row.product_pricing_id);
-        const sharedVal = shared[propertyCode];
-        if (!hasValue(sharedVal)) return room; // nothing to reset to
-
-        // Update row values
-        const rows = [...room.rows];
-        rows[idx] = { ...row, values: { ...row.values, [propertyCode]: sharedVal } };
-
-        // Remove from overrides
-        const current = room.rowOverrides?.[rowId] ?? [];
-        const filtered = current.filter((c) => c !== propertyCode);
-        const nextRowOverrides = { ...(room.rowOverrides ?? {}), [rowId]: filtered };
-
-        return { ...room, rows, rowOverrides: nextRowOverrides };
       }),
     }));
   };
@@ -1509,15 +1389,6 @@ export default function DynamicProductForm({
                             const lim = sizeLimitByRow[r.id];
                             return lim && lim.in_manufacturing_range && !lim.in_warranty_range;
                           });
-                          // Count rows that override at least one shareable field that is currently in shared values.
-                          const shareableCodes = new Set(shareableProps.map((p) => p.Code));
-                          const rowsWithOverrides = runRows.filter((r) => {
-                            const codes = room.rowOverrides?.[r.id];
-                            if (!codes || codes.length === 0) return false;
-                            return codes.some(
-                              (code) => shareableCodes.has(code) && hasValue(sharedValuesForProduct[code])
-                            );
-                          }).length;
                           // Bulk-edit (Hromadné úpravy) toggle state and indicators.
                           const bulkKey = `${room.id}:${samplePid}`;
                           const bulkOpen = bulkEditExpanded[bulkKey] === true;
@@ -1703,21 +1574,10 @@ export default function DynamicProductForm({
                                                 prop.Code,
                                                 rowSchema.dependencies
                                               );
-                                            const shareable = isFieldShareable(prop);
-                                            const sharedVal = sharedValuesForProduct[prop.Code];
-                                            const sharedHasValue = shareable && hasValue(sharedVal);
-                                            const isOverridden =
-                                              shareable && isRowFieldOverridden(room, row.id, prop.Code);
-                                            const isInherited = sharedHasValue && !isOverridden;
-                                            // Visual tone: inherited cells sit on a subtle indigo tint;
-                                            // overridden cells show a tiny reset button in the corner.
-                                            const inheritanceBg = isInherited
-                                              ? "bg-indigo-50/40 dark:bg-indigo-950/10"
-                                              : "";
                                             return (
                                               <td
                                                 key={prop.ID}
-                                                className={`relative border-b border-zinc-200 px-1 py-2 align-top dark:border-zinc-700 ${inheritanceBg} ${
+                                                className={`border-b border-zinc-200 px-1 py-2 align-top dark:border-zinc-700 ${
                                                   missing ? "ring-2 ring-red-500 ring-offset-1" : ""
                                                 }`}
                                               >
@@ -1727,19 +1587,6 @@ export default function DynamicProductForm({
                                                   row.values[prop.Code] ?? "",
                                                   (v) => handleRowChange(room.id, row.id, prop.Code, v, rowSchema),
                                                   { flatRow: flat }
-                                                )}
-                                                {isOverridden && sharedHasValue && (
-                                                  <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                      handleResetRowField(room.id, row.id, prop.Code)
-                                                    }
-                                                    aria-label={`Vrátit ${getPropertyLabel(prop)} na společnou hodnotu`}
-                                                    title={`Vrátit na společnou hodnotu (${String(sharedVal)})`}
-                                                    className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-100 text-[10px] leading-none text-indigo-700 shadow-sm hover:bg-indigo-200 dark:bg-indigo-900 dark:text-indigo-200 dark:hover:bg-indigo-800"
-                                                  >
-                                                    ↺
-                                                  </button>
                                                 )}
                                               </td>
                                             );
