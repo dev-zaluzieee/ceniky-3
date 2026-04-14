@@ -192,7 +192,8 @@ export interface DynamicProductFormProps {
 
 type PickerTarget =
   | { kind: "add"; roomId: string }
-  | { kind: "switch"; roomId: string; rowId: string };
+  | { kind: "switch"; roomId: string; rowId: string }
+  | { kind: "bulk-switch"; roomId: string; pricingId: string };
 
 type RowPricePreviewState =
   | { status: "loading" }
@@ -228,6 +229,10 @@ export default function DynamicProductForm({
     newPayload: ProductPayload;
     merged: Record<string, string | number | boolean>;
     lostFields: ReturnType<typeof mergeValuesForProductSwitch>["lostFields"];
+    /** When set, confirms bulk-switch for all rows (keyed by rowId → merged values). */
+    bulkMerged?: Record<string, Record<string, string | number | boolean>>;
+    /** Old product pricing id being switched from (for shared-value cleanup). */
+    oldPricingId?: string;
   } | null>(null);
 
   const headerPinnedRef = useRef(!shouldPinHeaderToFirstProduct);
@@ -457,6 +462,47 @@ export default function DynamicProductForm({
     setCustomRoomName("");
   };
 
+  /** Add a row by copying all values from the last row of the same product in the room. */
+  const handleAddRowForProduct = (roomId: string, pricingId: string) => {
+    const schema = productSchemas[pricingId];
+    if (!schema) return;
+    const newRowId = generateId();
+    setFormData((prev) => ({
+      ...prev,
+      rooms: prev.rooms.map((r) => {
+        if (r.id !== roomId) return r;
+        // Find last row of this product to copy from.
+        const lastRow = [...r.rows].reverse().find((x) => x.product_pricing_id === pricingId);
+        const initialValues: Record<string, string | number | boolean> = lastRow
+          ? { ...lastRow.values }
+          : (() => {
+              const empty = emptyValuesForProductSchema(schema);
+              const shared = getSharedForProduct(r, pricingId);
+              for (const [code, val] of Object.entries(shared)) {
+                if (hasValue(val)) empty[code] = val;
+              }
+              return empty;
+            })();
+        const newRow: CatalogFormRow = {
+          id: newRowId,
+          product_pricing_id: pricingId,
+          values: initialValues,
+        };
+        // Copy override state from the source row so inherited/overridden indicators match.
+        const sourceOverrides = lastRow ? r.rowOverrides?.[lastRow.id] : undefined;
+        const nextOverrides =
+          sourceOverrides && sourceOverrides.length > 0
+            ? { ...(r.rowOverrides ?? {}), [newRowId]: [...sourceOverrides] }
+            : r.rowOverrides;
+        return {
+          ...r,
+          rows: [...r.rows, newRow],
+          ...(nextOverrides !== undefined && { rowOverrides: nextOverrides }),
+        };
+      }),
+    }));
+  };
+
   const handleDuplicateRoom = (roomId: string) => {
     setFormData((prev) => {
       const source = prev.rooms.find((r) => r.id === roomId);
@@ -555,65 +601,154 @@ export default function DynamicProductForm({
       return;
     }
 
-    /** switch — use refs so async picker sees current rows */
-    const fd = formDataRef.current;
-    const room = fd.rooms.find((r) => r.id === target.roomId);
-    const row = room?.rows.find((x) => x.id === target.rowId);
-    const oldSchema = row ? productSchemasRef.current[row.product_pricing_id] : undefined;
-    if (!row || !oldSchema) {
+    if (target.kind === "switch") {
+      /** switch — use refs so async picker sees current rows */
+      const fd = formDataRef.current;
+      const room = fd.rooms.find((r) => r.id === target.roomId);
+      const row = room?.rows.find((x) => x.id === target.rowId);
+      const oldSchema = row ? productSchemasRef.current[row.product_pricing_id] : undefined;
+      if (!row || !oldSchema) {
+        setPickerTarget(null);
+        return;
+      }
+      const { merged, lostFields } = mergeValuesForProductSwitch(oldSchema, newPayload, row.values);
+      if (lostFields.length > 0) {
+        setSwitchPending({
+          roomId: target.roomId,
+          rowId: target.rowId,
+          newPricingId: pricingId,
+          newPayload,
+          merged,
+          lostFields,
+        });
+        setSwitchLossOpen(true);
+        setPickerTarget(null);
+        return;
+      }
+      setProductSchemas((prev) => ({ ...prev, [pricingId]: newPayload }));
+      setFormData((prev) => ({
+        ...prev,
+        rooms: prev.rooms.map((r) => {
+          if (r.id !== target.roomId) return r;
+          return {
+            ...r,
+            rows: r.rows.map((x) =>
+              x.id === target.rowId
+                ? { id: x.id, product_pricing_id: pricingId, values: merged, linkGroupId: x.linkGroupId }
+                : x
+            ),
+          };
+        }),
+      }));
       setPickerTarget(null);
       return;
     }
-    const { merged, lostFields } = mergeValuesForProductSwitch(oldSchema, newPayload, row.values);
-    if (lostFields.length > 0) {
+
+    /* bulk-switch: change ALL rows of a given product in a room to a new product. */
+    if (target.kind === "bulk-switch") {
+    const fd = formDataRef.current;
+    const room = fd.rooms.find((r) => r.id === target.roomId);
+    if (!room) { setPickerTarget(null); return; }
+    const affectedRows = room.rows.filter((r) => r.product_pricing_id === target.pricingId);
+    const oldSchema = productSchemasRef.current[target.pricingId];
+    if (affectedRows.length === 0 || !oldSchema) { setPickerTarget(null); return; }
+
+    // Merge every affected row
+    const bulkMerged: Record<string, Record<string, string | number | boolean>> = {};
+    let allLostFields: ReturnType<typeof mergeValuesForProductSwitch>["lostFields"] = [];
+    for (const row of affectedRows) {
+      const { merged: m, lostFields: l } = mergeValuesForProductSwitch(oldSchema, newPayload, row.values);
+      bulkMerged[row.id] = m;
+      // Collect unique lost fields across all rows
+      for (const lf of l) {
+        if (!allLostFields.some((x) => x.code === lf.code)) allLostFields.push(lf);
+      }
+    }
+
+    if (allLostFields.length > 0) {
       setSwitchPending({
         roomId: target.roomId,
-        rowId: target.rowId,
+        rowId: affectedRows[0].id, // representative row for the modal
         newPricingId: pricingId,
         newPayload,
-        merged,
-        lostFields,
+        merged: bulkMerged[affectedRows[0].id],
+        lostFields: allLostFields,
+        bulkMerged,
+        oldPricingId: target.pricingId,
       });
       setSwitchLossOpen(true);
       setPickerTarget(null);
       return;
     }
+
+    // No lost fields: apply immediately
     setProductSchemas((prev) => ({ ...prev, [pricingId]: newPayload }));
     setFormData((prev) => ({
       ...prev,
       rooms: prev.rooms.map((r) => {
         if (r.id !== target.roomId) return r;
-        return {
-          ...r,
-          rows: r.rows.map((x) =>
-            x.id === target.rowId
-              ? { id: x.id, product_pricing_id: pricingId, values: merged, linkGroupId: x.linkGroupId }
-              : x
-          ),
-        };
+        const nextRows = r.rows.map((x) => {
+          const m = bulkMerged[x.id];
+          return m
+            ? { id: x.id, product_pricing_id: pricingId, values: m, linkGroupId: x.linkGroupId }
+            : x;
+        });
+        // Clean up shared values: remove old product's shared values, reset overrides for affected rows
+        const nextSharedValues = { ...(r.sharedValues ?? {}) };
+        delete nextSharedValues[target.pricingId];
+        const nextRowOverrides = { ...(r.rowOverrides ?? {}) };
+        for (const row of affectedRows) delete nextRowOverrides[row.id];
+        return { ...r, rows: nextRows, sharedValues: nextSharedValues, rowOverrides: nextRowOverrides };
       }),
     }));
     setPickerTarget(null);
-  };
+    }
+
+    setPickerTarget(null);
+  };  // end applyPickedProduct
 
   const confirmSwitchLoss = () => {
     if (!switchPending) return;
     const p = switchPending;
     setProductSchemas((prev) => ({ ...prev, [p.newPricingId]: p.newPayload }));
-    setFormData((prev) => ({
-      ...prev,
-      rooms: prev.rooms.map((r) => {
-        if (r.id !== p.roomId) return r;
-        return {
-          ...r,
-          rows: r.rows.map((x) =>
-            x.id === p.rowId
-              ? { id: x.id, product_pricing_id: p.newPricingId, values: p.merged, linkGroupId: x.linkGroupId }
-              : x
-          ),
-        };
-      }),
-    }));
+
+    if (p.bulkMerged) {
+      // Bulk switch: apply merged values to all affected rows
+      setFormData((prev) => ({
+        ...prev,
+        rooms: prev.rooms.map((r) => {
+          if (r.id !== p.roomId) return r;
+          const nextRows = r.rows.map((x) => {
+            const m = p.bulkMerged![x.id];
+            return m
+              ? { id: x.id, product_pricing_id: p.newPricingId, values: m, linkGroupId: x.linkGroupId }
+              : x;
+          });
+          const nextSharedValues = { ...(r.sharedValues ?? {}) };
+          if (p.oldPricingId) delete nextSharedValues[p.oldPricingId];
+          const nextRowOverrides = { ...(r.rowOverrides ?? {}) };
+          for (const rowId of Object.keys(p.bulkMerged!)) delete nextRowOverrides[rowId];
+          return { ...r, rows: nextRows, sharedValues: nextSharedValues, rowOverrides: nextRowOverrides };
+        }),
+      }));
+    } else {
+      // Single-row switch
+      setFormData((prev) => ({
+        ...prev,
+        rooms: prev.rooms.map((r) => {
+          if (r.id !== p.roomId) return r;
+          return {
+            ...r,
+            rows: r.rows.map((x) =>
+              x.id === p.rowId
+                ? { id: x.id, product_pricing_id: p.newPricingId, values: p.merged, linkGroupId: x.linkGroupId }
+                : x
+            ),
+          };
+        }),
+      }));
+    }
+
     setSwitchPending(null);
     setSwitchLossOpen(false);
   };
@@ -1052,7 +1187,13 @@ export default function DynamicProductForm({
     <div className="space-y-6">
       <ProductPickerModal
         open={pickerTarget !== null}
-        title={pickerTarget?.kind === "switch" ? "Vyberte nový produkt" : "Vyberte produkt (řádek)"}
+        title={
+          pickerTarget?.kind === "bulk-switch"
+            ? "Vyberte nový produkt pro všechny řádky"
+            : pickerTarget?.kind === "switch"
+              ? "Vyberte nový produkt"
+              : "Vyberte produkt (řádek)"
+        }
         onClose={() => setPickerTarget(null)}
         onPicked={(detail) => applyPickedProduct(detail)}
       />
@@ -1408,22 +1549,28 @@ export default function DynamicProductForm({
                                   </p>
                                 </div>
                                 <div className="flex flex-wrap gap-2 text-xs">
-                                  <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
-                                    {czechRowCountLabel(runRows.length)}
-                                  </span>
-                                  {rowsWithMissingRequired > 0 ? (
-                                    <span className="rounded-full bg-red-100 px-2.5 py-1 text-red-700 dark:bg-red-950/40 dark:text-red-200">
-                                      Chybí pole: {rowsWithMissingRequired}
-                                    </span>
-                                  ) : null}
-                                  {rowsWithOverrides > 0 ? (
-                                    <span
-                                      className="rounded-full bg-indigo-100 px-2.5 py-1 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-200"
-                                      title="Počet řádků, které mají vlastní hodnotu odlišnou od společných"
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddRowForProduct(room.id, samplePid)}
+                                    className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                                  >
+                                    + Přidat řádek
+                                  </button>
+                                  {bulkOpen && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setPickerTarget({
+                                          kind: "bulk-switch",
+                                          roomId: room.id,
+                                          pricingId: samplePid,
+                                        })
+                                      }
+                                      className="inline-flex min-h-[32px] items-center gap-1 rounded-full border border-indigo-300 bg-white px-3 py-1 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-50 dark:border-indigo-700 dark:bg-zinc-800 dark:text-indigo-200 dark:hover:bg-indigo-950/30"
                                     >
-                                      Vlastní hodnoty: {rowsWithOverrides}
-                                    </span>
-                                  ) : null}
+                                      Změnit produkt pro všechny
+                                    </button>
+                                  )}
                                   {anyOutM ? (
                                     <span className="rounded-full bg-red-100 px-2.5 py-1 text-red-700 dark:bg-red-950/40 dark:text-red-200">
                                       Mimo výrobu
@@ -1617,14 +1764,6 @@ export default function DynamicProductForm({
                                                 className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-[11px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                                               >
                                                 Změnit
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleDuplicateRow(room.id, row.id)}
-                                                aria-label="Duplikovat tento řádek"
-                                                className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-[11px] font-medium text-zinc-700 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                                              >
-                                                Kopie
                                               </button>
                                               <button
                                                 type="button"
