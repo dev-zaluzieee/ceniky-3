@@ -248,7 +248,7 @@ async function resolveCustomRowPricingCore(args: {
   const dimStr = [width, height].filter(Boolean).join("×") || "—";
   const produkt = `${productName} - ${dimStr}`;
 
-  const ksRaw = flatRow.ks ?? flatRow.kus ?? flatRow.quantity;
+  const ksRaw = flatRow.ks ?? flatRow.kus ?? flatRow.count ?? flatRow.quantity;
   const ks = (() => {
     const n = Number(ksRaw);
     if (!Number.isFinite(n) || n <= 0) return 1;
