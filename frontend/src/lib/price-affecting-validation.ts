@@ -36,14 +36,19 @@ export function isDimensionPropertyCode(code: string): boolean {
 }
 
 /**
- * Required field codes for UI + validation: catalog `price_affecting_enums` plus `ks`
- * and any width/height columns present in form_body (pricing grid + extractors need them).
+ * Required field codes for UI + validation: catalog `price_affecting_enums` plus
+ * admin-flagged `required_properties`, plus `ks` and any width/height columns
+ * present in form_body (pricing grid + extractors need them).
  */
 export function buildEffectiveRequiredFieldCodes(
   formBodyPropertyCodes: readonly string[],
-  priceAffectingEnums: readonly string[] | undefined
+  priceAffectingEnums: readonly string[] | undefined,
+  requiredProperties?: readonly string[] | undefined
 ): Set<string> {
   const set = new Set<string>(priceAffectingEnums ?? []);
+  if (requiredProperties) {
+    for (const code of requiredProperties) set.add(code);
+  }
   if (formBodyPropertyCodes.includes(KS_PROPERTY_CODE)) {
     set.add(KS_PROPERTY_CODE);
   }
@@ -135,7 +140,7 @@ export function hasAnyMissingPriceAffectingFieldsMulti(
       const rowSchema = getRowSchema(row);
       if (!rowSchema) return true;
       const codes = (rowSchema.form_body?.Properties ?? []).map((p) => p.Code);
-      const required = buildEffectiveRequiredFieldCodes(codes, rowSchema.price_affecting_enums);
+      const required = buildEffectiveRequiredFieldCodes(codes, rowSchema.price_affecting_enums, rowSchema.required_properties);
       if (required.size === 0) return false;
       const flat = catalogRowToFormRow(row);
       const deps = rowSchema.dependencies;
@@ -162,7 +167,7 @@ export function missingRequiredLinesMulti(
         continue;
       }
       const codes = (rowSchema.form_body?.Properties ?? []).map((p) => p.Code);
-      const required = buildEffectiveRequiredFieldCodes(codes, rowSchema.price_affecting_enums);
+      const required = buildEffectiveRequiredFieldCodes(codes, rowSchema.price_affecting_enums, rowSchema.required_properties);
       const flat = catalogRowToFormRow(row);
       const deps = rowSchema.dependencies;
       const missingCodes = Array.from(required).filter((code) =>

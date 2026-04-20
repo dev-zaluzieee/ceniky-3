@@ -1361,7 +1361,8 @@ export default function DynamicProductForm({
                           const codes = visibleProps.map((p) => p.Code);
                           const effectiveRequired = buildEffectiveRequiredFieldCodes(
                             codes,
-                            rowSchema.price_affecting_enums
+                            rowSchema.price_affecting_enums,
+                            rowSchema.required_properties
                           );
                           const samplePid = runRows[0].product_pricing_id;
                           const groupKey = `${room.id}-${samplePid}-${runIdx}`;

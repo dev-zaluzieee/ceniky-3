@@ -53,6 +53,8 @@ export interface ProductPayload {
   surcharge_properties?: string[];
   /** Property codes that affect price resolution (required in form rows) */
   price_affecting_enums?: string[];
+  /** Property codes flagged as required by admin (independent of pricing) */
+  required_properties?: string[];
 }
 
 /**
