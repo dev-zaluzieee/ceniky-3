@@ -114,4 +114,6 @@ export interface CustomFormJson {
   /** Maps `product_pricing_id` → merged catalog payload (same shape as single-product schema before) */
   product_schemas: Record<string, ProductPayload>;
   data: JsonSchemaFormData;
+  /** User-editable form name, displayed on order detail. Same pattern as ADMF `form_json.name`. */
+  name?: string;
 }

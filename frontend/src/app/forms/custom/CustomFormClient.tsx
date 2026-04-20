@@ -75,6 +75,7 @@ export default function CustomFormClient({
     () => editInit.product_schemas
   );
   const [formData, setFormData] = useState<JsonSchemaFormData | null>(() => editInit.formData);
+  const [formName, setFormName] = useState<string>(initialData?.name ?? "");
   /** When creating from catalog (pricingId), loading or error state */
   const [pricingLoadError, setPricingLoadError] = useState<string | null>(null);
   const [pricingLoading, setPricingLoading] = useState(false);
@@ -180,7 +181,7 @@ export default function CustomFormClient({
 
   useEffect(() => {
     if (formData && schema && initialFormDataRef.current === null) {
-      initialFormDataRef.current = JSON.stringify({ data: formData, productSchemas });
+      initialFormDataRef.current = JSON.stringify({ data: formData, productSchemas, formName });
     }
   }, [formData, schema, productSchemas]);
 
@@ -190,8 +191,8 @@ export default function CustomFormClient({
 
   useEffect(() => {
     if (!formData || initialFormDataRef.current === null) return;
-    setIsDirty(JSON.stringify({ data: formData, productSchemas }) !== initialFormDataRef.current);
-  }, [formData, productSchemas]);
+    setIsDirty(JSON.stringify({ data: formData, productSchemas, formName }) !== initialFormDataRef.current);
+  }, [formData, productSchemas, formName]);
 
   /** Autosave: debounced save 3s after last change (edit mode only) */
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -217,6 +218,7 @@ export default function CustomFormClient({
           schema,
           product_schemas: latestProductSchemasRef.current,
           data: latest,
+          ...(formName.trim() && { name: formName.trim() }),
         };
         const res = await updateForm(formId, formJson);
         if (res.success) {
@@ -226,13 +228,14 @@ export default function CustomFormClient({
           const savedSnapshot = JSON.stringify({
             data: latest,
             productSchemas: latestProductSchemasRef.current,
+            formName,
           });
           initialFormDataRef.current = savedSnapshot;
           const currentData = latestFormDataRef.current;
           const currentPs = latestProductSchemasRef.current;
           setIsDirty(
             currentData
-              ? JSON.stringify({ data: currentData, productSchemas: currentPs }) !== savedSnapshot
+              ? JSON.stringify({ data: currentData, productSchemas: currentPs, formName }) !== savedSnapshot
               : false
           );
         } else {
@@ -279,18 +282,18 @@ export default function CustomFormClient({
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      const formJson: CustomFormJson = { schema: payload, product_schemas: productSchemas, data };
+      const formJson: CustomFormJson = { schema: payload, product_schemas: productSchemas, data, ...(formName.trim() && { name: formName.trim() }) };
       if (isEditMode && formId != null) {
         const result = await updateForm(formId, formJson);
         if (result.success) {
           // Stay on the form after save: reset dirty state and show success indicator.
-          const savedSnapshot = JSON.stringify({ data, productSchemas });
+          const savedSnapshot = JSON.stringify({ data, productSchemas, formName });
           initialFormDataRef.current = savedSnapshot;
           const currentData = latestFormDataRef.current;
           const currentPs = latestProductSchemasRef.current;
           setIsDirty(
             currentData
-              ? JSON.stringify({ data: currentData, productSchemas: currentPs }) !== savedSnapshot
+              ? JSON.stringify({ data: currentData, productSchemas: currentPs, formName }) !== savedSnapshot
               : false
           );
           setAutosaveSuccess(true);
@@ -403,6 +406,19 @@ export default function CustomFormClient({
     </div>
   );
 
+  const nameInput = (
+    <div className="mb-5 rounded-lg border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+      <h2 className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50">Název formuláře</h2>
+      <input
+        type="text"
+        value={formName}
+        onChange={(e) => setFormName(e.target.value)}
+        className="w-full max-w-md rounded-md border border-zinc-300 px-3 py-3 text-sm dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-50"
+        placeholder="např. Kuchyň - vertikální žaluzie"
+      />
+    </div>
+  );
+
   /* Edit mode: we have schema + formData from initialData */
   if (isEditMode && schema && formData) {
     return (
@@ -410,6 +426,7 @@ export default function CustomFormClient({
         <div className="mx-auto max-w-7xl">
           <div className="mb-3">{backLink}</div>
           {titleSection}
+          {nameInput}
           {submitError && (
             <p className="mb-4 text-sm text-red-600 dark:text-red-400">{submitError}</p>
           )}
@@ -513,6 +530,7 @@ export default function CustomFormClient({
       <div className="mx-auto max-w-7xl">
         <div className="mb-3">{backLink}</div>
         {titleSection}
+        {nameInput}
         {submitError && (
           <p className="mb-4 text-sm text-red-600 dark:text-red-400">{submitError}</p>
         )}

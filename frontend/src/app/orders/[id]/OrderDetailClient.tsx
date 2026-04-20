@@ -569,7 +569,10 @@ export default function OrderDetailClient({
                           <div>
                             <div className="mb-1 flex items-center gap-2">
                               <span className="inline-flex rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300">
-                                {parsedInfo.name || FORM_TYPE_NAMES[form.form_type]}
+                                {FORM_TYPE_NAMES[form.form_type]}
+                              </span>
+                              <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                                {(form.form_json as { name?: string })?.name || parsedInfo.name || form.form_type}
                               </span>
                               <span className="text-xs text-zinc-500 dark:text-zinc-400">ID: {form.id}</span>
                             </div>
