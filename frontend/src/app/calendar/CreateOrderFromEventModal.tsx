@@ -262,7 +262,7 @@ export default function CreateOrderFromEventModal({
         erp_customer_id: selectedErp?.id ?? undefined,
         source_raynet_event_id: event.id,
         source_erp_order_id: selectedErpOrder?.id ?? undefined,
-        notes: extractEventNotes(event.description),
+        notes: event.description || null,
       });
       if (!result.success) {
         if (result.existingOrderId) {

@@ -182,3 +182,47 @@ export async function getEvents(params: {
     );
   }
 }
+
+/**
+ * Update the description of a Raynet event.
+ * @param eventId - Raynet event ID
+ * @param description - New description text
+ */
+export async function updateEventDescription(
+  eventId: number,
+  description: string
+): Promise<void> {
+  const config = getRaynetConfig();
+
+  try {
+    const url = `${config.baseUrl}/api/v2/event/${eventId}/`;
+
+    const authHeader = config.authorization.startsWith("Basic ")
+      ? config.authorization
+      : `Basic ${config.authorization}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "X-Instance-Name": config.instanceName,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ description }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new InternalServerError(
+        `Raynet event update failed with status ${response.status}: ${errorText}`
+      );
+    }
+  } catch (error: any) {
+    if (error.statusCode) {
+      throw error;
+    }
+    throw new InternalServerError(
+      `Failed to update Raynet event description: ${error.message || "Unknown error"}`
+    );
+  }
+}

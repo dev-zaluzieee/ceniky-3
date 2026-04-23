@@ -5,6 +5,7 @@
 
 import { Router, Response } from "express";
 import * as raynetService from "../services/raynet.service";
+import * as raynetClient from "../services/raynet.client";
 import { authenticateToken, AuthenticatedRequest } from "../middleware/auth.middleware";
 import { ApiError } from "../utils/errors";
 import { SearchCustomerByPhoneRequest } from "../types/raynet.types";
@@ -171,6 +172,34 @@ router.get(
         success: true,
         data: result,
       });
+    } catch (error: any) {
+      handleError(error, res);
+    }
+  }
+);
+
+/**
+ * POST /api/raynet/events/:eventId/description
+ * Update a Raynet event's description.
+ */
+router.post(
+  "/events/:eventId/description",
+  authenticateToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const raw = Array.isArray(req.params.eventId) ? req.params.eventId[0] : req.params.eventId;
+      const eventId = parseInt(raw, 10);
+      if (isNaN(eventId) || eventId <= 0) {
+        return res.status(400).json({ success: false, error: "Invalid event ID" });
+      }
+
+      const { description } = req.body;
+      if (typeof description !== "string") {
+        return res.status(400).json({ success: false, error: "'description' must be a string" });
+      }
+
+      await raynetClient.updateEventDescription(eventId, description);
+      res.json({ success: true });
     } catch (error: any) {
       handleError(error, res);
     }

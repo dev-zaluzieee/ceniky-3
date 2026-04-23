@@ -140,7 +140,10 @@ export default function OrderDetailClient({
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
   const [customerSaveError, setCustomerSaveError] = useState<string | null>(null);
   const [showNotesModal, setShowNotesModal] = useState(false);
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [notesSaveError, setNotesSaveError] = useState<string | null>(null);
   const notesRef = useRef<HTMLDivElement>(null);
+  const notesEditorRef = useRef<HTMLDivElement>(null);
   const [notesOverflows, setNotesOverflows] = useState(false);
 
   // Export status per ADMF form: formId → { exportedAt, testMode }
@@ -227,6 +230,41 @@ export default function OrderDetailClient({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [showNotesModal]);
+
+  const handleOpenNotesModal = () => {
+    setNotesSaveError(null);
+    setShowNotesModal(true);
+  };
+
+  const handleSaveNotesToRaynet = async () => {
+    if (!order.source_raynet_event_id) return;
+    const html = notesEditorRef.current?.innerHTML ?? "";
+    setIsSavingNotes(true);
+    setNotesSaveError(null);
+    try {
+      const res = await fetch(`/api/raynet/events/${order.source_raynet_event_id}/description`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: html }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setNotesSaveError(data.error || "Nepodařilo se uložit do Raynetu.");
+        return;
+      }
+      // Also update local order notes
+      const orderRes = await updateOrder(order.id, { notes: html || null });
+      if (orderRes.success && orderRes.data) {
+        setOrder(orderRes.data);
+        setCustomerData((prev) => ({ ...prev, notes: html }));
+      }
+      setShowNotesModal(false);
+    } catch {
+      setNotesSaveError("Došlo k chybě při ukládání.");
+    } finally {
+      setIsSavingNotes(false);
+    }
+  };
 
   const handleSaveCustomer = async () => {
     setIsSavingCustomer(true);
@@ -361,6 +399,21 @@ export default function OrderDetailClient({
             title="Základní informace"
             open={basicInfoOpen}
             onToggle={() => setBasicInfoOpen((v) => !v)}
+            headerRight={
+              order.source_raynet_event_id ? (
+                <a
+                  href={`https://app.raynet.cz/demaxia/?view=DetailView&en=Event&ei=${order.source_raynet_event_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                >
+                  Otevřít v Raynetu
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              ) : undefined
+            }
           >
             <div className="grid grid-cols-3 gap-4">
               {/* Row 1: Jméno spans 2 cols, Telefon */}
@@ -465,27 +518,26 @@ export default function OrderDetailClient({
               </div>
             </div>
 
-            {/* Notes (read-only) */}
-            {customerData.notes && (
-              <div className="mt-5">
-                <label className={labelClasses}>Poznámky</label>
+            {/* Notes */}
+            <div className="mt-5">
+              <label className={labelClasses}>Poznámky</label>
+              {customerData.notes ? (
                 <div
                   ref={notesRef}
-                  className="max-h-32 overflow-y-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-                >
-                  {customerData.notes}
-                </div>
-                {notesOverflows && (
-                  <button
-                    type="button"
-                    onClick={() => setShowNotesModal(true)}
-                    className="mt-2 text-sm font-medium text-accent hover:text-accent-hover"
-                  >
-                    Zobrazit celé poznámky
-                  </button>
-                )}
-              </div>
-            )}
+                  className="max-h-32 overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 [&_b]:font-semibold [&_p]:mb-1"
+                  dangerouslySetInnerHTML={{ __html: customerData.notes }}
+                />
+              ) : (
+                <p className="text-sm text-zinc-400 dark:text-zinc-500">Žádné poznámky</p>
+              )}
+              <button
+                type="button"
+                onClick={handleOpenNotesModal}
+                className="mt-2 text-sm font-medium text-accent hover:text-accent-hover"
+              >
+                {customerData.notes ? (notesOverflows ? "Zobrazit celé poznámky" : "Upravit poznámky") : "Přidat poznámky"}
+              </button>
+            </div>
 
             {/* Save button */}
             {customerSaveError && (
@@ -855,7 +907,7 @@ export default function OrderDetailClient({
         </div>
       )}
 
-      {/* Notes fullscreen modal */}
+      {/* Notes editable modal */}
       {showNotesModal && (
         <div
           className="fixed inset-0 z-50 flex flex-col bg-black/90 p-4"
@@ -868,18 +920,37 @@ export default function OrderDetailClient({
             <h2 id="notes-modal-title" className="text-lg font-semibold text-zinc-50">
               Poznámky
             </h2>
-            <button
-              type="button"
-              onClick={() => setShowNotesModal(false)}
-              className="min-h-[44px] rounded-lg bg-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-500"
-            >
-              Zavřít
-            </button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto pt-4">
-            <div className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-200">
-              {customerData.notes}
+            <div className="flex items-center gap-2">
+              {order.source_raynet_event_id && (
+                <button
+                  type="button"
+                  onClick={handleSaveNotesToRaynet}
+                  disabled={isSavingNotes}
+                  className="min-h-[44px] rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+                >
+                  {isSavingNotes ? "Ukládám…" : "Uložit do Raynetu"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowNotesModal(false)}
+                className="min-h-[44px] rounded-lg bg-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-100 hover:bg-zinc-500"
+              >
+                Zavřít
+              </button>
             </div>
+          </div>
+          {notesSaveError && (
+            <p className="mt-2 text-sm text-red-400">{notesSaveError}</p>
+          )}
+          <div className="min-h-0 flex-1 overflow-y-auto pt-4">
+            <div
+              ref={notesEditorRef}
+              contentEditable
+              suppressContentEditableWarning
+              className="min-h-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm leading-relaxed text-zinc-200 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent [&_b]:font-semibold [&_p]:mb-1"
+              dangerouslySetInnerHTML={{ __html: customerData.notes || "" }}
+            />
           </div>
         </div>
       )}
