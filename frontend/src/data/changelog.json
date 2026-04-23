@@ -1,5 +1,25 @@
 [
   {
+    "date": "2026-04-23",
+    "changes": [
+      "Poznámky z Raynetu: možnost úpravy poznámek přímo v zakázce s uložením zpět do Raynetu (zachování HTML formátování)",
+      "Zakázka: odkaz Otevrit v Raynetu v sekci Zakladni informace",
+      "Výrobní formulář: možnost pojmenovat formulář (Název formuláře)",
+      "Výrobní formulář: admin může označit pole jako povinná nezávisle na ceně",
+      "Výrobní formulář: obnoveny předvolby místností (Obývák, Kuchyň, Pracovna…) a duplikace místností"
+    ]
+  },
+  {
+    "date": "2026-04-18",
+    "changes": [
+      "Vytváření zakázky: párování s ERP zakázkou (source_erp_order_id) — nový krok při vytváření z kalendáře",
+      "Výrobní formulář: uložení výrobce z katalogu (manufacturer)",
+      "Ceník: pokud je zadaný rozměr menší než nejmenší hodnota v křížovém ceníku, použije se nejbližší dostupná cena",
+      "ADMF: opraveno počítání kusů — správně se přebírá hodnota z výrobního formuláře",
+      "Výrobní formulář: hromadné úpravy a sdílené hodnoty pro řádky stejného produktu"
+    ]
+  },
+  {
     "date": "2026-04-01",
     "changes": [
       "ADMF: přehlednější práce se sazbou DPH, přehlednější vzhled",
