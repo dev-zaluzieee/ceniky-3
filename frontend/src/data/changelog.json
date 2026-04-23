@@ -6,7 +6,9 @@
       "Zakázka: odkaz Otevrit v Raynetu v sekci Zakladni informace",
       "Výrobní formulář: možnost pojmenovat formulář (Název formuláře)",
       "Výrobní formulář: admin může označit pole jako povinná nezávisle na ceně",
-      "Výrobní formulář: obnoveny předvolby místností (Obývák, Kuchyň, Pracovna…) a duplikace místností"
+      "Výrobní formulář: obnoveny předvolby místností (Obývák, Kuchyň, Pracovna…) a duplikace místností",
+      "Výrobní formulář: rozbalovací seznamy (enum pole) jsou nyní prohledávatelné",
+      "ADMF: nová pole Montáž a Demontáž v sekci Poznámky"
     ]
   },
   {

@@ -81,6 +81,8 @@ function getDefaultFormData(): AdmfFormData {
     montazCenaZpusob: "auto",
     poznamkyVyroba: "",
     poznamkyMontaz: "",
+    montaz: "",
+    demontaz: "",
     platceDph: false,
     faktura: true,
     typProstoru: "bytovy" as const,
@@ -1894,6 +1896,24 @@ export default function AdmfFormClient({
                   rows={4}
                   className={inputCls}
                   placeholder="poznámky"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Montáž</label>
+                <input
+                  type="text"
+                  value={formData.montaz ?? ""}
+                  onChange={(e) => updateField("montaz", e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Demontáž</label>
+                <input
+                  type="text"
+                  value={formData.demontaz ?? ""}
+                  onChange={(e) => updateField("demontaz", e.target.value)}
+                  className={inputCls}
                 />
               </div>
             </div>

@@ -171,6 +171,9 @@ export interface AdmfFormData {
   /** Poznámky */
   poznamkyVyroba?: string;
   poznamkyMontaz?: string;
+  /** Montáž / demontáž */
+  montaz?: string;
+  demontaz?: string;
   /** Legacy field names still used in current ADMF UI/PDF */
   doplnujiciInformaceObjednavky?: string;
   doplnujiciInformaceMontaz?: string;

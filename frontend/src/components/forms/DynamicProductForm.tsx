@@ -32,6 +32,7 @@ import type { PricingFormDetail } from "@/lib/pricing-forms-api";
 import ProductPickerModal from "@/components/forms/ProductPickerModal";
 import PricePreviewModal from "@/components/forms/PricePreviewModal";
 import ProductSwitchLossModal from "@/components/forms/ProductSwitchLossModal";
+import SearchableSelect from "@/components/forms/SearchableSelect";
 
 const SIZE_LIMITS_DEBOUNCE_MS = 400;
 
@@ -987,26 +988,14 @@ export default function DynamicProductForm({
         ? getEnumOptionsForRow(schema, property.Code, context.flatRow)
         : getEnumOptions(schema, property.Code);
       const currentCode = String(value);
-      const valueInOptions = options.some((o) => o.code === currentCode);
       return (
-        <select
+        <SearchableSelect
           value={currentCode}
-          onChange={(e) => !disabled && onChange(e.target.value)}
+          options={options}
+          onChange={(v) => !disabled && onChange(v)}
           disabled={disabled}
-          className={`min-w-[4rem] w-full rounded border-0 bg-transparent px-1 py-1 text-sm focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent dark:focus:bg-zinc-700 md:text-xs ${disabledClass}`}
-        >
-          <option value="">-</option>
-          {options.map((opt) => (
-            <option key={opt.code} value={opt.code} title={opt.note ?? undefined}>
-              {opt.name} ({opt.code}){opt.note ? ` — ${opt.note}` : ""}
-            </option>
-          ))}
-          {!valueInOptions && currentCode && (
-            <option value={currentCode} disabled>
-              — {currentCode} —
-            </option>
-          )}
-        </select>
+          className={disabledClass}
+        />
       );
     }
 
