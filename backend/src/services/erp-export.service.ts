@@ -165,7 +165,7 @@ export function buildErpPayloads(
 
 // ── ERP HTTP calls ───────────────────────────────────────────────
 
-function getErpConfig(): { apiEndpoint: string; bearerToken: string } {
+export function getErpConfig(): { apiEndpoint: string; bearerToken: string } {
   const apiEndpoint = process.env.ERP_API_ENDPOINT;
   const bearerToken = process.env.ERP_BEARER_TOKEN;
   if (!apiEndpoint || !bearerToken) {
@@ -177,7 +177,7 @@ function getErpConfig(): { apiEndpoint: string; bearerToken: string } {
   return { apiEndpoint: apiEndpoint.replace(/\/$/, ""), bearerToken };
 }
 
-async function erpFetch(
+export async function erpFetch(
   url: string,
   bearerToken: string,
   method: string,
@@ -203,7 +203,7 @@ async function erpFetch(
   return { status: response.status, body: respBody };
 }
 
-function classifyErpHttpError(status: number): ErpExportErrorCode {
+export function classifyErpHttpError(status: number): ErpExportErrorCode {
   if (status === 401 || status === 403) return "ERP_AUTH_FAILED";
   if (status === 404) return "ERP_ORDER_NOT_FOUND";
   if (status === 422) return "ERP_VALIDATION_ERROR";

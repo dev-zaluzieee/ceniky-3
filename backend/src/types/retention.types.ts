@@ -14,7 +14,24 @@ export type RetentionErrorCode =
   | "ORDER_NOT_FOUND"
   | "MISSING_RAYNET_ID"
   | "INVALID_REASON"
+  | "RAYNET_GET_FAILED"
+  | "RAYNET_AUTH_FAILED"
+  | "RAYNET_VALIDATION_ERROR"
+  | "RAYNET_SERVER_ERROR"
+  | "RAYNET_TIMEOUT"
+  | "RAYNET_UPDATE_FAILED"
+  | "ERP_AUTH_FAILED"
+  | "ERP_VALIDATION_ERROR"
+  | "ERP_ORDER_LOCKED"
+  | "ERP_TIMEOUT"
+  | "ERP_SERVER_ERROR"
+  | "ERP_CONFIG_MISSING"
   | "UNKNOWN_ERROR";
+
+export type RetentionWarningCode =
+  | "ERP_NOT_LINKED"
+  | "ERP_PUT_FAILED"
+  | "ERP_COMMENT_FAILED";
 
 export interface RetentionWarning {
   code: string;

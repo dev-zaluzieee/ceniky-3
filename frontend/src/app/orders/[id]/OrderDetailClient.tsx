@@ -1060,23 +1060,7 @@ export default function OrderDetailClient({
               </button>
             </div>
 
-            {mode === "PRODUCTION" ? (
-              <>
-                <p className="mb-6 text-sm text-zinc-300">
-                  Odeslání na retence zatím není v produkci dostupné. Přepněte aplikaci do režimu
-                  TEST pro vyzkoušení této funkce.
-                </p>
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setShowRetentionModal(false)}
-                    className="rounded-md bg-zinc-600 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-500"
-                  >
-                    Zavřít
-                  </button>
-                </div>
-              </>
-            ) : retentionStatus?.inRetention && !retentionResendAcknowledged ? (
+            {retentionStatus?.inRetention && !retentionResendAcknowledged ? (
               <>
                 <p className="mb-2 text-sm text-zinc-300">
                   Tato zakázka už byla odeslána na retence
