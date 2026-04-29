@@ -12,6 +12,12 @@ import {
   listPricingForms,
   type PricingFormListItem,
 } from "@/lib/pricing-forms-api";
+import { useAppMode } from "@/lib/mode-context";
+import {
+  getRetentionStatus,
+  sendOrderToRetention,
+  type RetentionStatus,
+} from "@/lib/retention-api";
 
 const FORM_TYPE_NAMES: Record<FormType, string> = {
   custom: "Vlastní formulář",
@@ -149,6 +155,16 @@ export default function OrderDetailClient({
   // Export status per ADMF form: formId → { exportedAt, testMode }
   const [exportStatuses, setExportStatuses] = useState<Record<number, { exportedAt: string; testMode: boolean }>>({});
 
+  // Retention pipeline state
+  const { mode } = useAppMode();
+  const [retentionStatus, setRetentionStatus] = useState<RetentionStatus | null>(null);
+  const [showRetentionModal, setShowRetentionModal] = useState(false);
+  const [retentionReason, setRetentionReason] = useState("");
+  const [retentionSubmitting, setRetentionSubmitting] = useState(false);
+  const [retentionError, setRetentionError] = useState<string | null>(null);
+  /** Set after the user acknowledges "tato zakázka už byla odeslána" so the textarea can render. */
+  const [retentionResendAcknowledged, setRetentionResendAcknowledged] = useState(false);
+
   useEffect(() => {
     setOrder(initialOrder);
     setCustomerData({
@@ -215,6 +231,61 @@ export default function OrderDetailClient({
     });
     return () => { cancelled = true; };
   }, [forms]);
+
+  // Fetch retention status for the order header badge + modal "already sent" gate
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await getRetentionStatus(order.id);
+      if (cancelled) return;
+      if (res.success && res.data) setRetentionStatus(res.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [order.id]);
+
+  /** Reset modal-local state whenever the retention modal closes. */
+  useEffect(() => {
+    if (showRetentionModal) return;
+    setRetentionReason("");
+    setRetentionError(null);
+    setRetentionResendAcknowledged(false);
+  }, [showRetentionModal]);
+
+  /** Close retention modal on Escape */
+  useEffect(() => {
+    if (!showRetentionModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !retentionSubmitting) setShowRetentionModal(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showRetentionModal, retentionSubmitting]);
+
+  const handleSubmitRetention = async () => {
+    const reason = retentionReason.trim();
+    if (reason.length === 0) {
+      setRetentionError("Zadejte prosím důvod.");
+      return;
+    }
+    setRetentionSubmitting(true);
+    setRetentionError(null);
+    const res = await sendOrderToRetention({
+      orderId: order.id,
+      reason,
+      testMode: mode === "TEST",
+    });
+    setRetentionSubmitting(false);
+    if (!res.success) {
+      setRetentionError(res.error ?? "Odeslání selhalo.");
+      return;
+    }
+    /** Refresh status so the header badge + future modal opens reflect the new SUCCESS row. */
+    const statusRes = await getRetentionStatus(order.id);
+    if (statusRes.success && statusRes.data) setRetentionStatus(statusRes.data);
+    setShowRetentionModal(false);
+  };
 
   /** Detect whether the notes preview overflows so we can show the "Zobrazit celé" button. */
   useEffect(() => {
@@ -388,10 +459,28 @@ export default function OrderDetailClient({
           Zpět na moje zakázky
         </Link>
 
-        {/* Page title with date + customer name */}
-        <h1 className="mb-5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">
-          {pageTitle}
-        </h1>
+        {/* Page title with date + customer name; retention button on the right */}
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+            {pageTitle}
+          </h1>
+          <button
+            type="button"
+            onClick={() => setShowRetentionModal(true)}
+            className={
+              retentionStatus?.inRetention
+                ? "inline-flex items-center gap-2 rounded-md border border-red-700 bg-red-100 px-4 py-2 text-sm font-medium text-red-900 dark:border-red-600 dark:bg-red-900/30 dark:text-red-200"
+                : "inline-flex items-center gap-2 rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
+            }
+            title={
+              retentionStatus?.inRetention
+                ? "Zakázka už byla odeslána na retence"
+                : "Odeslat zakázku na retence"
+            }
+          >
+            {retentionStatus?.inRetention ? "V retencích" : "Poslat na retence"}
+          </button>
+        </div>
 
         {/* Section 1: Základní informace */}
         <div className="mb-4">
@@ -951,6 +1040,110 @@ export default function OrderDetailClient({
               className="min-h-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm leading-relaxed text-zinc-200 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent [&_b]:font-semibold [&_p]:mb-1"
               dangerouslySetInnerHTML={{ __html: customerData.notes || "" }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Retention modal — "Poslat na retence" */}
+      {showRetentionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-lg rounded-lg bg-zinc-800 p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-zinc-50">Poslat na retence</h2>
+              <button
+                type="button"
+                onClick={() => !retentionSubmitting && setShowRetentionModal(false)}
+                className="text-zinc-400 hover:text-zinc-200"
+                aria-label="Zavřít"
+              >
+                ✕
+              </button>
+            </div>
+
+            {mode === "PRODUCTION" ? (
+              <>
+                <p className="mb-6 text-sm text-zinc-300">
+                  Odeslání na retence zatím není v produkci dostupné. Přepněte aplikaci do režimu
+                  TEST pro vyzkoušení této funkce.
+                </p>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowRetentionModal(false)}
+                    className="rounded-md bg-zinc-600 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-500"
+                  >
+                    Zavřít
+                  </button>
+                </div>
+              </>
+            ) : retentionStatus?.inRetention && !retentionResendAcknowledged ? (
+              <>
+                <p className="mb-2 text-sm text-zinc-300">
+                  Tato zakázka už byla odeslána na retence
+                  {retentionStatus.latest?.created_at
+                    ? ` ${new Date(retentionStatus.latest.created_at).toLocaleString("cs-CZ", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}`
+                    : ""}
+                  .
+                </p>
+                <p className="mb-6 text-sm text-zinc-400">
+                  Opravdu ji chcete odeslat znovu?
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowRetentionModal(false)}
+                    className="rounded-md bg-zinc-600 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-500"
+                  >
+                    Zrušit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRetentionResendAcknowledged(true)}
+                    className="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600"
+                  >
+                    Přesto odeslat
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="mb-2 block text-sm font-medium text-zinc-300">
+                  Důvod odeslání na retence
+                </label>
+                <textarea
+                  value={retentionReason}
+                  onChange={(e) => setRetentionReason(e.target.value)}
+                  disabled={retentionSubmitting}
+                  rows={5}
+                  placeholder="Stručně popište důvod (zákazník bude přesměrován na oddělení retencí)"
+                  className="mb-3 w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                {retentionError && (
+                  <p className="mb-3 text-sm text-red-400">{retentionError}</p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowRetentionModal(false)}
+                    disabled={retentionSubmitting}
+                    className="rounded-md bg-zinc-600 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-500 disabled:opacity-50"
+                  >
+                    Zrušit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmitRetention}
+                    disabled={retentionSubmitting || retentionReason.trim().length === 0}
+                    className="rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
+                  >
+                    {retentionSubmitting ? "Odesílám…" : "Odeslat na retence"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -1,0 +1,97 @@
+/**
+ * Type definitions for the "Poslat na retence" pipeline.
+ */
+
+export type RetentionLogStatus =
+  | "PENDING"
+  | "SENDING"
+  | "SUCCESS"
+  | "PARTIAL_SUCCESS"
+  | "FAILED";
+
+export type RetentionErrorCode =
+  | "RETENCE_PRODUCTION_NOT_AVAILABLE"
+  | "ORDER_NOT_FOUND"
+  | "MISSING_RAYNET_ID"
+  | "INVALID_REASON"
+  | "UNKNOWN_ERROR";
+
+export interface RetentionWarning {
+  code: string;
+  field?: string;
+  reason: string;
+}
+
+export interface RetentionLogRecord {
+  id: number;
+  order_id: number;
+  user_id: string;
+  reason: string;
+  raynet_id: number;
+  erp_order_id: number | null;
+  status: RetentionLogStatus;
+  test_mode: boolean;
+  request_payload: Record<string, unknown> | null;
+  response_status: number | null;
+  response_body: Record<string, unknown> | null;
+  error_message: string | null;
+  error_code: string | null;
+  warnings: RetentionWarning[] | null;
+  duration_ms: number | null;
+  created_at: Date;
+  completed_at: Date | null;
+}
+
+export interface CreateRetentionLogParams {
+  order_id: number;
+  user_id: string;
+  reason: string;
+  raynet_id: number;
+  erp_order_id: number | null;
+  test_mode: boolean;
+}
+
+export interface UpdateRetentionLogParams {
+  status?: RetentionLogStatus;
+  request_payload?: Record<string, unknown>;
+  response_status?: number;
+  response_body?: Record<string, unknown>;
+  error_message?: string;
+  error_code?: RetentionErrorCode;
+  warnings?: RetentionWarning[];
+  duration_ms?: number;
+  completed_at?: Date;
+}
+
+export interface SendRetentionRequest {
+  reason?: unknown;
+  testMode?: unknown;
+}
+
+export interface SendRetentionResponse {
+  success: boolean;
+  data?: {
+    logId: number;
+    status: RetentionLogStatus;
+    testMode: boolean;
+    submittedAt: string;
+  };
+  error?: string;
+  code?: string;
+}
+
+export interface RetentionStatusResponse {
+  success: boolean;
+  data?: {
+    inRetention: boolean;
+    latest: {
+      id: number;
+      status: RetentionLogStatus;
+      test_mode: boolean;
+      reason: string;
+      created_at: string;
+      completed_at: string | null;
+    } | null;
+  };
+  error?: string;
+}
