@@ -9,7 +9,7 @@ import * as formsService from "../services/forms.service";
 import * as pricingFormsService from "../services/pricing-forms.service";
 import * as sizeLimitsService from "../services/size-limits.service";
 import * as productExtractorsService from "../services/product-extractors";
-import * as admfPdfService from "../services/admf-pdf.service";
+import * as admfImageService from "../services/admf-image.service";
 import * as raynetExportService from "../services/raynet-export.service";
 import * as erpExportService from "../services/erp-export.service";
 import * as exportLogsQueries from "../queries/raynet-export-logs.queries";
@@ -551,7 +551,8 @@ router.get("/:id", authenticateToken, async (req: AuthenticatedRequest, res: Res
 
 /**
  * GET /api/forms/:id/pdf
- * Generate PDF for a persisted ADMF form and return binary content.
+ * Generate a PNG image for a persisted ADMF form and return binary content.
+ * Path keeps the legacy /pdf name; the response is image/png.
  */
 router.get("/:id/pdf", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -571,17 +572,17 @@ router.get("/:id/pdf", authenticateToken, async (req: AuthenticatedRequest, res:
     if (form.form_type !== "admf") {
       return res.status(400).json({
         success: false,
-        error: "PDF generation is supported only for ADMF forms",
+        error: "Image generation is supported only for ADMF forms",
       });
     }
 
-    const pdfBuffer = await admfPdfService.generateAdmfPdfBuffer(form.form_json);
-    const safeName = `admf-${form.id}.pdf`;
+    const imageBuffer = await admfImageService.generateAdmfImageBuffer(form.form_json);
+    const safeName = `admf-${form.id}.png`;
 
-    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Type", "image/png");
     res.setHeader("Content-Disposition", `inline; filename="${safeName}"`);
     res.setHeader("Cache-Control", "private, max-age=0, must-revalidate");
-    return res.status(200).send(pdfBuffer);
+    return res.status(200).send(imageBuffer);
   } catch (error: any) {
     handleError(error, res);
   }

@@ -1,18 +1,10 @@
 /**
- * Server-side PDF generation for step-1 "custom" forms (výrobní list).
- * Renders a readable layout: Czech labels, schema-driven headers, expanded rooms,
- * enum names (not raw codes where possible). Omits empty blocks and internal keys.
+ * Server-side PNG generation for step-1 "custom" forms (výrobní list).
+ * Width is computed from content so columns never wrap unless they exceed the configured cap.
  */
 
-import fs from "fs/promises";
-import path from "path";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+import { ImagePage, STYLE, formatGeneratedAt } from "./image-rendering.utils";
 
-const MARGIN = 20;
-const CZECH_FONT_NAME = "Roboto";
-
-/** Minimal schema shapes (mirror frontend `ProductPayload` / `JsonSchemaFormData`). */
 type PropertyDefinition = {
   Code: string;
   Name: string;
@@ -41,43 +33,32 @@ type FormRow = Record<string, string | number | boolean>;
 
 type Room = { id?: string; name?: string; rows?: FormRow[] };
 
-/** Font ships with backend in backend/fonts/; at runtime __dirname is dist/services so ../../fonts is alongside dist. */
-function fontCandidates(): string[] {
-  return [
-    path.resolve(__dirname, "../../fonts/Roboto-Regular.ttf"),
-    path.resolve(process.cwd(), "fonts/Roboto-Regular.ttf"),
-  ];
-}
+type CustomerBlock = {
+  name?: unknown;
+  email?: unknown;
+  phone?: unknown;
+  address?: unknown;
+  city?: unknown;
+};
 
-async function loadCzechFont(doc: jsPDF): Promise<void> {
-  let fontBase64: string | null = null;
+const CUSTOMER_FIELDS: { key: keyof CustomerBlock; label: string }[] = [
+  { key: "name", label: "Jméno / název" },
+  { key: "email", label: "E-mail" },
+  { key: "phone", label: "Telefon" },
+  { key: "address", label: "Adresa" },
+  { key: "city", label: "Město" },
+];
 
-  for (const fontPath of fontCandidates()) {
-    try {
-      const binary = await fs.readFile(fontPath);
-      fontBase64 = binary.toString("base64");
-      break;
-    } catch {
-      continue;
-    }
-  }
-
-  if (!fontBase64) {
-    throw new Error("Roboto font file was not found for server PDF generation.");
-  }
-
-  const fileName = "Roboto-Regular.ttf";
-  doc.addFileToVFS(fileName, fontBase64);
-  doc.addFont(fileName, CZECH_FONT_NAME, "normal");
-  doc.setFont(CZECH_FONT_NAME, "normal");
-}
+const ROW_INTERNAL_KEYS = new Set(["id", "linkGroupId", "product_pricing_id", "values"]);
 
 function propertyLabel(p: PropertyDefinition): string {
   return (p["label-form"] ?? p.Name ?? p.Code).trim() || p.Code;
 }
 
-/** Collect all enum values for a property (all groups) for code → label lookup. */
-function enumValuesForProperty(enums: Record<string, EnumEntry> | undefined, propertyCode: string): EnumValue[] {
+function enumValuesForProperty(
+  enums: Record<string, EnumEntry> | undefined,
+  propertyCode: string
+): EnumValue[] {
   if (!enums?.[propertyCode]) return [];
   const entry = enums[propertyCode];
   const out: EnumValue[] = [];
@@ -103,7 +84,7 @@ function resolveEnumLabel(
   return hit?.name ?? s;
 }
 
-function formatPrimitiveForPdf(
+function formatPrimitive(
   prop: PropertyDefinition | undefined,
   value: unknown,
   enums: Record<string, EnumEntry> | undefined
@@ -124,28 +105,15 @@ function isEmptyDisplay(s: string): boolean {
   return s === "" || s === "-";
 }
 
-/** Skip section key/value rows where the formatted value is empty (booleans always shown). */
-function shouldIncludeSectionRow(prop: PropertyDefinition | undefined, raw: unknown, formatted: string): boolean {
+function shouldIncludeSectionRow(
+  prop: PropertyDefinition | undefined,
+  raw: unknown,
+  formatted: string
+): boolean {
   if (prop?.DataType === "boolean" || prop?.DataType === "link") return true;
   if (typeof raw === "boolean") return true;
   return !isEmptyDisplay(formatted);
 }
-
-const CUSTOMER_FIELDS: { key: keyof CustomerBlock; label: string }[] = [
-  { key: "name", label: "Jméno / název" },
-  { key: "email", label: "E-mail" },
-  { key: "phone", label: "Telefon" },
-  { key: "address", label: "Adresa" },
-  { key: "city", label: "Město" },
-];
-
-type CustomerBlock = {
-  name?: unknown;
-  email?: unknown;
-  phone?: unknown;
-  address?: unknown;
-  city?: unknown;
-};
 
 function customerRows(data: Record<string, unknown>): string[][] {
   const rows: string[][] = [];
@@ -161,8 +129,6 @@ function customerRows(data: Record<string, unknown>): string[][] {
   return rows;
 }
 
-const ROW_INTERNAL_KEYS = new Set(["id", "linkGroupId", "product_pricing_id", "values"]);
-
 function formBodyPropertyColumns(schema: ProductPayload): PropertyDefinition[] {
   const props = (schema.form_body?.Properties ?? []) as PropertyDefinition[];
   return props.filter((p) => p?.Code && typeof p.Code === "string");
@@ -177,7 +143,7 @@ function sectionRowsFromValues(
   const rows: string[][] = [];
   for (const prop of section.Properties) {
     const raw = values[prop.Code];
-    const formatted = formatPrimitiveForPdf(prop, raw, enums);
+    const formatted = formatPrimitive(prop, raw, enums);
     if (!shouldIncludeSectionRow(prop, raw, formatted)) continue;
     rows.push([propertyLabel(prop), formatted]);
   }
@@ -191,14 +157,13 @@ function roomTableIsNonEmpty(
 ): boolean {
   for (const col of columns) {
     const raw = row[col.Code];
-    const formatted = formatPrimitiveForPdf(col, raw, enums);
+    const formatted = formatPrimitive(col, raw, enums);
     if (!isEmptyDisplay(formatted)) return true;
   }
   return false;
 }
 
-/** Multi-product row: `{ values, product_pricing_id }` or legacy flat row. */
-function flattenPdfDataRow(row: Record<string, unknown>): FormRow {
+function flattenDataRow(row: Record<string, unknown>): FormRow {
   const values = row.values;
   if (values && typeof values === "object" && !Array.isArray(values)) {
     const out: FormRow = { ...(values as FormRow) };
@@ -210,7 +175,7 @@ function flattenPdfDataRow(row: Record<string, unknown>): FormRow {
   return row as FormRow;
 }
 
-function rowSchemaForPdfRow(
+function rowSchemaForRow(
   rawRow: Record<string, unknown>,
   productSchemas: Record<string, ProductPayload>,
   topSchema: ProductPayload
@@ -226,21 +191,7 @@ function rowSchemaForPdfRow(
   return null;
 }
 
-function getLastTableBottom(doc: jsPDF): number {
-  const last = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
-  return last?.finalY ?? MARGIN;
-}
-
-/** Human-readable generation time for the PDF footer/header (Czech locale). */
-function formatPdfGeneratedAt(d: Date): string {
-  return new Intl.DateTimeFormat("cs-CZ", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Europe/Prague",
-  }).format(d);
-}
-
-export async function generateCustomFormPdfBuffer(raw: Record<string, unknown>): Promise<Buffer> {
+export async function generateCustomFormImageBuffer(raw: Record<string, unknown>): Promise<Buffer> {
   const formJson = raw as Record<string, unknown>;
   const schema = (formJson.schema ?? {}) as ProductPayload;
   const data = (formJson.data ?? formJson) as Record<string, unknown>;
@@ -257,81 +208,50 @@ export async function generateCustomFormPdfBuffer(raw: Record<string, unknown>):
         ? formJson.name.trim()
         : "Výrobní list";
 
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
-  await loadCzechFont(doc);
-
-  let startY = MARGIN;
-  const pageWidth = doc.internal.pageSize.getWidth();
-
-  /** Right-aligned stamp (same line as main title). */
-  doc.setFontSize(9);
-  doc.text(`Vygenerováno: ${formatPdfGeneratedAt(new Date())}`, pageWidth - MARGIN, startY, { align: "right" });
-
-  doc.setFontSize(16);
-  doc.text("VÝROBNÍ LIST", MARGIN, startY);
-  startY += 8;
-
-  doc.setFontSize(12);
-  doc.text(productName, MARGIN, startY);
-  startY += 7;
-
   const productCode =
     typeof data.productCode === "string" && data.productCode.trim() !== ""
       ? data.productCode.trim()
       : typeof schema.product_code === "string"
         ? schema.product_code.trim()
         : "";
-  if (productCode) {
-    doc.setFontSize(10);
-    doc.text(`Kód produktu: ${productCode}`, MARGIN, startY);
-    startY += 6;
-  }
 
   const enums = schema.enums ?? {};
+  const page = new ImagePage();
+
+  page.titleLine(
+    { text: "VÝROBNÍ LIST", fontSize: STYLE.titleFontSize, bold: true },
+    { text: `Vygenerováno: ${formatGeneratedAt(new Date())}`, fontSize: STYLE.smallFontSize }
+  );
+  page.text(productName, { fontSize: STYLE.headingFontSize });
+  if (productCode) {
+    page.text(`Kód produktu: ${productCode}`, { fontSize: STYLE.bodyFontSize, color: STYLE.muted });
+  }
+  page.spacer(8);
 
   const cust = customerRows(data);
   if (cust.length > 0) {
-    doc.setFontSize(11);
-    doc.text("Zákazník", MARGIN, startY);
-    startY += 5;
-    autoTable(doc, {
-      startY,
-      head: [["Údaj", "Hodnota"]],
+    page.text("Zákazník", { fontSize: STYLE.headingFontSize, bold: true });
+    page.spacer(2);
+    page.table({
+      head: ["Údaj", "Hodnota"],
       body: cust,
-      margin: { left: MARGIN, right: MARGIN },
-      theme: "grid",
-      styles: { fontSize: 9, font: CZECH_FONT_NAME, fontStyle: "normal", cellPadding: 2 },
-      headStyles: { fillColor: [230, 230, 230], font: CZECH_FONT_NAME, fontStyle: "normal" },
-      columnStyles: {
-        /** Keep normal weight: only Roboto Regular is embedded — bold would fall back to Helvetica and break Czech glyphs (e.g. „ě“). */
-        0: { cellWidth: 45, fontStyle: "normal" },
-        1: { cellWidth: 130 },
-      },
+      columns: [{}, { maxWidth: STYLE.defaultValueColumnMaxWidth }],
     });
-    startY = getLastTableBottom(doc) + 8;
   }
 
   const zahlaviTitle = (schema.zahlavi?.Name ?? "Hlavička").trim() || "Hlavička";
   const zahlaviValues = (data.zahlaviValues ?? {}) as Record<string, unknown>;
   const zahlaviBody = sectionRowsFromValues(schema.zahlavi, zahlaviValues, enums);
   if (zahlaviBody.length > 0) {
-    doc.setFontSize(11);
-    doc.text(zahlaviTitle, MARGIN, startY);
-    startY += 5;
-    autoTable(doc, {
-      startY,
-      head: [["Položka", "Hodnota"]],
+    page.spacer(6);
+    page.text(zahlaviTitle, { fontSize: STYLE.headingFontSize, bold: true });
+    page.spacer(2);
+    page.table({
+      head: ["Položka", "Hodnota"],
       body: zahlaviBody,
-      margin: { left: MARGIN, right: MARGIN },
-      theme: "grid",
-      styles: { fontSize: 9, font: CZECH_FONT_NAME, fontStyle: "normal", cellPadding: 2 },
-      headStyles: { fillColor: [220, 235, 250], font: CZECH_FONT_NAME, fontStyle: "normal" },
-      columnStyles: {
-        0: { cellWidth: 55 },
-        1: { cellWidth: 120 },
-      },
+      headFill: "#dceaf6",
+      columns: [{}, { maxWidth: STYLE.defaultValueColumnMaxWidth }],
     });
-    startY = getLastTableBottom(doc) + 8;
   }
 
   const rooms = Array.isArray(data.rooms) ? (data.rooms as Room[]) : [];
@@ -339,101 +259,91 @@ export async function generateCustomFormPdfBuffer(raw: Record<string, unknown>):
   const hasRenderableRoomRows = rooms.some((room) =>
     (room.rows ?? []).some((rawRow) => {
       const rowObj = rawRow as Record<string, unknown>;
-      const rowSchema = rowSchemaForPdfRow(rowObj, productSchemas, schema);
+      const rowSchema = rowSchemaForRow(rowObj, productSchemas, schema);
       if (!rowSchema) return false;
       const cols = formBodyPropertyColumns(rowSchema);
       if (cols.length === 0) return false;
-      const flat = flattenPdfDataRow(rowObj);
+      const flat = flattenDataRow(rowObj);
       const rowEnums = rowSchema.enums ?? {};
       return roomTableIsNonEmpty(cols, flat, rowEnums);
     })
   );
 
-  /** Rooms with data but no form_body in schema — fallback layout. */
   const hasSchemaLessContent =
     formBodyPropertyColumns(schema).length === 0 &&
     rooms.some((room) =>
       (room.rows ?? []).some((row) => {
-        const flat = flattenPdfDataRow(row as Record<string, unknown>);
+        const flat = flattenDataRow(row as Record<string, unknown>);
         const keys = Object.keys(flat).filter((k) => !ROW_INTERNAL_KEYS.has(k));
-        return keys.some((k) => !isEmptyDisplay(formatPrimitiveForPdf(undefined, flat[k], enums)));
+        return keys.some((k) => !isEmptyDisplay(formatPrimitive(undefined, flat[k], enums)));
       })
     );
 
   if (rooms.length > 0 && hasRenderableRoomRows) {
-    doc.setFontSize(11);
-    doc.text("Místnosti a položky", MARGIN, startY);
-    startY += 6;
+    page.spacer(6);
+    page.text("Místnosti a položky", { fontSize: STYLE.headingFontSize, bold: true });
+    page.spacer(2);
 
     rooms.forEach((room, idx) => {
       const roomLabel =
-        (room.name && String(room.name).trim() !== "" ? String(room.name).trim() : null) ?? `Místnost ${idx + 1}`;
+        (room.name && String(room.name).trim() !== "" ? String(room.name).trim() : null) ??
+        `Místnost ${idx + 1}`;
       const rows = room.rows ?? [];
       if (rows.length === 0) return;
 
-      doc.setFontSize(10);
-      doc.text(roomLabel, MARGIN, startY);
-      startY += 5;
+      page.spacer(4);
+      page.text(roomLabel, { fontSize: STYLE.bodyFontSize, bold: true });
 
       rows.forEach((rawRow, ri) => {
         const rowObj = rawRow as Record<string, unknown>;
-        const rowSchema = rowSchemaForPdfRow(rowObj, productSchemas, schema);
+        const rowSchema = rowSchemaForRow(rowObj, productSchemas, schema);
         if (!rowSchema) return;
         const columns = formBodyPropertyColumns(rowSchema);
         if (columns.length === 0) return;
-        const flat = flattenPdfDataRow(rowObj);
+        const flat = flattenDataRow(rowObj);
         const rowEnums = rowSchema.enums ?? {};
         if (!roomTableIsNonEmpty(columns, flat, rowEnums)) return;
 
         const fbName = (rowSchema.form_body?.Name ?? "").trim();
         const rowTitle = fbName || rowSchema.product_code || `Řádek ${ri + 1}`;
-        doc.setFontSize(9);
-        doc.text(rowTitle, MARGIN, startY);
-        startY += 4;
-
-        const head = columns.map((c) => propertyLabel(c));
-        const line = columns.map((col) => formatPrimitiveForPdf(col, flat[col.Code], rowEnums));
-        autoTable(doc, {
-          startY,
-          head: [head],
-          body: [line],
-          margin: { left: MARGIN, right: MARGIN },
-          theme: "grid",
-          styles: { fontSize: 8, font: CZECH_FONT_NAME, fontStyle: "normal", cellPadding: 1.5, overflow: "linebreak" },
-          headStyles: { fillColor: [220, 220, 220], font: CZECH_FONT_NAME, fontStyle: "normal" },
+        page.spacer(2);
+        page.text(rowTitle, { fontSize: STYLE.smallFontSize, color: STYLE.muted });
+        page.table({
+          head: columns.map((c) => propertyLabel(c)),
+          body: [columns.map((col) => formatPrimitive(col, flat[col.Code], rowEnums))],
+          columns: columns.map(() => ({ maxWidth: STYLE.defaultValueColumnMaxWidth })),
         });
-        startY = getLastTableBottom(doc) + 8;
       });
     });
   } else if (rooms.length > 0 && hasSchemaLessContent) {
-    /** Schema missing form_body: list rooms as compact key: value lines (no schema labels). */
-    doc.setFontSize(11);
-    doc.text("Místnosti (bez definice sloupců ve schématu)", MARGIN, startY);
-    startY += 6;
+    page.spacer(6);
+    page.text("Místnosti (bez definice sloupců ve schématu)", {
+      fontSize: STYLE.headingFontSize,
+      bold: true,
+    });
+    page.spacer(2);
     rooms.forEach((room, idx) => {
       const roomLabel =
-        (room.name && String(room.name).trim() !== "" ? String(room.name).trim() : null) ?? `Místnost ${idx + 1}`;
+        (room.name && String(room.name).trim() !== "" ? String(room.name).trim() : null) ??
+        `Místnost ${idx + 1}`;
       const rows = room.rows ?? [];
       for (const row of rows) {
-        const flat = flattenPdfDataRow(row as Record<string, unknown>);
+        const flat = flattenDataRow(row as Record<string, unknown>);
         const keys = Object.keys(flat).filter((k) => !ROW_INTERNAL_KEYS.has(k));
         const parts = keys
           .map((k) => {
-            const v = formatPrimitiveForPdf(undefined, flat[k], enums);
+            const v = formatPrimitive(undefined, flat[k], enums);
             return isEmptyDisplay(v) ? null : `${k}: ${v}`;
           })
           .filter((p): p is string => p !== null);
         if (parts.length === 0) continue;
-        autoTable(doc, {
-          startY,
-          head: [[roomLabel]],
+        page.table({
+          head: [roomLabel],
           body: [[parts.join("  |  ")]],
-          margin: { left: MARGIN, right: MARGIN },
-          theme: "grid",
-          styles: { fontSize: 8, font: CZECH_FONT_NAME, cellPadding: 2 },
-          headStyles: { fillColor: [240, 240, 240], font: CZECH_FONT_NAME },
+          headFill: "#f0f0f0",
+          columns: [{ maxWidth: STYLE.defaultValueColumnMaxWidth }],
         });
-        startY = getLastTableBottom(doc) + 6;
+        page.spacer(2);
       }
     });
   }
@@ -442,38 +352,28 @@ export async function generateCustomFormPdfBuffer(raw: Record<string, unknown>):
   const zapatiValues = (data.zapatiValues ?? {}) as Record<string, unknown>;
   const zapatiBody = sectionRowsFromValues(schema.zapati, zapatiValues, enums);
   if (zapatiBody.length > 0) {
-    doc.setFontSize(11);
-    doc.text(zapatiTitle, MARGIN, startY);
-    startY += 5;
-    autoTable(doc, {
-      startY,
-      head: [["Položka", "Hodnota"]],
+    page.spacer(6);
+    page.text(zapatiTitle, { fontSize: STYLE.headingFontSize, bold: true });
+    page.spacer(2);
+    page.table({
+      head: ["Položka", "Hodnota"],
       body: zapatiBody,
-      margin: { left: MARGIN, right: MARGIN },
-      theme: "grid",
-      styles: { fontSize: 9, font: CZECH_FONT_NAME, fontStyle: "normal", cellPadding: 2 },
-      headStyles: { fillColor: [220, 235, 250], font: CZECH_FONT_NAME, fontStyle: "normal" },
-      columnStyles: {
-        0: { cellWidth: 55 },
-        1: { cellWidth: 120 },
-      },
+      headFill: "#dceaf6",
+      columns: [{}, { maxWidth: STYLE.defaultValueColumnMaxWidth }],
     });
-    startY = getLastTableBottom(doc) + 8;
   }
 
-  const hasAnyPdfContent =
+  const hasAnyContent =
     cust.length > 0 ||
     zahlaviBody.length > 0 ||
     zapatiBody.length > 0 ||
     hasRenderableRoomRows ||
     (formBodyPropertyColumns(schema).length === 0 && rooms.length > 0 && hasSchemaLessContent);
 
-  /** Nothing beyond title / kód produktu */
-  if (!hasAnyPdfContent) {
-    doc.setFontSize(9);
-    doc.text("Žádná vyplněná data k zobrazení.", MARGIN, startY);
+  if (!hasAnyContent) {
+    page.spacer(8);
+    page.text("Žádná vyplněná data k zobrazení.", { fontSize: STYLE.bodyFontSize, color: STYLE.muted });
   }
 
-  const arrayBuffer = doc.output("arraybuffer");
-  return Buffer.from(arrayBuffer);
+  return page.toPng();
 }

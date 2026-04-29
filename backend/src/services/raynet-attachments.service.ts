@@ -1,13 +1,13 @@
 import type { Pool } from "pg";
 import * as formsQueries from "../queries/forms.queries";
 import * as formAttachmentsService from "./form-attachments.service";
-import * as admfPdfService from "./admf-pdf.service";
-import * as customFormPdfService from "./custom-form-pdf.service";
+import * as admfImageService from "./admf-image.service";
+import * as customFormImageService from "./custom-form-image.service";
 
 export type RaynetAttachmentSource =
   | { kind: "s3_form_attachment"; formId: number; s3Key: string; downloadPath: string }
-  | { kind: "generated_admf_pdf"; formId: number }
-  | { kind: "generated_custom_pdf"; formId: number; sourceFormId: number };
+  | { kind: "generated_admf_image"; formId: number }
+  | { kind: "generated_custom_image"; formId: number; sourceFormId: number };
 
 export interface RaynetAttachmentCandidate {
   source: RaynetAttachmentSource;
@@ -30,8 +30,8 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
  *
  * Includes:
  * - S3/MinIO attachments uploaded by user
- * - Generated ADMF PDF
- * - Generated PDFs for each source step-1 form referenced by admf.form_json.source_form_ids
+ * - Generated ADMF image
+ * - Generated images for each source step-1 form referenced by admf.form_json.source_form_ids
  *
  * Does not perform any Raynet calls.
  */
@@ -66,17 +66,17 @@ export async function collectRaynetAttachmentCandidates(params: {
     });
   }
 
-  // 2) Generated ADMF PDF
-  const admfPdf = await admfPdfService.generateAdmfPdfBuffer(admfForm.form_json);
+  // 2) Generated ADMF image
+  const admfImage = await admfImageService.generateAdmfImageBuffer(admfForm.form_json);
   candidates.push({
-    source: { kind: "generated_admf_pdf", formId: admfFormId },
-    filename: `admf-${admfFormId}.pdf`,
-    contentType: "application/pdf",
-    sizeBytes: admfPdf.length,
-    buffer: admfPdf,
+    source: { kind: "generated_admf_image", formId: admfFormId },
+    filename: `admf-${admfFormId}.png`,
+    contentType: "image/png",
+    sizeBytes: admfImage.length,
+    buffer: admfImage,
   });
 
-  // 3) Generated PDFs for source custom forms (výrobní list)
+  // 3) Generated images for source custom forms (výrobní list)
   const sourceFormIds: number[] = Array.isArray(admfForm.form_json?.source_form_ids)
     ? (admfForm.form_json.source_form_ids as number[])
     : [];
@@ -85,16 +85,15 @@ export async function collectRaynetAttachmentCandidates(params: {
     const src = await formsQueries.getFormById(pool, sourceFormId, userId);
     if (!src) continue;
     if (src.form_type !== "custom") continue;
-    const pdf = await customFormPdfService.generateCustomFormPdfBuffer(src.form_json);
+    const image = await customFormImageService.generateCustomFormImageBuffer(src.form_json);
     candidates.push({
-      source: { kind: "generated_custom_pdf", formId: admfFormId, sourceFormId },
-      filename: `vyrobni-list-${sourceFormId}.pdf`,
-      contentType: "application/pdf",
-      sizeBytes: pdf.length,
-      buffer: pdf,
+      source: { kind: "generated_custom_image", formId: admfFormId, sourceFormId },
+      filename: `vyrobni-list-${sourceFormId}.png`,
+      contentType: "image/png",
+      sizeBytes: image.length,
+      buffer: image,
     });
   }
 
   return candidates;
 }
-

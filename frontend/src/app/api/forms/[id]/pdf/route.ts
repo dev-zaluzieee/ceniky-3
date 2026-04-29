@@ -1,6 +1,7 @@
 /**
- * Next.js API route proxy for ADMF PDF generation.
- * Forwards authenticated request to backend and streams PDF binary response.
+ * Next.js API route proxy for ADMF export image generation.
+ * Forwards authenticated request to backend and streams PNG binary response.
+ * Path keeps the legacy /pdf name; the response is image/png.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -12,7 +13,7 @@ function getBackendUrl(): string {
 
 /**
  * GET /api/forms/[id]/pdf
- * Returns application/pdf for authenticated user.
+ * Returns image/png for authenticated user.
  */
 export async function GET(
   request: NextRequest,
@@ -42,18 +43,18 @@ export async function GET(
         return NextResponse.json(data, { status: backendResponse.status });
       }
       return NextResponse.json(
-        { success: false, error: "Failed to generate PDF" },
+        { success: false, error: "Failed to generate image" },
         { status: backendResponse.status }
       );
     }
 
     const arrayBuffer = await backendResponse.arrayBuffer();
-    const filename = backendResponse.headers.get("content-disposition") ?? `inline; filename="admf-${id}.pdf"`;
+    const filename = backendResponse.headers.get("content-disposition") ?? `inline; filename="admf-${id}.png"`;
 
     return new NextResponse(arrayBuffer, {
       status: 200,
       headers: {
-        "Content-Type": "application/pdf",
+        "Content-Type": "image/png",
         "Content-Disposition": filename,
         "Cache-Control": "private, max-age=0, must-revalidate",
       },

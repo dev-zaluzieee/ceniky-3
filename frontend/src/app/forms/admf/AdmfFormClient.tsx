@@ -909,14 +909,14 @@ export default function AdmfFormClient({
     return () => document.removeEventListener("keydown", onKey);
   }, [pdfViewerUrl, handleClosePdfModal]);
 
-  /** Save the currently shown PDF via native share sheet (iPad) or download fallback. */
+  /** Save the currently shown export image via native share sheet (iPad) or download fallback. */
   const handleDownloadPdfFromModal = async () => {
     if (!pdfViewerUrl || !formId) return;
-    const fileName = `admf-${formId}.pdf`;
+    const fileName = `admf-${formId}.png`;
     try {
       const res = await fetch(pdfViewerUrl);
       const blob = await res.blob();
-      const file = new File([blob], fileName, { type: "application/pdf" });
+      const file = new File([blob], fileName, { type: "image/png" });
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file] });
         return;
