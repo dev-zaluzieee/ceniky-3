@@ -52,7 +52,6 @@ router.post(
       }
 
       const userId = req.userId!;
-      const ovtName = req.raynetUserName ?? null;
       const { reason, testMode } = (req.body ?? {}) as { reason?: unknown; testMode?: unknown };
 
       const pool = getPool();
@@ -60,7 +59,6 @@ router.post(
         pool,
         orderId,
         userId,
-        ovtName,
         rawReason: reason,
         testMode: testMode === true,
       });

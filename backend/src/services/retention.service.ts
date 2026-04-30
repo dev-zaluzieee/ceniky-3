@@ -1,42 +1,37 @@
 /**
- * "Poslat na retence" pipeline.
+ * OVT-side "Poslat na retence" pipeline (chunk 4).
  *
- * Chunk 2 — real exports:
- *   1. Raynet (hard gate): GET /api/v2/event/{id}/, merge tags + append description,
- *      POST /api/v2/event/{id}/ with the merged body.
- *   2. ERP (best-effort, only if order has source_erp_order_id):
- *      PUT /orders/{id} with column_values, then POST /orders/{id}/comments.
+ * Two-step workflow:
+ *   - OVT clicks the button → this service runs.
+ *     A) Insert retention_logs row with kind='OVT_REQUEST' + reason.
+ *     B) Set Retence_7fbd1=true on the Raynet event (GET-merge so other custom fields survive).
+ *     No tags, no description append, no ERP. The full export runs later when an
+ *     office user processes the request from /fronta-retenci on the office side.
  *
- * Test mode skips all external calls but still resolves and logs the planned payloads.
+ *   - Office user later "processes" the request (in the office app) — that runs the
+ *     full Raynet (CN, zkontrolováno, description) + ERP export, AND closes the OVT
+ *     request via processed_at / processed_log_id on the row this service inserted.
  */
 
 import { Pool } from "pg";
 import * as ordersService from "./orders.service";
 import * as retentionLogsQueries from "../queries/retention-logs.queries";
 import { raynetJsonRequest, type RaynetHttpLogEntry } from "./raynet-api.client";
-import { classifyErpHttpError, erpFetch, getErpConfig } from "./erp-export.service";
 import {
   RetentionLogRecord,
   RetentionErrorCode,
-  RetentionWarningCode,
   RetentionWarning,
 } from "../types/retention.types";
 import { BadRequestError } from "../utils/errors";
 
-const RETENTION_TAGS = ["CN", "zkontrolováno"];
-const RETENTION_DESCRIPTION_PREFIX = "Důvod zaslání na Retence:";
-const RETENTION_ERP_COLUMNS = {
-  dopadlo_zamereni: "cekame",
-  proc_nedopadlo_zamereni: "cenova-nabidka",
-} as const;
-
+const RETENTION_CN_TAG = "CN";
+const RETENTION_CUSTOM_FIELD = "Retence_7fbd1";
 const REASON_MAX_LENGTH = 4000;
 
 interface SendRetentionParams {
   pool: Pool;
   orderId: number;
   userId: string;
-  ovtName: string | null;
   rawReason: unknown;
   testMode: boolean;
 }
@@ -47,16 +42,11 @@ interface SendRetentionResult {
 }
 
 interface ResolvedRequestPayload {
+  kind: "OVT_REQUEST";
   raynet: {
     event_id: number;
-    tags_to_add: string[];
-    description_append: string;
+    custom_fields: Record<string, unknown>;
   };
-  erp: {
-    order_id: number;
-    column_values: Record<string, string>;
-    comment_body: string;
-  } | null;
 }
 
 function normalizeReason(raw: unknown): string {
@@ -83,8 +73,16 @@ function classifyRaynetHttpError(status: number): RetentionErrorCode {
   return "UNKNOWN_ERROR";
 }
 
-/** Read tags from a Raynet event GET response. Tags come back as string[] but defensively handle a comma-string. */
-function extractCurrentTags(eventBody: unknown): string[] {
+function extractCustomFieldsFromEvent(eventBody: unknown): Record<string, unknown> {
+  const data = (eventBody as { data?: unknown })?.data ?? eventBody;
+  const cf = (data as { customFields?: unknown })?.customFields;
+  if (cf && typeof cf === "object" && !Array.isArray(cf)) {
+    return { ...(cf as Record<string, unknown>) };
+  }
+  return {};
+}
+
+function extractTagsFromEvent(eventBody: unknown): string[] {
   const data = (eventBody as { data?: unknown })?.data ?? eventBody;
   const tags = (data as { tags?: unknown })?.tags;
   if (Array.isArray(tags)) {
@@ -99,30 +97,14 @@ function extractCurrentTags(eventBody: unknown): string[] {
   return [];
 }
 
-function extractCurrentDescription(eventBody: unknown): string {
-  const data = (eventBody as { data?: unknown })?.data ?? eventBody;
-  const desc = (data as { description?: unknown })?.description;
-  return typeof desc === "string" ? desc : "";
-}
-
-function mergeTags(current: string[], toAdd: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const t of [...current, ...toAdd]) {
-    const trimmed = t.trim();
-    if (trimmed.length === 0) continue;
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(trimmed);
-  }
-  return out;
+function tagsContainCn(tags: string[]): boolean {
+  return tags.some((t) => t.trim().toLowerCase() === RETENTION_CN_TAG.toLowerCase());
 }
 
 export async function sendOrderToRetention(
   params: SendRetentionParams
 ): Promise<SendRetentionResult> {
-  const { pool, orderId, userId, ovtName, rawReason, testMode } = params;
+  const { pool, orderId, userId, rawReason, testMode } = params;
 
   const reason = normalizeReason(rawReason);
 
@@ -136,46 +118,32 @@ export async function sendOrderToRetention(
     );
   }
   if (order.source_raynet_event_id == null) {
-    /**
-     * The retention update writes tags + note onto the Raynet *event*. raynet_id alone (the
-     * customer) is not enough — without an event we can't perform the Raynet step.
-     */
     throw new BadRequestError(
       "Tato zakázka nemá vazbu na Raynet událost, nelze ji odeslat na retence.",
       "MISSING_RAYNET_ID" satisfies RetentionErrorCode
     );
   }
 
-  const erpOrderId = order.source_erp_order_id ?? null;
-  const ovtDisplayName = ovtName && ovtName.trim().length > 0 ? ovtName.trim() : userId;
-  const erpCommentBody = `Odesláno na retenci OVT - ${ovtDisplayName}. Důvod: ${reason}`;
-  const descriptionAppend = `${RETENTION_DESCRIPTION_PREFIX} ${reason}`;
-
+  const eventId = order.source_raynet_event_id;
   const startedAt = Date.now();
+
   const logId = await retentionLogsQueries.createRetentionLog(pool, {
     order_id: order.id,
     user_id: userId,
     reason,
     raynet_id: order.raynet_id,
-    raynet_event_id: order.source_raynet_event_id,
-    erp_order_id: erpOrderId,
+    raynet_event_id: eventId,
+    erp_order_id: order.source_erp_order_id ?? null,
     test_mode: testMode,
+    kind: "OVT_REQUEST",
   });
 
   const resolvedPayload: ResolvedRequestPayload = {
+    kind: "OVT_REQUEST",
     raynet: {
-      event_id: order.source_raynet_event_id,
-      tags_to_add: [...RETENTION_TAGS],
-      description_append: descriptionAppend,
+      event_id: eventId,
+      custom_fields: { [RETENTION_CUSTOM_FIELD]: true },
     },
-    erp:
-      erpOrderId == null
-        ? null
-        : {
-            order_id: erpOrderId,
-            column_values: { ...RETENTION_ERP_COLUMNS },
-            comment_body: erpCommentBody,
-          },
   };
 
   const warnings: RetentionWarning[] = [];
@@ -185,14 +153,8 @@ export async function sendOrderToRetention(
     request_payload: resolvedPayload as unknown as Record<string, unknown>,
   });
 
-  /** Test mode: stop here, success without any external calls. */
+  /** Test mode: no Raynet call, mark SUCCESS immediately. */
   if (testMode) {
-    if (erpOrderId == null) {
-      warnings.push({
-        code: "ERP_NOT_LINKED" satisfies RetentionWarningCode,
-        reason: "Order has no source_erp_order_id — ERP step would be skipped.",
-      });
-    }
     await retentionLogsQueries.updateRetentionLog(pool, logId, {
       status: "SUCCESS",
       warnings,
@@ -202,16 +164,14 @@ export async function sendOrderToRetention(
     return { logId, status: "SUCCESS" };
   }
 
-  /** ── Raynet hard gate ──────────────────────────────────────────── */
+  /** ── Raynet GET-merge-POST for the customField only ──────────────── */
 
-  const eventId = order.source_raynet_event_id;
   const timeline: RaynetHttpLogEntry[] = [];
-  let currentDescription = "";
-  let currentTags: string[] = [];
+  let currentCustomFields: Record<string, unknown> = {};
 
   try {
     const getRes = await raynetJsonRequest({
-      step: "retention_raynet_event_get",
+      step: "ovt_request_raynet_event_get",
       method: "GET",
       path: `/api/v2/event/${eventId}/`,
     }).catch((err: any) => {
@@ -238,8 +198,7 @@ export async function sendOrderToRetention(
       );
     }
 
-    currentDescription = extractCurrentDescription(getRes.body);
-    currentTags = extractCurrentTags(getRes.body);
+    currentCustomFields = extractCustomFieldsFromEvent(getRes.body);
   } catch (error: any) {
     if (error.statusCode) throw error;
     await retentionLogsQueries.updateRetentionLog(pool, logId, {
@@ -257,23 +216,15 @@ export async function sendOrderToRetention(
     );
   }
 
-  const mergedDescription =
-    currentDescription.length > 0
-      ? `${currentDescription}\n${descriptionAppend}`
-      : descriptionAppend;
-  const mergedTags = mergeTags(currentTags, RETENTION_TAGS);
-
-  const raynetUpdateBody = {
-    description: mergedDescription,
-    tags: mergedTags.join(", "),
-  };
+  /** Merge our flag with the existing customFields so we don't clobber other fields. */
+  const mergedCustomFields = { ...currentCustomFields, [RETENTION_CUSTOM_FIELD]: true };
 
   try {
     const postRes = await raynetJsonRequest({
-      step: "retention_raynet_event_update",
+      step: "ovt_request_raynet_event_update",
       method: "POST",
       path: `/api/v2/event/${eventId}/`,
-      body: raynetUpdateBody,
+      body: { customFields: mergedCustomFields },
     }).catch((err: any) => {
       if (err?.raynetLog) timeline.push(err.raynetLog as RaynetHttpLogEntry);
       throw err;
@@ -286,7 +237,6 @@ export async function sendOrderToRetention(
         status: "FAILED",
         response_status: postRes.status,
         response_body: {
-          eventGet: { description: currentDescription, tags: currentTags },
           eventUpdate: postRes.body,
           timeline,
         } as unknown as Record<string, unknown>,
@@ -318,105 +268,36 @@ export async function sendOrderToRetention(
     );
   }
 
-  /** ── ERP best-effort ───────────────────────────────────────────── */
-
-  const erpResults: {
-    put: { status: number; body: Record<string, unknown> } | null;
-    comment: { status: number; body: Record<string, unknown> } | null;
-  } = { put: null, comment: null };
-  let finalStatus: RetentionLogRecord["status"] = "SUCCESS";
-
-  if (erpOrderId == null) {
-    warnings.push({
-      code: "ERP_NOT_LINKED" satisfies RetentionWarningCode,
-      reason: "Order has no source_erp_order_id — ERP step skipped.",
-    });
-  } else {
-    try {
-      const { apiEndpoint, bearerToken } = getErpConfig();
-
-      try {
-        erpResults.put = await erpFetch(
-          `${apiEndpoint}/orders/${erpOrderId}`,
-          bearerToken,
-          "PUT",
-          { column_values: { ...RETENTION_ERP_COLUMNS } }
-        );
-
-        if (erpResults.put.status < 200 || erpResults.put.status >= 300) {
-          const erpErrorCode = classifyErpHttpError(erpResults.put.status);
-          warnings.push({
-            code: "ERP_PUT_FAILED" satisfies RetentionWarningCode,
-            reason: `ERP PUT /orders/${erpOrderId} returned HTTP ${erpResults.put.status} (${erpErrorCode}).`,
-          });
-          finalStatus = "PARTIAL_SUCCESS";
-        } else {
-          /** PUT succeeded — try the comment as a non-critical step. */
-          try {
-            erpResults.comment = await erpFetch(
-              `${apiEndpoint}/orders/${erpOrderId}/comments`,
-              bearerToken,
-              "POST",
-              { body: erpCommentBody }
-            );
-            if (erpResults.comment.status < 200 || erpResults.comment.status >= 300) {
-              warnings.push({
-                code: "ERP_COMMENT_FAILED" satisfies RetentionWarningCode,
-                reason: `ERP comment POST returned HTTP ${erpResults.comment.status}. Column updates already applied.`,
-              });
-            }
-          } catch (commentErr: any) {
-            warnings.push({
-              code: "ERP_COMMENT_FAILED" satisfies RetentionWarningCode,
-              reason: `ERP comment POST failed: ${commentErr?.message ?? "Unknown error"}. Column updates already applied.`,
-            });
-          }
-        }
-      } catch (putErr: any) {
-        const isTimeout = putErr?.name === "TimeoutError" || putErr?.name === "AbortError";
-        warnings.push({
-          code: "ERP_PUT_FAILED" satisfies RetentionWarningCode,
-          reason: isTimeout
-            ? `ERP PUT timed out: ${putErr?.message ?? "timeout"}.`
-            : `ERP PUT failed: ${putErr?.message ?? "Unknown error"}.`,
-        });
-        finalStatus = "PARTIAL_SUCCESS";
-      }
-    } catch (configErr: any) {
-      warnings.push({
-        code: "ERP_PUT_FAILED" satisfies RetentionWarningCode,
-        reason: `ERP not configured: ${configErr?.message ?? "ERP_CONFIG_MISSING"}.`,
-      });
-      finalStatus = "PARTIAL_SUCCESS";
-    }
-  }
-
   await retentionLogsQueries.updateRetentionLog(pool, logId, {
-    status: finalStatus,
+    status: "SUCCESS",
     response_body: {
       raynet: {
-        before: { description: currentDescription, tags: currentTags },
-        after: { description: mergedDescription, tags: mergedTags },
+        before: { customFields: currentCustomFields },
+        after: { customFields: mergedCustomFields },
         timeline,
       },
-      erp:
-        erpOrderId == null
-          ? null
-          : {
-              put: erpResults.put,
-              comment: erpResults.comment,
-            },
     } as unknown as Record<string, unknown>,
     warnings,
     duration_ms: Date.now() - startedAt,
     completed_at: new Date(),
   });
 
-  return { logId, status: finalStatus };
+  return { logId, status: "SUCCESS" };
 }
 
 export interface OrderRetentionStatus {
+  /** State B: "V retencích" — Raynet event has CN tag. Computed via one Raynet GET on page load. */
   inRetention: boolean;
+  /** State A: "Zasláno na retence" — open OVT_REQUEST in our DB for this order. */
+  inRetentionRequested: boolean;
+  /** OVT note + identity from the open OVT_REQUEST, for display. Null when no open request. */
+  openRequest: {
+    id: number;
+    reason: string;
+    user_id: string;
+    created_at: string;
+  } | null;
+  /** Most recent log row of any kind, for the "already sent — confirm resend" gate. */
   latest: {
     id: number;
     status: RetentionLogRecord["status"];
@@ -433,17 +314,39 @@ export async function getOrderRetentionStatus(
   userId: string
 ): Promise<OrderRetentionStatus> {
   /** Verifies ownership; throws if order doesn't belong to user. */
-  await ordersService.getOrderById(pool, orderId, userId);
+  const order = await ordersService.getOrderById(pool, orderId, userId);
 
   const latest = await retentionLogsQueries.getLatestRetentionForOrder(pool, orderId, userId);
-  const inRetention = await retentionLogsQueries.hasSuccessfulRetentionForOrder(
-    pool,
-    orderId,
-    userId
-  );
+  const openRequest = await retentionLogsQueries.getOpenOvtRequestForOrder(pool, orderId, userId);
+
+  /** State B comes from Raynet — degrade gracefully if Raynet is unreachable. */
+  let inRetention = false;
+  if (order.source_raynet_event_id != null) {
+    try {
+      const getRes = await raynetJsonRequest({
+        step: "retention_status_raynet_event_get",
+        method: "GET",
+        path: `/api/v2/event/${order.source_raynet_event_id}/`,
+      });
+      if (getRes.status >= 200 && getRes.status < 300) {
+        inRetention = tagsContainCn(extractTagsFromEvent(getRes.body));
+      }
+    } catch {
+      /** Page still loads, badge just doesn't render. */
+    }
+  }
 
   return {
     inRetention,
+    inRetentionRequested: openRequest != null,
+    openRequest: openRequest
+      ? {
+          id: openRequest.id,
+          reason: openRequest.reason,
+          user_id: openRequest.user_id,
+          created_at: openRequest.created_at.toISOString(),
+        }
+      : null,
     latest: latest
       ? {
           id: latest.id,

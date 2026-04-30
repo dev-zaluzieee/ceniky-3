@@ -470,17 +470,40 @@ export default function OrderDetailClient({
             className={
               retentionStatus?.inRetention
                 ? "inline-flex items-center gap-2 rounded-md border border-red-700 bg-red-100 px-4 py-2 text-sm font-medium text-red-900 dark:border-red-600 dark:bg-red-900/30 dark:text-red-200"
-                : "inline-flex items-center gap-2 rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
+                : retentionStatus?.inRetentionRequested
+                  ? "inline-flex items-center gap-2 rounded-md border border-amber-600 bg-amber-100 px-4 py-2 text-sm font-medium text-amber-900 dark:border-amber-500 dark:bg-amber-900/30 dark:text-amber-200"
+                  : "inline-flex items-center gap-2 rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
             }
             title={
               retentionStatus?.inRetention
-                ? "Zakázka už byla odeslána na retence"
-                : "Odeslat zakázku na retence"
+                ? "Zakázka je v retencích"
+                : retentionStatus?.inRetentionRequested
+                  ? "Žádost o retenci byla odeslána, kancelář ji ještě nezpracovala"
+                  : "Odeslat zakázku na retence"
             }
           >
-            {retentionStatus?.inRetention ? "V retencích" : "Poslat na retence"}
+            {retentionStatus?.inRetention
+              ? "V retencích"
+              : retentionStatus?.inRetentionRequested
+                ? "Zasláno na retence"
+                : "Poslat na retence"}
           </button>
         </div>
+        {retentionStatus?.openRequest && (
+          <div className="mb-4 rounded-md border border-amber-700/40 bg-amber-900/20 p-3 text-sm dark:border-amber-600/40 dark:bg-amber-900/20">
+            <p className="font-semibold text-amber-200">
+              Poznámka OVT — {retentionStatus.openRequest.user_id} (
+              {new Date(retentionStatus.openRequest.created_at).toLocaleString("cs-CZ", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+              )
+            </p>
+            <p className="mt-1 whitespace-pre-wrap text-amber-100">
+              {retentionStatus.openRequest.reason}
+            </p>
+          </div>
+        )}
 
         {/* Section 1: Základní informace */}
         <div className="mb-4">
@@ -1060,20 +1083,22 @@ export default function OrderDetailClient({
               </button>
             </div>
 
-            {retentionStatus?.inRetention && !retentionResendAcknowledged ? (
+            {(retentionStatus?.inRetention || retentionStatus?.inRetentionRequested) && !retentionResendAcknowledged ? (
               <>
                 <p className="mb-2 text-sm text-zinc-300">
-                  Tato zakázka už byla odeslána na retence
+                  {retentionStatus?.inRetention
+                    ? "Tato zakázka je v retencích"
+                    : "Žádost o retenci už byla odeslána"}
                   {retentionStatus.latest?.created_at
-                    ? ` ${new Date(retentionStatus.latest.created_at).toLocaleString("cs-CZ", {
+                    ? ` (${new Date(retentionStatus.latest.created_at).toLocaleString("cs-CZ", {
                         dateStyle: "medium",
                         timeStyle: "short",
-                      })}`
+                      })})`
                     : ""}
                   .
                 </p>
                 <p className="mb-6 text-sm text-zinc-400">
-                  Opravdu ji chcete odeslat znovu?
+                  Opravdu chcete odeslat novou žádost?
                 </p>
                 <div className="flex justify-end gap-2">
                   <button

@@ -18,8 +18,20 @@ export interface RetentionStatusLatest {
   completed_at: string | null;
 }
 
+export interface RetentionOpenRequest {
+  id: number;
+  reason: string;
+  user_id: string;
+  created_at: string;
+}
+
 export interface RetentionStatus {
+  /** State B: Raynet event has CN tag. */
   inRetention: boolean;
+  /** State A: open OVT_REQUEST in our DB. */
+  inRetentionRequested: boolean;
+  /** OVT's open request (note + identity). Null when no open request. */
+  openRequest: RetentionOpenRequest | null;
   latest: RetentionStatusLatest | null;
 }
 

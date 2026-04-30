@@ -14,9 +14,10 @@ export async function createRetentionLog(
   pool: Pool,
   params: CreateRetentionLogParams
 ): Promise<number> {
+  const kind = params.kind ?? "OVT_REQUEST";
   const query = `
-    INSERT INTO retention_logs (order_id, user_id, reason, raynet_id, raynet_event_id, erp_order_id, status, test_mode)
-    VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7)
+    INSERT INTO retention_logs (order_id, user_id, reason, raynet_id, raynet_event_id, erp_order_id, status, test_mode, kind)
+    VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7, $8)
     RETURNING id
   `;
   try {
@@ -28,10 +29,52 @@ export async function createRetentionLog(
       params.raynet_event_id,
       params.erp_order_id,
       params.test_mode,
+      kind,
     ]);
     return result.rows[0].id;
   } catch (error: any) {
     throw new DatabaseError(`Failed to create retention log: ${error.message}`, error);
+  }
+}
+
+export interface OpenOvtRequestRow {
+  id: number;
+  reason: string;
+  user_id: string;
+  created_at: Date;
+}
+
+/**
+ * Latest open (unprocessed) OVT_REQUEST for an order owned by the given user.
+ * Drives the OVT-side state A check + the resend-confirmation modal text.
+ */
+export async function getOpenOvtRequestForOrder(
+  pool: Pool,
+  orderId: number,
+  userId: string
+): Promise<OpenOvtRequestRow | null> {
+  const query = `
+    SELECT id, reason, user_id, created_at
+      FROM retention_logs
+     WHERE kind = 'OVT_REQUEST'
+       AND processed_at IS NULL
+       AND order_id = $1
+       AND user_id = $2
+     ORDER BY created_at DESC
+     LIMIT 1
+  `;
+  try {
+    const result = await pool.query(query, [orderId, userId]);
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      reason: row.reason,
+      user_id: row.user_id,
+      created_at: new Date(row.created_at),
+    };
+  } catch (error: any) {
+    throw new DatabaseError(`Failed to load open OVT request: ${error.message}`, error);
   }
 }
 

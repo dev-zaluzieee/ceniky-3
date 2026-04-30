@@ -59,6 +59,8 @@ export interface RetentionLogRecord {
   completed_at: Date | null;
 }
 
+export type RetentionLogKind = "OVT_REQUEST" | "OFFICE_EXPORT";
+
 export interface CreateRetentionLogParams {
   order_id: number;
   user_id: string;
@@ -67,6 +69,8 @@ export interface CreateRetentionLogParams {
   raynet_event_id: number;
   erp_order_id: number | null;
   test_mode: boolean;
+  /** OVT_REQUEST = lightweight signal; OFFICE_EXPORT = full Raynet+ERP export. Defaults to OVT_REQUEST on the OVT side. */
+  kind?: RetentionLogKind;
 }
 
 export interface UpdateRetentionLogParams {
