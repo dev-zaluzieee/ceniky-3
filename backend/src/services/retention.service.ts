@@ -157,6 +157,7 @@ export async function sendOrderToRetention(
     user_id: userId,
     reason,
     raynet_id: order.raynet_id,
+    raynet_event_id: order.source_raynet_event_id,
     erp_order_id: erpOrderId,
     test_mode: testMode,
   });

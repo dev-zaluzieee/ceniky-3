@@ -64,6 +64,7 @@ export interface CreateRetentionLogParams {
   user_id: string;
   reason: string;
   raynet_id: number;
+  raynet_event_id: number;
   erp_order_id: number | null;
   test_mode: boolean;
 }

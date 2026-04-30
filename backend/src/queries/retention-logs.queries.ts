@@ -15,8 +15,8 @@ export async function createRetentionLog(
   params: CreateRetentionLogParams
 ): Promise<number> {
   const query = `
-    INSERT INTO retention_logs (order_id, user_id, reason, raynet_id, erp_order_id, status, test_mode)
-    VALUES ($1, $2, $3, $4, $5, 'PENDING', $6)
+    INSERT INTO retention_logs (order_id, user_id, reason, raynet_id, raynet_event_id, erp_order_id, status, test_mode)
+    VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7)
     RETURNING id
   `;
   try {
@@ -25,6 +25,7 @@ export async function createRetentionLog(
       params.user_id,
       params.reason,
       params.raynet_id,
+      params.raynet_event_id,
       params.erp_order_id,
       params.test_mode,
     ]);
