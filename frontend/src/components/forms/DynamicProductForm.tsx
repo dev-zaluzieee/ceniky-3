@@ -31,6 +31,8 @@ import { productPayloadFromPricingDetail } from "@/lib/product-schema-from-prici
 import type { PricingFormDetail } from "@/lib/pricing-forms-api";
 import ProductPickerModal from "@/components/forms/ProductPickerModal";
 import PricePreviewModal from "@/components/forms/PricePreviewModal";
+import FormPricePreviewPanel from "@/components/forms/FormPricePreviewPanel";
+import { useRouter } from "next/navigation";
 import ProductSwitchLossModal from "@/components/forms/ProductSwitchLossModal";
 import SearchableSelect from "@/components/forms/SearchableSelect";
 
@@ -181,6 +183,14 @@ export interface DynamicProductFormProps {
   onSizeLimitErrorChange?: (hasError: boolean) => void;
   onWarrantyErrorChange?: (hasError: boolean) => void;
   onRequiredFieldsErrorChange?: (hasError: boolean) => void;
+  /**
+   * Order/form context — required for the "Generovat ADMF s těmito parametry"
+   * button. When `formId` is undefined or `isDirty` is true, the button shows
+   * a "uložte formulář" hint and stays disabled.
+   */
+  orderId?: number;
+  formId?: number;
+  isDirty?: boolean;
 }
 
 type PickerTarget =
@@ -210,6 +220,9 @@ export default function DynamicProductForm({
   onSizeLimitErrorChange,
   onWarrantyErrorChange,
   onRequiredFieldsErrorChange,
+  orderId,
+  formId,
+  isDirty,
 }: DynamicProductFormProps) {
   const [pickerTarget, setPickerTarget] = useState<PickerTarget | null>(null);
   const pickerTargetRef = useRef<PickerTarget | null>(null);
@@ -252,6 +265,15 @@ export default function DynamicProductForm({
   const [sizeLimitByRow, setSizeLimitByRow] = useState<Record<string, SizeLimitsResult>>({});
   const [pricePreviewByRow, setPricePreviewByRow] = useState<Record<string, RowPricePreviewState>>({});
   const [pricePreviewModal, setPricePreviewModal] = useState<ActivePricePreviewModal | null>(null);
+  const [formPreviewOpen, setFormPreviewOpen] = useState(false);
+  const router = useRouter();
+
+  const canGenerateAdmf = orderId != null && formId != null && !isDirty;
+  const generateAdmfDisabledReason = (() => {
+    if (orderId == null || formId == null) return "Nejprve uložte formulář, pak můžete vygenerovat ADMF.";
+    if (isDirty) return "Formulář má neuložené změny — nejprve uložte.";
+    return undefined;
+  })();
   const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const currencyFormatter = useMemo(
     () =>
@@ -1082,6 +1104,50 @@ export default function DynamicProductForm({
         currencyFormatter={currencyFormatter}
         onClose={() => setPricePreviewModal(null)}
       />
+      <FormPricePreviewPanel
+        open={formPreviewOpen}
+        onClose={() => setFormPreviewOpen(false)}
+        buildFormJson={() => ({
+          schema: headerSchema,
+          product_schemas: productSchemas,
+          data: formData,
+        })}
+        currencyFormatter={currencyFormatter}
+        generateAdmfDisabledReason={generateAdmfDisabledReason}
+        onGenerateAdmf={
+          canGenerateAdmf
+            ? (_data, params) => {
+                const search = new URLSearchParams();
+                search.set("formIds", String(formId));
+                search.set("vat", String(params.vatRatePercent));
+                search.set("ovtSleva", String(params.ovtSlevaBezDph));
+                search.set("mngSlevaActive", params.mngSlevaActive ? "1" : "0");
+                search.set("mngSleva", String(params.mngSlevaBezDph));
+                if (params.montazOverrideBezDph != null) {
+                  search.set("montaz", String(params.montazOverrideBezDph));
+                }
+                if (params.bulkSlevaPercent > 0) {
+                  search.set("bulkSleva", String(params.bulkSlevaPercent));
+                }
+                router.push(`/orders/${orderId}/forms/create/admf?${search.toString()}`);
+              }
+            : undefined
+        }
+      />
+
+      {/* Form-level price preview trigger — visible above all sections so OVT can quote at any moment. */}
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => setFormPreviewOpen(true)}
+          disabled={formData.rooms.length === 0}
+          title={formData.rooms.length === 0 ? "Přidejte nejprve řádek do místnosti" : "Zobrazit náhled ceny pro celý formulář"}
+          className="inline-flex items-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span aria-hidden>💰</span>
+          Náhled ceny pro zákazníka
+        </button>
+      </div>
 
       <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
         <button

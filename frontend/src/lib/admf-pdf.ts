@@ -224,8 +224,10 @@ export async function generateAdmfPdf(formData: AdmfFormData): Promise<jsPDF> {
   y = ((doc as unknown) as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
 
   // ---- Product total ----
+  // `cenaPoSleve` is line total (extract + recalcCenaPoSleve already include ks);
+  // do NOT multiply by ks again — see sumProductRowsBezDph in admf-order-totals.
   const totalProdukty = (formData.productRows || []).reduce(
-    (sum, r) => sum + (r.cenaPoSleve ?? 0) * (r.ks ?? 1),
+    (sum, r) => sum + (r.cenaPoSleve ?? 0),
     0
   );
   setFont(FONT_SIZE_BODY);

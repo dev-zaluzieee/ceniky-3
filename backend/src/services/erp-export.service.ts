@@ -119,15 +119,23 @@ export function buildErpPayloads(
   };
 
   // ── Products payload (monitoring only — not sent to ERP yet) ──
+  // ERP convention: `cena_bez_dph` is PER UNIT; ERP downstream multiplies by ks.
+  // ADMF stores `cenaPoSleve` as a LINE TOTAL (already includes ks), so we
+  // divide here to convert. Tiny rounding drift may appear (line total
+  // reconstructed by ERP can differ by ±1 Kč from the form-level total) — that's
+  // acceptable for line-item invoicing.
   const rows: any[] = formJson.productRows || [];
   const products: ErpProductPayload[] = rows
     .filter((r: any) => r.produkt && r.produkt.trim() !== "")
     .map((r: any) => {
+      const ksRow = r.ks ?? 1;
+      const lineBezDph = r.cenaPoSleve ?? 0;
+      const perUnitBezDph = Math.round(lineBezDph / Math.max(1, ksRow));
       const product: ErpProductPayload = {
         nazev: r.produkt,
-        ks: r.ks ?? 1,
-        cena_bez_dph: r.cenaPoSleve ?? 0,
-        cena_s_dph: Math.round((r.cenaPoSleve ?? 0) * (1 + vatRate / 100)),
+        ks: ksRow,
+        cena_bez_dph: perUnitBezDph,
+        cena_s_dph: Math.round(perUnitBezDph * (1 + vatRate / 100)),
       };
       if (manufacturer) {
         product.vyrobce = manufacturer;

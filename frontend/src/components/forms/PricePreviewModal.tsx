@@ -85,6 +85,48 @@ export default function PricePreviewModal({
                 </div>
               </div>
 
+              {previewState.data.surcharges?.length ? (
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-700">
+                  <p className="border-b border-zinc-200 px-3 py-2 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                    Příplatky
+                  </p>
+                  <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {previewState.data.surcharges.map((s) => (
+                      <li
+                        key={s.code}
+                        className="flex items-baseline justify-between gap-3 px-3 py-2 text-sm"
+                      >
+                        <span className="text-zinc-700 dark:text-zinc-200">
+                          {s.label ?? s.code}
+                          {s.label && s.label !== s.code ? (
+                            <span className="ml-2 font-mono text-xs text-zinc-400 dark:text-zinc-500">
+                              {s.code}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span
+                          className={`tabular-nums font-medium ${
+                            s.amount >= 0
+                              ? "text-zinc-900 dark:text-zinc-50"
+                              : "text-emerald-700 dark:text-emerald-300"
+                          }`}
+                        >
+                          {s.amount >= 0 ? "+" : ""}
+                          {currencyFormatter.format(s.amount)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex items-baseline justify-between gap-3 border-t border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800/60">
+                    <span className="text-zinc-600 dark:text-zinc-300">Celkem příplatky</span>
+                    <span className="tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
+                      {previewState.data.surcharge_total >= 0 ? "+" : ""}
+                      {currencyFormatter.format(previewState.data.surcharge_total)}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+
               {previewState.data.surcharge_warnings?.length ? (
                 <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                   {previewState.data.surcharge_warnings[0]}

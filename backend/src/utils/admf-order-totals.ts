@@ -21,10 +21,20 @@ export function effectiveMontazBezDph(formJson: Record<string, unknown>): number
   return ADMF_DEFAULT_MONTAZ_BEZ_DPH;
 }
 
-/** Součet řádků produktů (bez DPH, po řádkové slevě). */
+/**
+ * Součet řádků produktů (bez DPH, po řádkové slevě).
+ *
+ * `cenaPoSleve` je **line total per row** (cena za celý řádek včetně všech
+ * kusů a příplatků). Extract z výrobního formuláře produkuje
+ *   `cenaBase = unitPrice × ks`, `cenaPoSleve = round(cenaBase × (1 - sleva/100))`
+ * a AdmfFormClient.recalcCenaPoSleve drží stejný tvar. Proto v součtu
+ * **NEnásobíme** `ks` znovu — dělalo by to dvojí započtení (před opravou
+ * `cenaPoSleve × ks` vracelo `ks² × unit_price`, latentní bug viditelný od
+ * `ks > 1`).
+ */
 export function sumProductRowsBezDph(formJson: Record<string, unknown>): number {
-  const rows = (formJson.productRows as Array<{ cenaPoSleve?: number; ks?: number }> | undefined) ?? [];
-  return rows.reduce((sum, r) => sum + (r.cenaPoSleve ?? 0) * (r.ks ?? 1), 0);
+  const rows = (formJson.productRows as Array<{ cenaPoSleve?: number }> | undefined) ?? [];
+  return rows.reduce((sum, r) => sum + (r.cenaPoSleve ?? 0), 0);
 }
 
 /**

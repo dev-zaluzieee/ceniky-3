@@ -441,6 +441,9 @@ export default function CustomFormClient({
             onSizeLimitErrorChange={handleSizeLimitErrorChange}
             onWarrantyErrorChange={setHasWarrantyError}
             onRequiredFieldsErrorChange={setHasRequiredFieldsError}
+            orderId={orderId}
+            formId={formId}
+            isDirty={isDirty}
           />
         </div>
         {saveBar}

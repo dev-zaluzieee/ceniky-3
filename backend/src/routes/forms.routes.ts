@@ -9,6 +9,7 @@ import * as formsService from "../services/forms.service";
 import * as pricingFormsService from "../services/pricing-forms.service";
 import * as sizeLimitsService from "../services/size-limits.service";
 import * as productExtractorsService from "../services/product-extractors";
+import * as admfDefaultsService from "../services/admf-defaults.service";
 import * as admfImageService from "../services/admf-image.service";
 import * as raynetExportService from "../services/raynet-export.service";
 import * as erpExportService from "../services/erp-export.service";
@@ -361,6 +362,157 @@ router.post("/price-preview", authenticateToken, async (req: AuthenticatedReques
     }
     console.error("Price preview resolve error:", error);
     return res.status(500).json({ success: false, error: "Failed to resolve preview price" });
+  }
+});
+
+/**
+ * GET /api/forms/admf-defaults — office-managed default values for ADMF
+ * generation (VAT, montáž tiers, OVT/MNG slevy, fallback). Drives the
+ * form-level price preview and is frozen into newly-created ADMFs.
+ */
+router.get("/admf-defaults", authenticateToken, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const data = await admfDefaultsService.getAdmfDefaults(getPool());
+    return res.json({ success: true, data });
+  } catch (error: any) {
+    console.error("Failed to read ADMF defaults:", error);
+    return res.status(500).json({ success: false, error: "Nepodařilo se načíst výchozí hodnoty ADMF" });
+  }
+});
+
+/**
+ * POST /api/forms/price-preview-form — full-form preview that mirrors what
+ * ADMF generation would produce. Stateless; takes the in-memory form_json so
+ * the OVT can iterate with a customer without saving.
+ *
+ * Body:
+ *   formJson: { schema, product_schemas?, data: { rooms } }
+ *   parameters: {
+ *     vatRatePercent: number,
+ *     ovtSlevaBezDph: number,
+ *     mngSlevaActive: boolean,
+ *     mngSlevaBezDph: number,
+ *     montazOverrideBezDph?: number   // omit = resolve from tiers
+ *   }
+ */
+router.post("/price-preview-form", authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const body = req.body as {
+      formJson?: Record<string, unknown>;
+      parameters?: {
+        vatRatePercent?: number;
+        ovtSlevaBezDph?: number;
+        mngSlevaActive?: boolean;
+        mngSlevaBezDph?: number;
+        montazOverrideBezDph?: number | null;
+        /** % applied to every product row's `sleva` (mirrors ADMF's "Nastavit slevu všem"). */
+        bulkSlevaPercent?: number;
+      };
+    };
+
+    const formJson = body.formJson;
+    if (!formJson || typeof formJson !== "object" || Array.isArray(formJson)) {
+      return res.status(400).json({ success: false, error: "formJson is required" });
+    }
+
+    const pricingPool = getPricingPool();
+    const mainPool = getPool();
+
+    const [defaults, preview] = await Promise.all([
+      admfDefaultsService.getAdmfDefaults(mainPool),
+      productExtractorsService.previewCustomFormPricing(formJson, pricingPool),
+    ]);
+
+    const params = body.parameters ?? {};
+    const vatRatePercent = Number.isFinite(params.vatRatePercent)
+      ? Number(params.vatRatePercent)
+      : defaults.vatRateDefaultPercent;
+    const ovtSlevaBezDph = Math.max(0, Math.round(Number(params.ovtSlevaBezDph) || 0));
+    const mngSlevaActive = !!params.mngSlevaActive;
+    const mngSlevaBezDph = Math.max(0, Math.round(Number(params.mngSlevaBezDph) || 0));
+    const bulkSlevaPercent = (() => {
+      const n = Number(params.bulkSlevaPercent);
+      if (!Number.isFinite(n)) return defaults.bulkSlevaDefaultPercent;
+      return Math.min(100, Math.max(0, Math.round(n)));
+    })();
+
+    // Apply the bulk sleva to every preview line — mirrors what the ADMF's
+    // "Nastavit slevu všem" button does (sets `sleva` on every productRow and
+    // recomputes `cenaPoSleve = round(cena * (1 - sleva/100))`).
+    const linesWithBulkSleva = preview.lines.map((l) => {
+      if (bulkSlevaPercent === 0) return l;
+      const newCenaPoSleve = Math.round(l.cena * (1 - bulkSlevaPercent / 100));
+      return { ...l, sleva: bulkSlevaPercent, cenaPoSleve: newCenaPoSleve };
+    });
+
+    const productsBezDph = linesWithBulkSleva.reduce((sum, l) => sum + l.cenaPoSleve, 0);
+
+    let montazBezDph: number;
+    let montazSource: "tier" | "fallback" | "override";
+    let montazTierOrdinal: number | undefined;
+    if (
+      params.montazOverrideBezDph !== undefined &&
+      params.montazOverrideBezDph !== null &&
+      Number.isFinite(Number(params.montazOverrideBezDph))
+    ) {
+      montazBezDph = Math.max(0, Math.round(Number(params.montazOverrideBezDph)));
+      montazSource = "override";
+    } else {
+      const r = admfDefaultsService.resolveMontaz(defaults, productsBezDph);
+      montazBezDph = r.bezDph;
+      montazSource = r.source;
+      montazTierOrdinal = r.tierOrdinal;
+    }
+
+    // Use the office canonical formulas (admf-order-totals.ts) by handing it a
+    // synthetic form_json — guarantees parity with what office computes for ADMF.
+    const { computeAdmfCelkemBezDph, computeAdmfCelkemSDph } = await import("../utils/admf-order-totals");
+    const syntheticForm: Record<string, unknown> = {
+      // `cenaPoSleve` is the line total (extract already multiplies unit × ks).
+      // `sumProductRowsBezDph` post-fix sums `cenaPoSleve` directly without ks,
+      // so the `ks` field on the synthetic row isn't read; we still set it to 1
+      // for documentation.
+      productRows: linesWithBulkSleva.map((l) => ({ cenaPoSleve: l.cenaPoSleve, ks: 1 })),
+      vatRate: vatRatePercent,
+      montazCenaZpusob: "manual",
+      montazCenaBezDph: montazBezDph,
+      ovtSlevaCastka: ovtSlevaBezDph,
+      mngSleva: mngSlevaActive,
+      mngSlevaCastka: mngSlevaBezDph,
+    };
+    const totalBezDph = computeAdmfCelkemBezDph(syntheticForm);
+    const totalSDph = computeAdmfCelkemSDph(syntheticForm);
+
+    return res.json({
+      success: true,
+      data: {
+        lines: linesWithBulkSleva,
+        unpriced: preview.unpriced,
+        productsBezDph,
+        montaz: { bezDph: montazBezDph, source: montazSource, tierOrdinal: montazTierOrdinal },
+        ovtSlevaBezDph,
+        mngSlevaActive,
+        mngSlevaBezDph: mngSlevaActive ? mngSlevaBezDph : 0,
+        bulkSlevaPercent,
+        vatRatePercent,
+        vatAmount: totalSDph - totalBezDph,
+        totalBezDph,
+        totalSDph,
+        defaultsSnapshot: {
+          fromOfficePortal: defaults.fromOfficePortal,
+          montazFallbackBezDph: defaults.montazFallbackBezDph,
+          tierCount: defaults.montazTiers.length,
+        },
+      },
+    });
+  } catch (error: any) {
+    if (error?.message?.includes("PRICING_DATABASE_URL")) {
+      return res.status(503).json({ success: false, error: "Pricing database not configured" });
+    }
+    console.error("Form-level price preview error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: error?.message ?? "Failed to compute form price preview" });
   }
 });
 

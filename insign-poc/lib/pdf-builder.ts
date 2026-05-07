@@ -288,8 +288,9 @@ export async function buildAdmfPdf(data: DemoAdmfData = DEMO_ADMF_DATA): Promise
   });
   s.y -= 6;
 
-  // Kalkulace
-  const produktyBezDph = data.productRows.reduce((sum, r) => sum + r.cenaPoSleve * r.ks, 0);
+  // Kalkulace — `cenaPoSleve` is a LINE TOTAL (already includes ks); see
+  // ceniky-3/backend/src/utils/admf-order-totals.ts. Do not multiply by ks.
+  const produktyBezDph = data.productRows.reduce((sum, r) => sum + r.cenaPoSleve, 0);
   const totalBezDph = Math.max(0, produktyBezDph + data.montazCenaBezDph - data.ovtSlevaCastka);
   const totalSDph = Math.round(totalBezDph * (1 + data.vatRate / 100));
 

@@ -60,10 +60,10 @@ Each element:
 | `id` | `string` | Stable row id in the UI (client-generated). |
 | `produkt` | `string` | Human-readable product description (e.g. dimension + product name). |
 | `ks` | `number` | Quantity (pieces). Default `1` when missing in calculations. |
-| `cena` | `number` | **Unit price without VAT** before line discount (after internal surcharges rolled into line). |
+| `cena` | `number` | **Line total without VAT** for the row, BEFORE line discount but AFTER surcharges. Already includes `ks` (extract computes `unit_price × ks + surcharges`). |
 | `sleva` | `number` | Line discount **percent** `0–100`. |
-| `cenaPoSleve` | `number` | **Unit price without VAT** after discount: \(\text{round}(\text{cena} \times (1 - \text{sleva}/100))\) (integer rounding as in UI). |
-| `baseCena` | `number` | Optional: grid unit before surcharges (audit / display). |
+| `cenaPoSleve` | `number` | **Line total without VAT** AFTER discount: \(\text{round}(\text{cena} \times (1 - \text{sleva}/100))\). Also already includes `ks` (it's a line total, not per-unit). |
+| `baseCena` | `number` | Optional: grid line base (`unit_price × ks`) before surcharges — audit / display. |
 | `surcharges` | `{ code, label?, amount }[]` | Optional příplatky breakdown (`amount` without VAT). |
 | `surchargeWarnings` | `string[]` | Czech messages; for operators, not customer PDF. |
 | `priceAffectingFields` | `{ code, label, value }[]` | Up to two (typically) schema-driven selectors shown as extra columns (PDF: „Parametr 1/2“). |
@@ -72,8 +72,10 @@ Each element:
 **Line total without VAT:**
 
 \[
-\text{lineBezDph} = \text{cenaPoSleve} \times \text{ks}
+\text{lineBezDph} = \text{cenaPoSleve}
 \]
+
+`ks` is **informational only** for downstream totals — it's already baked into `cenaPoSleve` at extract / `recalcCenaPoSleve` time. (Earlier versions of this doc and `sumProductRowsBezDph` multiplied by `ks` again, which doubled the answer for any row with `ks > 1`. Fixed 2026-05-07.)
 
 **Customer PDF note:** surcharges are **not** itemized on the PDF; the customer sees aggregate `cena` / `cenaPoSleve` per row only (`backend/src/services/admf-pdf.service.ts`).
 
@@ -137,7 +139,7 @@ export function computeAdmfCelkemSDph(formJson: Record<string, unknown>): number
 }
 ```
 
-Where `sumProductRowsBezDph` sums `(cenaPoSleve ?? 0) * (ks ?? 1)` over `productRows`.
+Where `sumProductRowsBezDph` sums `(cenaPoSleve ?? 0)` over `productRows`. (Note: previous spec said `× ks`; that was the documentation of the bug fixed on 2026-05-07. `cenaPoSleve` is a line total — already includes `ks`.)
 
 **Financial interpretation:**
 

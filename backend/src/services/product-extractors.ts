@@ -511,3 +511,112 @@ export async function extractProductsFromForm(
   }
   return [];
 }
+
+// ---------------------------------------------------------------------------
+// Form-level preview (fault-tolerant — partial pricing instead of throwing)
+// ---------------------------------------------------------------------------
+
+export interface FormPreviewLine {
+  rowKey: string;          // "<roomIndex>:<rowIndex>"
+  roomName?: string;
+  produkt: string;
+  ks: number;
+  cena: number;            // line total bez DPH (after surcharges, before sleva)
+  sleva: number;           // %
+  cenaPoSleve: number;     // line total bez DPH after sleva
+  surcharges?: Array<{ code: string; label?: string; amount: number }>;
+}
+
+export interface FormPreviewUnpriced {
+  rowKey: string;
+  roomName?: string;
+  reason: string;
+}
+
+export interface FormPreviewResult {
+  lines: FormPreviewLine[];
+  unpriced: FormPreviewUnpriced[];
+}
+
+/**
+ * Iterate the form's rooms × rows and price each row independently. A row that
+ * fails to resolve (missing dimensions, missing required price-affecting field,
+ * unknown product, …) lands in `unpriced` instead of throwing — so the office
+ * UI can show "we priced N rows, M still need attention" rather than a single
+ * blocked screen.
+ */
+export async function previewCustomFormPricing(
+  formJson: Record<string, unknown>,
+  pricingPool: Pool
+): Promise<FormPreviewResult> {
+  const schemaTop = formJson?.schema as Record<string, unknown> | undefined;
+  const data = formJson?.data as Record<string, unknown> | undefined;
+  if (!schemaTop || !data) return { lines: [], unpriced: [] };
+
+  const productSchemasRaw = formJson.product_schemas as Record<string, Record<string, unknown>> | undefined;
+  const productSchemas: Record<string, Record<string, unknown>> =
+    productSchemasRaw && typeof productSchemasRaw === "object" ? productSchemasRaw : {};
+
+  const rooms = data?.rooms as Array<{ name?: string; rows?: Array<Record<string, unknown>> }> | undefined;
+  if (!Array.isArray(rooms)) return { lines: [], unpriced: [] };
+
+  const lines: FormPreviewLine[] = [];
+  const unpriced: FormPreviewUnpriced[] = [];
+
+  for (let roomIndex = 0; roomIndex < rooms.length; roomIndex++) {
+    const room = rooms[roomIndex];
+    const roomName = typeof room?.name === "string" && room.name.trim() ? room.name.trim() : undefined;
+    const rows = room?.rows;
+    if (!Array.isArray(rows)) continue;
+
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+      const rowKey = `${roomIndex}:${rowIndex}`;
+      const rawRow = rows[rowIndex];
+
+      try {
+        const flatRow = flattenRowForExtract(rawRow);
+        const rowPricingIdRaw =
+          (rawRow.product_pricing_id as string) ||
+          (typeof flatRow.product_pricing_id === "string" ? flatRow.product_pricing_id : undefined);
+        const productPricingId =
+          rowPricingIdRaw?.trim() ||
+          (schemaTop._product_pricing_id as string) ||
+          (data.product_pricing_id as string);
+        if (!productPricingId || typeof productPricingId !== "string") {
+          unpriced.push({ rowKey, roomName, reason: "Řádek nemá produkt z katalogu (chybí product_pricing_id)" });
+          continue;
+        }
+        const rowSchema =
+          productSchemas[productPricingId] ??
+          (productPricingId === schemaTop._product_pricing_id ? schemaTop : undefined);
+        if (!rowSchema) {
+          unpriced.push({ rowKey, roomName, reason: `Chybí product_schemas pro "${productPricingId}"` });
+          continue;
+        }
+
+        const resolved = await resolveCustomRowPricingCore({
+          pricingPool,
+          rowSchema,
+          flatRow,
+          productPricingId,
+        });
+
+        lines.push({
+          rowKey,
+          roomName,
+          produkt: resolved.produkt,
+          ks: resolved.ks,
+          cena: resolved.cena,
+          sleva: resolved.sleva,
+          cenaPoSleve: resolved.cenaPoSleve,
+          surcharges: resolved.surcharges.length > 0 ? resolved.surcharges : undefined,
+        });
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : "Nepodařilo se vypočítat cenu";
+        unpriced.push({ rowKey, roomName, reason });
+      }
+    }
+  }
+
+  return { lines, unpriced };
+}

@@ -19,7 +19,17 @@ export default async function OrderFormCreatePage({
   searchParams,
 }: {
   params: Promise<{ id: string; formType: string }>;
-  searchParams: Promise<{ formIds?: string }>;
+  searchParams: Promise<{
+    formIds?: string;
+    /** Optional ADMF parameter presets carried over from the form-level price preview. */
+    vat?: string;
+    montaz?: string;
+    ovtSleva?: string;
+    mngSleva?: string;
+    mngSlevaActive?: string;
+    /** % applied to every productRow's `sleva` (mirrors ADMF "Nastavit slevu všem"). */
+    bulkSleva?: string;
+  }>;
 }) {
   const session = await getServerSession();
   if (!session) redirect("/login");
@@ -77,26 +87,70 @@ export default async function OrderFormCreatePage({
     const existingAdmfCount = formsRes.success && formsRes.data ? formsRes.data.length : 0;
     const variantaName = `Varianta ${existingAdmfCount + 1}`;
 
+    // If the OVT carried over a "Sleva pro všechny produkty (%)" from the
+    // form-level price preview, apply it to every row at generation time —
+    // mirrors what the ADMF's "Nastavit slevu všem" button does.
+    const presetBulkSleva = (() => {
+      const n = Number(resolvedSearchParams.bulkSleva);
+      return Number.isFinite(n) && n >= 0 && n <= 100 ? Math.round(n) : 0;
+    })();
+
     const productRows: AdmfProductRow[] = (extractRes.success && extractRes.data?.products
       ? extractRes.data.products
       : []
-    ).map((p, i) => ({
-      // Generate a new stable row id for the client-side form.
-      id: `row-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 9)}`,
-      produkt: p.produkt,
-      ks: p.ks,
-      cena: p.cena,
-      sleva: p.sleva,
-      cenaPoSleve: p.cenaPoSleve,
-      baseCena: p.baseCena,
-      surcharges: p.surcharges,
-      surchargeWarnings: p.surchargeWarnings,
-      priceAffectingFields: p.priceAffectingFields,
-      pricingTrace: p.pricingTrace,
-    }));
+    ).map((p, i) => {
+      const slevaForRow = presetBulkSleva > 0 ? presetBulkSleva : p.sleva;
+      const cenaPoSleveForRow =
+        presetBulkSleva > 0 ? Math.round(p.cena * (1 - presetBulkSleva / 100)) : p.cenaPoSleve;
+      return {
+        // Generate a new stable row id for the client-side form.
+        id: `row-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 9)}`,
+        produkt: p.produkt,
+        ks: p.ks,
+        cena: p.cena,
+        sleva: slevaForRow,
+        cenaPoSleve: cenaPoSleveForRow,
+        baseCena: p.baseCena,
+        surcharges: p.surcharges,
+        surchargeWarnings: p.surchargeWarnings,
+        priceAffectingFields: p.priceAffectingFields,
+        pricingTrace: p.pricingTrace,
+      };
+    });
 
     const today = new Date().toISOString().slice(0, 10);
     const raynetName = session.user.raynet_name ?? undefined;
+
+    // ADMF parameter presets carried over from the form-level price preview
+    // ("Generovat ADMF s těmito parametry"). When the URL doesn't carry them,
+    // we keep the legacy hardcoded fallbacks so direct generation still works.
+    // ADMF vatRate is a strict 0 | 12 | 21 enum — snap any preset to the closest valid value.
+    const presetVat: 0 | 12 | 21 = (() => {
+      const n = Number(resolvedSearchParams.vat);
+      if (!Number.isFinite(n)) return 12;
+      if (n <= 6) return 0;
+      if (n <= 16) return 12;
+      return 21;
+    })();
+    const presetMontaz = (() => {
+      const n = Number(resolvedSearchParams.montaz);
+      return Number.isFinite(n) && n >= 0 ? Math.round(n) : 1339;
+    })();
+    const presetOvtSleva = (() => {
+      const n = Number(resolvedSearchParams.ovtSleva);
+      return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
+    })();
+    const presetMngSlevaActive = resolvedSearchParams.mngSlevaActive === "1";
+    const presetMngSleva = (() => {
+      const n = Number(resolvedSearchParams.mngSleva);
+      return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
+    })();
+
+    // When montáž is explicitly carried over, freeze it as 'manual' so the
+    // ADMF totals function uses the value (rather than re-applying the legacy
+    // auto default). Otherwise default to 'auto' for backwards compatibility.
+    const montazFromPreview = resolvedSearchParams.montaz != null && Number.isFinite(Number(resolvedSearchParams.montaz));
+
     const initialData = {
       name: variantaName,
       source_form_ids: extractRes.success && extractRes.data?.source_form_ids ? extractRes.data.source_form_ids : [],
@@ -109,11 +163,15 @@ export default async function OrderFormCreatePage({
       psc: order.zipcode ?? undefined,
       poznamkyVyroba: "",
       poznamkyMontaz: "",
-      montazCenaBezDph: 1339,
+      montazCenaBezDph: presetMontaz,
+      montazCenaZpusob: (montazFromPreview ? "manual" : "auto") as "manual" | "auto",
+      ovtSlevaCastka: presetOvtSleva,
+      mngSleva: presetMngSlevaActive,
+      mngSlevaCastka: presetMngSleva,
       platceDph: false,
       faktura: true,
       typProstoru: "bytovy" as const,
-      vatRate: 12 as const,
+      vatRate: presetVat as 0 | 12 | 21,
       zalohovaFaktura: 0,
       datum: today,
       jmenoPodpisZprostredkovatele: raynetName ?? "",

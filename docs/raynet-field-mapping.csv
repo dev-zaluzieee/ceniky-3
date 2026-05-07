@@ -8,7 +8,7 @@ typZarizeni,customFields.RDbyt_45fb8,"ENUMERATION 1:1 (aligned). Exact values: "
 zalohaZaplacena,customFields.Zpusob_uhr_1bc0a,"ENUMERATION 1:1 (aligned). Exact values: ""Hotově"", ""Terminálem"", ""QR"", ""Fakturou"", ""převodem"". Note: ""převodem"" is lowercase."
 zalohovaFaktura,customFields.Zaloha_f384a,Direct mapping (MONETARY CZK). Deposit amount s DPH.
 doplatek,customFields.Doplatek_98b22,"Direct mapping (MONETARY CZK). Computed: max(0, totalSDph - zalohovaFaktura)."
-computed.totalSDph,customFields.Celkova_ho_0b99a,"Computed at export (MONETARY CZK): (Σ(cenaPoSleve × ks) + montazCenaBezDph) × (1 + vatRate/100), rounded to integer."
+computed.totalSDph,customFields.Celkova_ho_0b99a,"Computed at export (MONETARY CZK): (Σ(cenaPoSleve) − ovtSleva − mngSleva + montazCenaBezDph) × (1 + vatRate/100), rounded to integer. NOTE: cenaPoSleve is a LINE TOTAL (already includes ks); do not multiply by ks again."
 variabilniSymbol,customFields.Variabilni_675b2,"BIG_DECIMAL. Prefilled from customer phone (strips +420). Send as number. Optional."
 auth.raynetName,customFields.Zamerovac_2b7ef,"ENUMERATION. Resolved from logged-in user's Raynet display name in auth profile. Must match one of 32 allowed names exactly."
 zvonek,customFields.Zvonek_60b5d,Informative field (STRING). Optional — send only if filled.

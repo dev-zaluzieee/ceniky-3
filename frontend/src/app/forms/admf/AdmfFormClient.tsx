@@ -197,7 +197,9 @@ function computeAdmfOrderTotals(data: AdmfFormData): {
   celkemSDph: number;
 } {
   const produktyBezDph = data.productRows.reduce(
-    (sum, row) => sum + (row.cenaPoSleve || 0) * (row.ks || 1),
+    // `cenaPoSleve` je line total (extract i recalcCenaPoSleve do ní zahrnují ks),
+    // takže ho UŽ ne-násobíme — jinak by vyšlo ks² × unit_price (latentní bug).
+    (sum, row) => sum + (row.cenaPoSleve || 0),
     0
   );
   const montazBezDph = effectiveMontazCenaBezDph(data);
@@ -1665,8 +1667,11 @@ export default function AdmfFormClient({
                 </thead>
                 <tbody>
                   {formData.productRows.map((row) => {
-                    const cenaZaKsBezDph = row.cenaPoSleve || 0;
-                    const cenaZaKsSDph = Math.round(cenaZaKsBezDph * (1 + vatRate / 100));
+                    // Line total per row (cenaPoSleve už zahrnuje ks). Variable
+                    // name byl historicky `cenaZaKsBezDph`, ale šlo o nesprávné
+                    // čtení — viz `sumProductRowsBezDph` v utils/admf-order-totals.
+                    const cenaPoSleveLineBezDph = row.cenaPoSleve || 0;
+                    const cenaPoSleveLineSDph = Math.round(cenaPoSleveLineBezDph * (1 + vatRate / 100));
                     const surchargeSum =
                       row.surcharges?.reduce((sum, s) => sum + (s.amount || 0), 0) ?? 0;
                     const baseCena =
@@ -1775,10 +1780,10 @@ export default function AdmfFormClient({
                           />
                         </td>
                         <td className="w-32 min-w-[6rem] px-3 py-2 text-right align-top font-medium tabular-nums text-zinc-100">
-                          {cenaZaKsBezDph}
+                          {cenaPoSleveLineBezDph}
                         </td>
                         <td className="w-32 min-w-[6rem] px-3 py-2 text-right align-top tabular-nums text-zinc-400">
-                          {cenaZaKsSDph}
+                          {cenaPoSleveLineSDph}
                         </td>
                         <td className="w-10 px-3 py-2 text-center align-top">
                           <button

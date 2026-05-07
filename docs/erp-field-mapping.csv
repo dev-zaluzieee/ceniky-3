@@ -2,7 +2,7 @@ json_field,erp_field,erp_endpoint,business_logic
 --- ORDER STATUS (PUT /orders/{id}) ---,,,
 const:zamereni,status,PUT /orders/{id},"Always set to ""zamereni"" on export. ADMF export = zaměření completed."
 --- FINANCE: TOP-LEVEL + COLUMN VALUES (PUT /orders/{id}) ---,,,
-computed.totalSDph,column_values.prodejni_cena_s_dph,PUT /orders/{id},"Computed (DECIMAL): (Σ(cenaPoSleve × ks) + montazCenaBezDph) × (1 + vatRate/100), rounded to integer."
+computed.totalSDph,column_values.prodejni_cena_s_dph,PUT /orders/{id},"Computed (DECIMAL): (Σ(cenaPoSleve) − ovtSleva − mngSleva + montazCenaBezDph) × (1 + vatRate/100), rounded to integer. NOTE: cenaPoSleve is a LINE TOTAL (already includes ks); do not multiply by ks again."
 ,,,
 computed.totalSDph,final_value,PUT /orders/{id},Same value as prodejni_cena_s_dph. Sent as top-level field (not column_values). Always sent.
 vatRate,column_values.dph,PUT /orders/{id},"ENUM format conversion. ADMF number → ERP string: 0→""0"", 12→""0.12"", 21→""0.21""."
@@ -13,8 +13,8 @@ computed.montazSDph,column_values.cena_za_montaz_s_dph,PUT /orders/{id},"Compute
 --- PRODUCTS (POST /orders/{id}/products) ---,,,
 productRows[].produkt,products[].nazev,POST /orders/{id}/products,Direct mapping (STRING). Product name from ADMF row.
 productRows[].ks,products[].ks,POST /orders/{id}/products,Direct mapping (INTEGER). Quantity.
-productRows[].cenaPoSleve,products[].cena_bez_dph,POST /orders/{id}/products,Direct mapping (DECIMAL). Per-unit price without VAT.
-computed.rowCenaSDph,products[].cena_s_dph,POST /orders/{id}/products,"Computed per row (DECIMAL): cenaPoSleve × (1 + vatRate/100), rounded."
+computed.cenaPoSleveZaKs,products[].cena_bez_dph,POST /orders/{id}/products,"Computed (DECIMAL): round(cenaPoSleve / max(1, ks)). cenaPoSleve in ADMF form_json is a LINE TOTAL — divide by ks to get the per-unit price ERP expects (ERP downstream multiplies by ks)."
+computed.rowCenaSDph,products[].cena_s_dph,POST /orders/{id}/products,"Computed per row (DECIMAL): perUnitBezDph × (1 + vatRate/100), rounded. perUnitBezDph = round(cenaPoSleve / max(1, ks))."
 schema._product_manufacturer,products[].vyrobce,POST /orders/{id}/products,From linked custom form schema._product_manufacturer. Same manufacturer for all rows from one form. OPEN: missing on old forms — skip with warning.
 --- COMMENT (POST /orders/{id}/comments — every export) ---,,,
 users name,body,POST /orders/{id}/comments,"Create comment that the user exported data from ""Aplikace Ceníky"""
