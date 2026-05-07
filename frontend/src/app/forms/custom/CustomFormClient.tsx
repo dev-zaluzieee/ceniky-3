@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { submitForm, updateForm } from "@/lib/forms-api";
 import { getPricingFormById } from "@/lib/pricing-forms-api";
 import DynamicProductForm, { buildInitialFormData } from "@/components/forms/DynamicProductForm";
+import FormPricePreviewPanel from "@/components/forms/FormPricePreviewPanel";
 import { emptyValuesForProductSchema } from "@/lib/merge-product-switch";
 import { normalizeCustomFormOnLoad } from "@/lib/normalize-custom-form-load";
 import type { ProductPayload } from "@/types/json-schema-form.types";
@@ -172,6 +173,20 @@ export default function CustomFormClient({
   const [hasWarrantyError, setHasWarrantyError] = useState(false);
   const [hasRequiredFieldsError, setHasRequiredFieldsError] = useState(false);
 
+  /** Form-level price preview ("Náhled ceny pro zákazníka") panel state. Lives
+   *  here (not in DynamicProductForm) so the trigger button can sit in the
+   *  always-visible save bar at the bottom. */
+  const [formPreviewOpen, setFormPreviewOpen] = useState(false);
+  const previewCurrencyFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat("cs-CZ", {
+        style: "currency",
+        currency: "CZK",
+        maximumFractionDigits: 0,
+      }),
+    []
+  );
+
   /** Track unsaved changes: set true on any formData change after initial load */
   const [isDirty, setIsDirty] = useState(false);
   const initialFormDataRef = useRef<string | null>(null);
@@ -335,9 +350,26 @@ export default function CustomFormClient({
   );
 
   /** Bottom save bar content */
+  const previewButton = (
+    <button
+      type="button"
+      onClick={() => setFormPreviewOpen(true)}
+      disabled={!formData || formData.rooms.length === 0}
+      title={
+        !formData || formData.rooms.length === 0
+          ? "Přidejte nejprve řádek do místnosti"
+          : "Zobrazit náhled ceny pro zákazníka"
+      }
+      className="min-h-[44px] touch-manipulation rounded-md border border-emerald-700 bg-white px-5 py-3 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+    >
+      Náhled ceny pro zákazníka
+    </button>
+  );
+
   const saveBar = (
     <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-zinc-200 bg-white/95 px-4 py-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95">
-      <div className="mx-auto flex max-w-7xl items-center justify-center">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-3">
+        {previewButton}
         {hasSizeLimitError ? (
           <div className="rounded-md bg-red-500 px-6 py-3 text-center text-sm font-medium text-white">
             Některé položky z formuláře nelze vyrobit
@@ -367,6 +399,47 @@ export default function CustomFormClient({
         )}
       </div>
     </div>
+  );
+
+  /** Reason the "Generovat ADMF s těmito parametry" button (inside the panel) is disabled. */
+  const generateAdmfDisabledReason = (() => {
+    if (!formId) return "Nejprve uložte formulář, pak můžete vygenerovat ADMF.";
+    if (isDirty) return "Formulář má neuložené změny — nejprve uložte.";
+    return undefined;
+  })();
+
+  /** Panel — rendered alongside the form so it overlays the whole page. */
+  const pricePreviewPanel = schema && formData && (
+    <FormPricePreviewPanel
+      open={formPreviewOpen}
+      onClose={() => setFormPreviewOpen(false)}
+      buildFormJson={() => ({
+        schema,
+        product_schemas: productSchemas,
+        data: formData,
+      })}
+      currencyFormatter={previewCurrencyFormatter}
+      generateAdmfDisabledReason={generateAdmfDisabledReason}
+      onGenerateAdmf={
+        !generateAdmfDisabledReason
+          ? (_data, params) => {
+              const search = new URLSearchParams();
+              search.set("formIds", String(formId));
+              search.set("vat", String(params.vatRatePercent));
+              search.set("ovtSleva", String(params.ovtSlevaBezDph));
+              search.set("mngSlevaActive", params.mngSlevaActive ? "1" : "0");
+              search.set("mngSleva", String(params.mngSlevaBezDph));
+              if (params.montazOverrideBezDph != null) {
+                search.set("montaz", String(params.montazOverrideBezDph));
+              }
+              if (params.bulkSlevaPercent > 0) {
+                search.set("bulkSleva", String(params.bulkSlevaPercent));
+              }
+              router.push(`/orders/${orderId}/forms/create/admf?${search.toString()}`);
+            }
+          : undefined
+      }
+    />
   );
 
   /** Title with save-state badge */
@@ -441,12 +514,10 @@ export default function CustomFormClient({
             onSizeLimitErrorChange={handleSizeLimitErrorChange}
             onWarrantyErrorChange={setHasWarrantyError}
             onRequiredFieldsErrorChange={setHasRequiredFieldsError}
-            orderId={orderId}
-            formId={formId}
-            isDirty={isDirty}
           />
         </div>
         {saveBar}
+        {pricePreviewPanel}
       </div>
     );
   }
@@ -551,6 +622,7 @@ export default function CustomFormClient({
         />
       </div>
       {saveBar}
+      {pricePreviewPanel}
     </div>
   );
 }

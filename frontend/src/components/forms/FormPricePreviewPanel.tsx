@@ -179,7 +179,7 @@ export default function FormPricePreviewPanel({
               <footer className="sticky bottom-0 -mx-5 mt-4 border-t border-zinc-200 bg-white px-5 py-3 dark:border-zinc-700 dark:bg-zinc-900">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {generateAdmfDisabledReason ?? "Tlačítko vytvoří ADMF s aktuálními parametry. Hodnoty zamrznou, změny v office portálu se na nový ADMF už neaplikují."}
+                    {generateAdmfDisabledReason ?? "Tlačítko vytvoří ADMF s aktuálními parametry."}
                   </p>
                   <button
                     type="button"
@@ -312,7 +312,7 @@ function ParametersBlock({
             numberStep="1"
           />
           <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-            Aplikuje se na všechny produktové řádky. 0 % = bez slevy. Při „Generovat ADMF" se hodnota zapíše do každého řádku stejně, jako když v ADMF kliknete „Nastavit slevu všem".
+            Aplikuje se na všechny produktové řádky. 0 % = bez slevy.
           </p>
         </div>
       </div>
@@ -369,7 +369,7 @@ function MontazField({
     if (!resolvedMontaz) return null;
     if (resolvedMontaz.source === "override") return "Přepsáno ručně";
     if (resolvedMontaz.source === "tier") return `Pásmo #${resolvedMontaz.tierOrdinal ?? "?"}`;
-    return `Fallback (${defaults.montazFallbackBezDph} Kč)`;
+    return `Pásmo 1 (${defaults.montazFallbackBezDph} Kč)`;
   })();
 
   return (
@@ -433,23 +433,30 @@ function LinesBlock({
               <th className="px-3 py-2 text-left">Produkt</th>
               <th className="px-3 py-2 text-right">Ks</th>
               <th className="px-3 py-2 text-right">Bez DPH</th>
+              <th className="px-3 py-2 text-right">S DPH</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {result.lines.map((l) => (
-              <tr key={l.rowKey}>
-                <td className="px-3 py-2">
-                  <div className="text-zinc-900 dark:text-zinc-50">{l.produkt}</div>
-                  {l.roomName && (
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400">{l.roomName}</div>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{l.ks}</td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {currencyFormatter.format(l.cenaPoSleve)}
-                </td>
-              </tr>
-            ))}
+            {result.lines.map((l) => {
+              const lineSDph = Math.round(l.cenaPoSleve * (1 + result.vatRatePercent / 100));
+              return (
+                <tr key={l.rowKey}>
+                  <td className="px-3 py-2">
+                    <div className="text-zinc-900 dark:text-zinc-50">{l.produkt}</div>
+                    {l.roomName && (
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400">{l.roomName}</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{l.ks}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {currencyFormatter.format(l.cenaPoSleve)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {currencyFormatter.format(lineSDph)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
