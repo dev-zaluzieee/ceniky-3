@@ -12,6 +12,12 @@ const PUBLIC_PATHS: RegExp[] = [
   /^\/swe-worker-.*\.js(\.map)?$/,
   /^\/icons\//,
   /^\/.*\.(?:png|jpe?g|gif|webp|svg|ico|json|txt|xml|webmanifest)$/i,
+  // Form preview iframe — receives a validated_payload via postMessage from
+  // the validation-products admin app and renders DynamicProductForm against
+  // it. Read-only, no DB writes, no user-specific data; origin check happens
+  // inside the page itself. Public on purpose so the admin doesn't need to
+  // log in as an OVT user just to preview their schema edits.
+  /^\/forms\/preview$/,
 ];
 
 function isPublic(pathname: string): boolean {
