@@ -1,7 +1,7 @@
 /**
- * Next.js API route proxy for ADMF export image generation.
- * Forwards authenticated request to backend and streams PNG binary response.
- * Path keeps the legacy /pdf name; the response is image/png.
+ * Next.js API route proxy for the ADMF OBJEDNÁVKA PDF.
+ * Forwards the authenticated request to the backend and streams the binary
+ * response back to the browser with `application/pdf`.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -13,7 +13,7 @@ function getBackendUrl(): string {
 
 /**
  * GET /api/forms/[id]/pdf
- * Returns image/png for authenticated user.
+ * Returns application/pdf for the authenticated user.
  */
 export async function GET(
   request: NextRequest,
@@ -43,19 +43,22 @@ export async function GET(
         return NextResponse.json(data, { status: backendResponse.status });
       }
       return NextResponse.json(
-        { success: false, error: "Failed to generate image" },
+        { success: false, error: "Failed to generate PDF" },
         { status: backendResponse.status }
       );
     }
 
     const arrayBuffer = await backendResponse.arrayBuffer();
-    const filename = backendResponse.headers.get("content-disposition") ?? `inline; filename="admf-${id}.png"`;
+    // Trust the backend's content headers but fall back to sane defaults.
+    const contentType = backendResponse.headers.get("content-type") ?? "application/pdf";
+    const disposition =
+      backendResponse.headers.get("content-disposition") ?? `inline; filename="objednavka-${id}.pdf"`;
 
     return new NextResponse(arrayBuffer, {
       status: 200,
       headers: {
-        "Content-Type": "image/png",
-        "Content-Disposition": filename,
+        "Content-Type": contentType,
+        "Content-Disposition": disposition,
         "Cache-Control": "private, max-age=0, must-revalidate",
       },
     });
