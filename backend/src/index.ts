@@ -17,6 +17,9 @@ import aresRoutes from "./routes/ares.routes";
 import geocodeRoutes from "./routes/geocode.routes";
 import erpOrdersRoutes from "./routes/erp-orders.routes";
 import retentionRoutes from "./routes/retention.routes";
+import adminPricingPreviewRoutes from "./routes/admin/pricing-preview.routes";
+import adminBreakageCheckRoutes from "./routes/admin/breakage-check.routes";
+import adminChangeSetsRoutes from "./routes/admin/change-sets.routes";
 
 // Load environment variables
 dotenv.config();
@@ -110,6 +113,9 @@ app.use("/api/ares", aresRoutes);
 app.use("/api/geocode", geocodeRoutes);
 app.use("/api/erp", erpOrdersRoutes);
 app.use("/api/retention", retentionRoutes);
+app.use("/api/admin/pricing", adminPricingPreviewRoutes);
+app.use("/api/admin/forms", adminBreakageCheckRoutes);
+app.use("/api/admin/change-sets", adminChangeSetsRoutes);
 
 // Root endpoint
 app.get("/", (req: Request, res: Response) => {

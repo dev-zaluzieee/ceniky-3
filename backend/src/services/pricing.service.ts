@@ -108,38 +108,34 @@ export interface ResolvePriceDetailedResult {
 }
 
 /**
- * Resolve unit price from pricing DB for a product row, with full dimension/variant audit data.
- * Uses product_pricing_id + row's enum values (selector) to find pricing_variant, then dimension_pricing.prices.
+ * Resolve unit price from pre-fetched pricing data (no DB I/O). The admin
+ * preview endpoints use this so they can apply unsaved overrides on the
+ * fetched product/variants before resolving. Throws on the same conditions
+ * as the live wrapper (`resolvePriceDetailed`).
  */
-export async function resolvePriceDetailed(
-  pool: Pool,
-  productPricingId: string,
-  selectorValues: Record<string, string>,
-  width: string,
-  height: string
-): Promise<ResolvePriceDetailedResult> {
-  const product = await getProductPricingForResolve(pool, productPricingId);
-  if (!product) {
-    throw new Error(
-      `Product pricing not found for id "${productPricingId}". Form may not have been created from catalog.`
-    );
-  }
+export function resolveUnitPriceFromVariants(args: {
+  variants: PricingVariantRow[];
+  selectorValues: Record<string, string>;
+  width: string;
+  height: string;
+  productPricingIdForErrors?: string;
+}): ResolvePriceDetailedResult {
+  const { variants, selectorValues, width, height } = args;
+  const productLabel = args.productPricingIdForErrors ?? "<unknown>";
 
-  const variants = await getPricingVariantsByProductId(pool, productPricingId);
   if (variants.length === 0) {
-    throw new Error(`No pricing variants found for product_pricing_id "${productPricingId}".`);
+    throw new Error(`No pricing variants found for product_pricing_id "${productLabel}".`);
   }
 
   const variant = findMatchingVariant(variants, selectorValues);
   if (!variant) {
     const selStr = JSON.stringify(selectorValues);
     throw new Error(
-      `No pricing variant matches selector ${selStr} for product_pricing_id "${productPricingId}". ` +
+      `No pricing variant matches selector ${selStr} for product_pricing_id "${productLabel}". ` +
         "Check that the form row has values for all price_affecting_enums."
     );
   }
 
-  // Surcharge-only variant: no dimension grid, unit price is 0.
   if (variant.surcharge_only) {
     return {
       unitPrice: 0,
@@ -196,6 +192,34 @@ export async function resolvePriceDetailed(
     pricing_variant_id: variant.id,
     dimensions,
   };
+}
+
+/**
+ * Resolve unit price from pricing DB for a product row, with full dimension/variant audit data.
+ * Uses product_pricing_id + row's enum values (selector) to find pricing_variant, then dimension_pricing.prices.
+ */
+export async function resolvePriceDetailed(
+  pool: Pool,
+  productPricingId: string,
+  selectorValues: Record<string, string>,
+  width: string,
+  height: string
+): Promise<ResolvePriceDetailedResult> {
+  const product = await getProductPricingForResolve(pool, productPricingId);
+  if (!product) {
+    throw new Error(
+      `Product pricing not found for id "${productPricingId}". Form may not have been created from catalog.`
+    );
+  }
+
+  const variants = await getPricingVariantsByProductId(pool, productPricingId);
+  return resolveUnitPriceFromVariants({
+    variants,
+    selectorValues,
+    width,
+    height,
+    productPricingIdForErrors: productPricingId,
+  });
 }
 
 /**

@@ -11,8 +11,12 @@ import type {
   ExtractedPriceAffectingField,
   ExtractedProductLine,
 } from "../types/extract-products.types";
-import { getProductPricingForResolve } from "./pricing-forms.service";
-import { resolvePriceDetailed } from "./pricing.service";
+import {
+  getProductPricingForResolve,
+  type ProductPricingForResolve,
+  type PricingVariantRow,
+} from "./pricing-forms.service";
+import { resolvePriceDetailed, resolveUnitPriceFromVariants } from "./pricing.service";
 
 /** Possible row property codes for width/height (order of preference) */
 const WIDTH_KEYS = ["ovl_sirka", "width", "Sirka", "sirka", "šířka"];
@@ -34,7 +38,7 @@ function getSectionProperties(schemaSection: unknown): Array<Record<string, unkn
 }
 
 /** Find property definition by Code across all sections (zahlavi, form_body, zapati) */
-function findPropertyByCode(schema: Record<string, unknown>, code: string): Record<string, unknown> | null {
+export function findPropertyByCode(schema: Record<string, unknown>, code: string): Record<string, unknown> | null {
   const allSections = [
     getSectionProperties(schema.zahlavi),
     getSectionProperties(schema.form_body),
@@ -85,7 +89,7 @@ function getDisplayValueFromEnum(
 }
 
 /** Compute surcharge for one property based on its config, value, dimensions and quantity. */
-function computeSurchargeForProperty(args: {
+export function computeSurchargeForProperty(args: {
   cfg: Record<string, unknown>;
   propDef: Record<string, unknown> | null;
   rawValue: unknown;
@@ -228,14 +232,28 @@ interface ResolvedCustomRowPricingCore {
   cenaPoSleve: number;
 }
 
-async function resolveCustomRowPricingCore(args: {
+/**
+ * Optional pre-fetched (and possibly override-merged) inputs. When supplied,
+ * the function skips its DB reads for product_pricing/pricing_variant — used
+ * by the admin impact-diff endpoint to recompute a row under proposed changes
+ * without altering the live row's saved state.
+ */
+export interface CustomRowPricingPreFetched {
+  product: ProductPricingForResolve;
+  variants: PricingVariantRow[];
+}
+
+export async function resolveCustomRowPricingCore(args: {
   pricingPool: Pool;
   rowSchema: Record<string, unknown>;
   flatRow: Record<string, unknown>;
   productPricingId: string;
+  preFetched?: CustomRowPricingPreFetched;
 }): Promise<ResolvedCustomRowPricingCore> {
-  const { pricingPool, rowSchema, flatRow, productPricingId } = args;
-  const product = await getProductPricingForResolve(pricingPool, productPricingId);
+  const { pricingPool, rowSchema, flatRow, productPricingId, preFetched } = args;
+  const product =
+    preFetched?.product ??
+    (await getProductPricingForResolve(pricingPool, productPricingId));
   if (!product) {
     throw new Error(
       `Product pricing not found for id "${productPricingId}". It may have been removed or is not available for OVT.`
@@ -265,7 +283,15 @@ async function resolveCustomRowPricingCore(args: {
     pricing_variant_id,
     dimensions,
     surcharge_only: variantSurchargeOnly,
-  } = await resolvePriceDetailed(pricingPool, productPricingId, selectorValues, width, height);
+  } = preFetched
+    ? resolveUnitPriceFromVariants({
+        variants: preFetched.variants,
+        selectorValues,
+        width,
+        height,
+        productPricingIdForErrors: productPricingId,
+      })
+    : await resolvePriceDetailed(pricingPool, productPricingId, selectorValues, width, height);
 
   const cenaBase = unitCenaBase * ks;
   let surchargeTotal = 0;
