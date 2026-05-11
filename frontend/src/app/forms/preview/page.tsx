@@ -10,10 +10,11 @@
  * "preview product" entry so DynamicProductForm has something to render —
  * one room, one row, pre-selected to this product. No DB writes; no save bar.
  *
- * Origin check: by default only same-origin messages are accepted; production
- * must pass a comma-separated origin allowlist via `NEXT_PUBLIC_PREVIEW_ALLOWED_ORIGINS`.
- * In dev, any localhost origin passes through (typical setup: admin on :3000,
- * ceniky-3 fe on :3002 or :3003).
+ * Origin policy: any origin can send a payload. Deliberate — the page only
+ * renders the payload it receives, has no auth, makes no DB writes, and
+ * exposes no user-specific data. The worst a malicious sender can do is
+ * cause their own data to render in this user-initiated iframe, which is
+ * exactly what the page is for.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -49,22 +50,6 @@ function isPayloadShape(v: unknown): v is ProductPayload {
   );
 }
 
-function isOriginAllowed(origin: string): boolean {
-  if (!origin) return false;
-  // Same-origin always ok.
-  if (typeof window !== "undefined" && origin === window.location.origin) return true;
-
-  // Allow any localhost during development for ergonomics.
-  if (process.env.NODE_ENV !== "production") {
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
-  }
-
-  const raw = process.env.NEXT_PUBLIC_PREVIEW_ALLOWED_ORIGINS ?? "";
-  if (!raw.trim()) return false;
-  const list = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  return list.includes(origin);
-}
-
 export default function FormPreviewPage() {
   const [schema, setSchema] = useState<ProductPayload | null>(null);
   const [productSchemas, setProductSchemas] = useState<Record<string, ProductPayload>>({});
@@ -74,7 +59,6 @@ export default function FormPreviewPage() {
 
   useEffect(() => {
     function onMessage(event: MessageEvent<IncomingMessage>) {
-      if (!isOriginAllowed(event.origin)) return;
       const data = event.data;
       if (!data || data.kind !== "set-payload") return;
       const payload = data.payload;
