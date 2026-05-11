@@ -457,8 +457,15 @@ function drawSectionTitle(ctx: Ctx, yTop: number, label: string): number {
   return yTop + h;
 }
 
-/** Product table — 7 fixed rows minimum + M (montáž) + celkem (bez DPH / s DPH). */
+/**
+ * Product table — 7 fixed rows minimum + M (montáž) + celkem.
+ * All monetary cells render the s-DPH (with VAT) value. Stored prices in
+ * `form_json` are bez-DPH, so we multiply by `(1 + vatRate/100)` at render
+ * time. `celkem` shows only the s-DPH total per request.
+ */
 function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
+  const vat = d.vatRate ?? 12;
+  const withVat = (n: number) => Math.round(n * (1 + vat / 100));
   const rowH = 20;
   const cols = [
     { key: "produkt", label: "produkt", w: 0, align: "left" as const },
@@ -500,9 +507,9 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
         String(row.ks ?? ""),
         row.priceAffectingFields?.[0]?.value ?? "",
         row.priceAffectingFields?.[1]?.value ?? "",
-        row.cena != null ? String(Math.round(row.cena)) : "",
+        row.cena != null ? String(withVat(row.cena)) : "",
         row.sleva != null ? `${Math.round(row.sleva)} %` : "%",
-        row.cenaPoSleve != null ? String(Math.round(row.cenaPoSleve)) : "",
+        row.cenaPoSleve != null ? String(withVat(row.cenaPoSleve)) : "",
       ];
       cells.forEach((cell, ci) => {
         if (cell) {
@@ -529,17 +536,18 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
     y += rowH;
   }
 
-  // Montáž row (always shown; produkt = "M", cena = montazCenaBezDph)
+  // Montáž row (always shown; produkt = "M", cena = montáž s DPH).
   cols.forEach((c, ci) => rect(ctx, xOf(ci), y, c.w, rowH));
   drawText(ctx, "M", xOf(0) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, { size: FONT_SIZE_BODY, bold: true });
   const montaz = d.montazCenaBezDph ?? 0;
   if (montaz > 0) {
-    drawText(ctx, String(Math.round(montaz)), xOf(4) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
+    const montazSDph = String(withVat(montaz));
+    drawText(ctx, montazSDph, xOf(4) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
       size: FONT_SIZE_BODY,
       maxWidth: cols[4].w - 8,
       align: "right",
     });
-    drawText(ctx, String(Math.round(montaz)), xOf(6) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
+    drawText(ctx, montazSDph, xOf(6) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
       size: FONT_SIZE_BODY,
       maxWidth: cols[6].w - 8,
       align: "right",
@@ -548,13 +556,12 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
   y += rowH;
 
   // Celkem row — merge the last two columns (sleva + cena po slevě) into one
-  // wide cell so "celkem: 14 039 Kč / 15 724 Kč" never gets truncated.
+  // wide cell. Per request, shows only s DPH.
   const sumProducts = (d.productRows ?? []).reduce((s, r) => s + (r.cenaPoSleve ?? 0), 0);
   const ovtSleva = Math.max(0, Math.round(d.ovtSlevaCastka ?? 0));
   const mngSleva = d.mngSleva ? Math.max(0, Math.round(d.mngSlevaCastka ?? 0)) : 0;
   const celkemBezDph = Math.max(0, Math.round(sumProducts + montaz - ovtSleva - mngSleva));
-  const vat = d.vatRate ?? 12;
-  const celkemSDph = Math.round(celkemBezDph * (1 + vat / 100));
+  const celkemSDph = withVat(celkemBezDph);
   const celkemH = rowH;
   // Draw cells 0-4 as usual
   for (let ci = 0; ci < 5; ci++) {
@@ -568,18 +575,12 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
     size: FONT_SIZE_BODY,
     bold: true,
   });
-  drawText(
-    ctx,
-    `${fmtKc(celkemBezDph)} / ${fmtKc(celkemSDph)}`,
-    mergedX + 4,
-    y + (celkemH - FONT_SIZE_BODY) / 2 + 1,
-    {
-      size: FONT_SIZE_BODY,
-      bold: true,
-      maxWidth: mergedW - 8,
-      align: "right",
-    }
-  );
+  drawText(ctx, fmtKc(celkemSDph), mergedX + 4, y + (celkemH - FONT_SIZE_BODY) / 2 + 1, {
+    size: FONT_SIZE_BODY,
+    bold: true,
+    maxWidth: mergedW - 8,
+    align: "right",
+  });
   y += celkemH;
 
   return y;
