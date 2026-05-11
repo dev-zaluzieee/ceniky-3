@@ -1,12 +1,12 @@
 import type { Pool } from "pg";
 import * as formsQueries from "../queries/forms.queries";
 import * as formAttachmentsService from "./form-attachments.service";
-import * as admfImageService from "./admf-image.service";
+import * as admfPdfService from "./admf-pdf.service";
 import * as customFormImageService from "./custom-form-image.service";
 
 export type RaynetAttachmentSource =
   | { kind: "s3_form_attachment"; formId: number; s3Key: string; downloadPath: string }
-  | { kind: "generated_admf_image"; formId: number }
+  | { kind: "generated_admf_pdf"; formId: number }
   | { kind: "generated_custom_image"; formId: number; sourceFormId: number };
 
 export interface RaynetAttachmentCandidate {
@@ -30,7 +30,7 @@ async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
  *
  * Includes:
  * - S3/MinIO attachments uploaded by user
- * - Generated ADMF image
+ * - Generated ADMF PDF (OBJEDNÁVKA)
  * - Generated images for each source step-1 form referenced by admf.form_json.source_form_ids
  *
  * Does not perform any Raynet calls.
@@ -66,14 +66,14 @@ export async function collectRaynetAttachmentCandidates(params: {
     });
   }
 
-  // 2) Generated ADMF image
-  const admfImage = await admfImageService.generateAdmfImageBuffer(admfForm.form_json);
+  // 2) Generated ADMF PDF (OBJEDNÁVKA — customer-facing contract)
+  const admfPdf = await admfPdfService.generateAdmfPdfBuffer(admfForm.form_json);
   candidates.push({
-    source: { kind: "generated_admf_image", formId: admfFormId },
-    filename: `admf-${admfFormId}.png`,
-    contentType: "image/png",
-    sizeBytes: admfImage.length,
-    buffer: admfImage,
+    source: { kind: "generated_admf_pdf", formId: admfFormId },
+    filename: `objednavka-${admfFormId}.pdf`,
+    contentType: "application/pdf",
+    sizeBytes: admfPdf.length,
+    buffer: admfPdf,
   });
 
   // 3) Generated images for source custom forms (výrobní list)
