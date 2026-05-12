@@ -86,7 +86,8 @@ export function mergeValuesForProductSwitch(
     const oldProp = oldByCode.get(code);
     const raw = oldValues[code];
     if (!oldProp || oldProp.DataType !== newProp.DataType) {
-      if (newProp.Value !== undefined) merged[code] = newProp.Value;
+      if (newProp.Value !== undefined)
+        merged[code] = coerceValueByDataType(newProp.Value, newProp.DataType);
       else if (newProp.DataType === "boolean" || newProp.DataType === "link") merged[code] = false;
       else if (newProp.DataType === "numeric") merged[code] = "";
       else merged[code] = "";
@@ -105,7 +106,8 @@ export function mergeValuesForProductSwitch(
     }
 
     if (raw === undefined || raw === null) {
-      if (newProp.Value !== undefined) merged[code] = newProp.Value;
+      if (newProp.Value !== undefined)
+        merged[code] = coerceValueByDataType(newProp.Value, newProp.DataType);
       else if (newProp.DataType === "boolean" || newProp.DataType === "link") merged[code] = false;
       else if (newProp.DataType === "numeric") merged[code] = "";
       else merged[code] = "";
@@ -117,11 +119,33 @@ export function mergeValuesForProductSwitch(
   return { merged, lostFields };
 }
 
+/**
+ * Coerce a stored `Value` into the runtime type the form expects. Critical
+ * for boolean fields: validation-products serializes the admin default as
+ * the literal string `"true"` / `"false"`, but `"false"` is a truthy
+ * JavaScript string, so without coercion every boolean default would render
+ * as `true` regardless of admin intent. `Value` is typed as
+ * `string | number | boolean`, so an already-coerced boolean passes through.
+ */
+function coerceValueByDataType(
+  raw: string | number | boolean,
+  dataType: PropertyDefinition["DataType"]
+): string | number | boolean {
+  if (dataType === "boolean" || dataType === "link") {
+    if (typeof raw === "boolean") return raw;
+    if (typeof raw === "string") return raw === "true";
+    return Boolean(raw);
+  }
+  // numeric / text / enum: pass through. Numeric stays as-is so partial
+  // input (e.g. "12." while typing) isn't truncated elsewhere.
+  return raw;
+}
+
 /** Empty row `values` for a product schema (form_body only). */
 export function emptyValuesForProductSchema(schema: ProductPayload): Record<string, string | number | boolean> {
   const out: Record<string, string | number | boolean> = {};
   for (const prop of formBodyProps(schema)) {
-    if (prop.Value !== undefined) out[prop.Code] = prop.Value;
+    if (prop.Value !== undefined) out[prop.Code] = coerceValueByDataType(prop.Value, prop.DataType);
     else if (prop.DataType === "boolean" || prop.DataType === "link") out[prop.Code] = false;
     else if (prop.DataType === "numeric") out[prop.Code] = "";
     else out[prop.Code] = "";
