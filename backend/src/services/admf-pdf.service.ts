@@ -465,7 +465,9 @@ function drawSectionTitle(ctx: Ctx, yTop: number, label: string): number {
  */
 function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
   const vat = d.vatRate ?? 12;
-  const withVat = (n: number) => Math.round(n * (1 + vat / 100));
+  // Per-line s-DPH = ceil of bez × VAT. Sum of these per-line values is the
+  // Celkem base, so what the customer sees in the rows always adds up.
+  const withVat = (n: number) => (n > 0 ? Math.ceil(n * (1 + vat / 100)) : 0);
   const rowH = 20;
   const cols = [
     { key: "produkt", label: "produkt", w: 0, align: "left" as const },
@@ -580,10 +582,14 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
   if (mngSlevaSDph > 0) drawSlevaRow("Sleva (firma)", mngSlevaSDph);
 
   // Celkem row — merge the last two columns (sleva + cena po slevě) into one
-  // wide cell. Per request, shows only s DPH.
-  const sumProducts = (d.productRows ?? []).reduce((s, r) => s + (r.cenaPoSleve ?? 0), 0);
-  const preDiscountSDph = withVat(sumProducts + montaz);
-  const celkemSDph = Math.max(0, preDiscountSDph - ovtSlevaSDph - mngSlevaSDph);
+  // wide cell. Per request, shows only s DPH. Sum the per-line s-DPH (each
+  // ceil'd via withVat) so displayed rows always reconcile with Celkem.
+  const sumProductsSDph = (d.productRows ?? []).reduce(
+    (s, r) => s + withVat(r.cenaPoSleve ?? 0),
+    0
+  );
+  const montazSDph = withVat(montaz);
+  const celkemSDph = Math.max(0, sumProductsSDph + montazSDph - ovtSlevaSDph - mngSlevaSDph);
   const celkemH = rowH;
   // Draw cells 0-4 as usual
   for (let ci = 0; ci < 5; ci++) {
@@ -864,14 +870,19 @@ export async function generateAdmfPdfBuffer(raw: Record<string, unknown>): Promi
   y = drawDoplnujiciAndToggles(ctx, y, data);
   y = drawKObjednani(ctx, y, data);
 
-  // Compute celkem s DPH once for sharing across CENA/DOPLATEK. Slevy are
-  // stored s-DPH so we subtract them after the VAT multiplication.
-  const sumProducts = (data.productRows ?? []).reduce((s, r) => s + (r.cenaPoSleve ?? 0), 0);
+  // Compute celkem s DPH once for sharing across CENA/DOPLATEK.
+  // Sum per-line ceil(bez × VAT) so the bottom rows of the PDF stay consistent
+  // with the product-table Celkem. Slevy are stored s-DPH (no conversion).
+  const vat = data.vatRate ?? 12;
+  const ceilSDph = (bez: number) => (bez > 0 ? Math.ceil(bez * (1 + vat / 100)) : 0);
+  const sumProductsSDph = (data.productRows ?? []).reduce(
+    (s, r) => s + ceilSDph(r.cenaPoSleve ?? 0),
+    0
+  );
+  const montazSDph = ceilSDph(data.montazCenaBezDph ?? 0);
   const ovtSlevaSDph = Math.max(0, Math.round(data.ovtSlevaSDph ?? 0));
   const mngSlevaSDph = data.mngSleva ? Math.max(0, Math.round(data.mngSlevaSDph ?? 0)) : 0;
-  const vat = data.vatRate ?? 12;
-  const preDiscountSDph = Math.round((sumProducts + (data.montazCenaBezDph ?? 0)) * (1 + vat / 100));
-  const celkemSDph = Math.max(0, preDiscountSDph - ovtSlevaSDph - mngSlevaSDph);
+  const celkemSDph = Math.max(0, sumProductsSDph + montazSDph - ovtSlevaSDph - mngSlevaSDph);
 
   y = drawCenaRow(ctx, y, data, celkemSDph);
   y = drawZalohaRow(ctx, y, data);

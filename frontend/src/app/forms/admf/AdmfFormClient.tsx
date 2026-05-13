@@ -210,10 +210,15 @@ function computeAdmfOrderTotals(data: AdmfFormData): {
   const mngSlevaSDph =
     data.mngSleva && (data.mngSlevaSDph ?? 0) > 0 ? Math.max(0, data.mngSlevaSDph ?? 0) : 0;
   const vatRate = (data.vatRate ?? 12) as number;
+  // Per-line s-DPH = ceil(bez × VAT). Sum these (plus ceil'd montáž) so the
+  // displayed rows on the PDF always reconcile with Mezisoučet/Celkem.
+  const ceilSDph = (bez: number) => (bez > 0 ? Math.ceil(bez * (1 + vatRate / 100)) : 0);
+  const produktySDph = data.productRows.reduce((s, r) => s + ceilSDph(r.cenaPoSleve || 0), 0);
+  const montazSDph = ceilSDph(montazBezDph);
+  const preDiscountSDph = produktySDph + montazSDph;
+  const preDiscountDphCastka = preDiscountSDph - (produktyBezDph + montazBezDph);
   // Slevy jsou s DPH → odečítají se v s-DPH prostoru. bez-DPH celkem je
   // derivace pro účetnictví (Raynet má vlastní bez-DPH pole, viz raynet-export).
-  const preDiscountSDph = Math.round((produktyBezDph + montazBezDph) * (1 + vatRate / 100));
-  const preDiscountDphCastka = preDiscountSDph - (produktyBezDph + montazBezDph);
   const celkemSDph = Math.max(0, preDiscountSDph - ovtSlevaSDph - mngSlevaSDph);
   const celkemBezDph = Math.round((celkemSDph * 100) / (100 + vatRate));
   return {
@@ -679,8 +684,12 @@ export default function AdmfFormClient({
     celkemSDph: totalSDph,
   } = computeAdmfOrderTotals(formData);
 
-  /** Pouze produkty — pro patičku tabulky (bez montáže a řádkových slev OVT/MNG). */
-  const produktySDph = Math.round(totalProduktyBezDph * (1 + vatRate / 100));
+  /** Pouze produkty — pro patičku tabulky (bez montáže a řádkových slev OVT/MNG).
+   *  Suma per-line ceil(bez × VAT), aby řádky vždy seděly s patičkou. */
+  const produktySDph = formData.productRows.reduce(
+    (s, r) => s + ((r.cenaPoSleve || 0) > 0 ? Math.ceil((r.cenaPoSleve || 0) * (1 + vatRate / 100)) : 0),
+    0
+  );
   const produktyDphCastka = produktySDph - totalProduktyBezDph;
 
   /** Režim montáže: u legacy záznamů bez `montazCenaZpusob` = vlastní částka. */
@@ -1676,7 +1685,11 @@ export default function AdmfFormClient({
                     // name byl historicky `cenaZaKsBezDph`, ale šlo o nesprávné
                     // čtení — viz `sumProductRowsBezDph` v utils/admf-order-totals.
                     const cenaPoSleveLineBezDph = row.cenaPoSleve || 0;
-                    const cenaPoSleveLineSDph = Math.round(cenaPoSleveLineBezDph * (1 + vatRate / 100));
+                    // Ceil per-line so sum of displayed rows = produkty s DPH footer = Celkem.
+                    const cenaPoSleveLineSDph =
+                      cenaPoSleveLineBezDph > 0
+                        ? Math.ceil(cenaPoSleveLineBezDph * (1 + vatRate / 100))
+                        : 0;
                     const surchargeSum =
                       row.surcharges?.reduce((sum, s) => sum + (s.amount || 0), 0) ?? 0;
                     const baseCena =

@@ -49,19 +49,35 @@ function mngSlevaSDphFromForm(formJson: Record<string, unknown>): number {
   return Math.max(0, Number(formJson.mngSlevaSDph) || 0);
 }
 
+/** Per-line s-DPH conversion (ceil → whole Kč), so sum of displayed lines = Celkem. */
+function lineSDphCeil(bezDph: number, vatRate: number): number {
+  if (!Number.isFinite(bezDph) || bezDph <= 0) return 0;
+  return Math.ceil(bezDph * (1 + vatRate / 100));
+}
+
 /**
- * Celkem s DPH = round((produkty_bezDph + montaz_bezDph) × VAT) − slevy_s_DPH.
+ * Součet produktových řádků v s-DPH: každý řádek zvlášť převedený na s-DPH
+ * stropem (ceil), pak sčítáme. Tím se zaručí, že displayed rows + montáž
+ * vždycky sednou s Celkem (bug ze sumy-zaokrouhlení vs zaokrouhlení-sumy).
+ */
+export function sumProductRowsSDph(formJson: Record<string, unknown>): number {
+  const vatRate = parseAdmfVatRatePercent(formJson.vatRate);
+  const rows = (formJson.productRows as Array<{ cenaPoSleve?: number }> | undefined) ?? [];
+  return rows.reduce((sum, r) => sum + lineSDphCeil(r.cenaPoSleve ?? 0, vatRate), 0);
+}
+
+/**
+ * Celkem s DPH = (Σ per-line ceil) + ceil(montaz × VAT) − slevy_s_DPH.
  * Slevy jsou uložené v s-DPH prostoru (mental model: rep typed "3000 Kč off"
  * a zákazník přesně tolik vidí odečteno z celkové ceny).
  */
 export function computeAdmfCelkemSDph(formJson: Record<string, unknown>): number {
   const vatRate = parseAdmfVatRatePercent(formJson.vatRate);
-  const produktyBez = sumProductRowsBezDph(formJson);
-  const montazBez = effectiveMontazBezDph(formJson);
-  const preDiscountSDph = Math.round((produktyBez + montazBez) * (1 + vatRate / 100));
+  const produktySDph = sumProductRowsSDph(formJson);
+  const montazSDph = lineSDphCeil(effectiveMontazBezDph(formJson), vatRate);
   const ovtSDph = ovtSlevaSDphFromForm(formJson);
   const mngSDph = mngSlevaSDphFromForm(formJson);
-  return Math.max(0, preDiscountSDph - ovtSDph - mngSDph);
+  return Math.max(0, produktySDph + montazSDph - ovtSDph - mngSDph);
 }
 
 /**
