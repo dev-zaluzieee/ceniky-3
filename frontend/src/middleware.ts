@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 const PUBLIC_PATHS: RegExp[] = [
   /^\/login$/,
   /^\/offline$/,
+  /^\/maintenance$/,
   /^\/api\/auth(\/.*)?$/,
   /^\/api(\/.*)?$/,
   /^\/_next(\/.*)?$/,
@@ -19,6 +20,25 @@ const PUBLIC_PATHS: RegExp[] = [
   // log in as an OVT user just to preview their schema edits.
   /^\/forms\/preview$/,
 ];
+
+/**
+ * Maintenance gate — when the `MAINTENANCE_MODE` env var is `"true"`,
+ * every request gets redirected to /maintenance (pages) or returns a JSON
+ * 503 (API routes). Static assets pass through so the page can render.
+ *
+ * Toggling requires a redeploy on Vercel (env vars are inlined at build).
+ */
+const MAINTENANCE_BYPASS: RegExp[] = [
+  /^\/maintenance$/,
+  /^\/_next(\/.*)?$/,
+  /^\/favicon\.ico$/,
+  /^\/icons\//,
+  /^\/.*\.(?:png|jpe?g|gif|webp|svg|ico|json|txt|xml|webmanifest)$/i,
+];
+
+function isMaintenanceBypass(pathname: string): boolean {
+  return MAINTENANCE_BYPASS.some((re) => re.test(pathname));
+}
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((re) => re.test(pathname));
@@ -71,6 +91,23 @@ async function tryMiddlewareSessionRefresh(req: NextRequest): Promise<NextRespon
  */
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // Maintenance gate — runs before everything else so even unauthenticated
+  // OVT reps see the maintenance page (not the login screen).
+  if (process.env.MAINTENANCE_MODE === "true" && !isMaintenanceBypass(pathname)) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { success: false, error: "Service is in maintenance mode" },
+        { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "300" } }
+      );
+    }
+    const url = req.nextUrl.clone();
+    url.pathname = "/maintenance";
+    url.search = "";
+    const res = NextResponse.rewrite(url);
+    res.headers.set("Cache-Control", "no-store");
+    return res;
+  }
 
   // Allow public paths
   if (isPublic(pathname)) return NextResponse.next();
