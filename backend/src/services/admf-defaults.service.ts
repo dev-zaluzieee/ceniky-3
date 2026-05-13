@@ -34,9 +34,11 @@ export interface MontazTier {
 
 export interface AdmfDefaults {
   vatRateDefaultPercent: number;
-  ovtSlevaDefaultBezDph: number;
+  /** Default OVT discount, s DPH (customer-visible amount). */
+  ovtSlevaDefaultSDph: number;
   mngSlevaDefaultActive: boolean;
-  mngSlevaDefaultBezDph: number;
+  /** Default MNG discount, s DPH (customer-visible amount). */
+  mngSlevaDefaultSDph: number;
   montazFallbackBezDph: number;
   bulkSlevaDefaultPercent: number;
   montazTiers: MontazTier[];
@@ -54,9 +56,9 @@ let cache: CachedDefaults | null = null;
 function legacyDefaults(): AdmfDefaults {
   return {
     vatRateDefaultPercent: LEGACY_FALLBACK_VAT_PERCENT,
-    ovtSlevaDefaultBezDph: 0,
+    ovtSlevaDefaultSDph: 0,
     mngSlevaDefaultActive: false,
-    mngSlevaDefaultBezDph: 0,
+    mngSlevaDefaultSDph: 0,
     montazFallbackBezDph: LEGACY_FALLBACK_MONTAZ,
     bulkSlevaDefaultPercent: 0,
     montazTiers: [],
@@ -67,9 +69,9 @@ function legacyDefaults(): AdmfDefaults {
 function fromDb(row: AdmfDefaultsRowDb, tierRows: MontazTierRowDb[]): AdmfDefaults {
   return {
     vatRateDefaultPercent: Number(row.vat_rate_default_percent),
-    ovtSlevaDefaultBezDph: row.ovt_sleva_default_bez_dph,
+    ovtSlevaDefaultSDph: row.ovt_sleva_default_s_dph,
     mngSlevaDefaultActive: row.mng_sleva_default_active,
-    mngSlevaDefaultBezDph: row.mng_sleva_default_bez_dph,
+    mngSlevaDefaultSDph: row.mng_sleva_default_s_dph,
     montazFallbackBezDph: row.montaz_fallback_bez_dph,
     bulkSlevaDefaultPercent: row.bulk_sleva_default_percent,
     montazTiers: tierRows.map((t) => ({

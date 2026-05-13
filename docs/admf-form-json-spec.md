@@ -88,8 +88,8 @@ Each element:
 | `montazCenaZpusob` | `"auto" \| "manual"` | `auto` → fixed default **1339 Kč bez DPH**; `manual` → use `montazCenaBezDph`. Records **without** this field behave like `manual` in backend helpers. |
 | `montazCenaBezDph` | `number` | Installation **without VAT** when mode is manual (or stored default). |
 | `mngSleva` | `boolean` | Manager discount **enabled**. |
-| `mngSlevaCastka` | `number` | Amount **without VAT** subtracted from total when `mngSleva` is true and value > 0. |
-| `ovtSlevaCastka` | `number` | OVT discount **without VAT** (always subtracted when > 0). |
+| `mngSlevaSDph` | `number` | Amount **with VAT** subtracted from celkemSDph when `mngSleva` is true and value > 0. The customer-visible amount the rep negotiated. |
+| `ovtSlevaSDph` | `number` | OVT discount **with VAT** (always subtracted from celkemSDph when > 0). Raynet's bez-DPH custom fields are derived at export time via `round(sDph × 100 / (100 + vatRate))`. |
 
 **Effective montáž bez DPH** (single source of truth in backend):
 
@@ -120,17 +120,13 @@ Related toggles:
 
 Implementations **must** match:
 
-```34:48:backend/src/utils/admf-order-totals.ts
-export function computeAdmfCelkemBezDph(formJson: Record<string, unknown>): number {
-  const produkty = sumProductRowsBezDph(formJson);
-  const montaz = effectiveMontazBezDph(formJson);
-  const ovt = Math.max(0, Number(formJson.ovtSlevaCastka) || 0);
-  const mng =
-    formJson.mngSleva === true && (Number(formJson.mngSlevaCastka) || 0) > 0
-      ? Math.max(0, Number(formJson.mngSlevaCastka) || 0)
-      : 0;
-  return Math.max(0, produkty + montaz - ovt - mng);
-}
+```backend/src/utils/admf-order-totals.ts — conceptual
+// Products + montáž are stored bez-DPH and converted to s-DPH for the celkem.
+// Slevy are stored s-DPH (the customer-visible amount) and subtracted in the
+// s-DPH space — so the customer's "3 000 Kč off" maps exactly to a 3 000 Kč
+// reduction of celkem.
+celkemSDph = max(0, round((produktyBezDph + montazBezDph) × VAT) - ovtSlevaSDph - mngSlevaSDph)
+celkemBezDph = round(celkemSDph × 100 / (100 + vatRate))   // derived for accounting
 
 export function computeAdmfCelkemSDph(formJson: Record<string, unknown>): number {
   const vatRate = parseAdmfVatRatePercent(formJson.vatRate);
@@ -286,7 +282,7 @@ Integrators should compare **exact strings** — exports to Raynet/ERP depend on
   "montazCenaZpusob": "auto",
   "montazCenaBezDph": 1339,
   "mngSleva": false,
-  "ovtSlevaCastka": 0,
+  "ovtSlevaSDph": 0,
   "vatRate": 12,
   "platceDph": false,
   "typProstoru": "bytovy",

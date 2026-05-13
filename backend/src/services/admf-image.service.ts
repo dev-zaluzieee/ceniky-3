@@ -56,8 +56,8 @@ interface AdmfImageData {
   montazCenaBezDph?: number;
   montazCenaZpusob?: "auto" | "manual";
   mngSleva?: boolean;
-  mngSlevaCastka?: number;
-  ovtSlevaCastka?: number;
+  mngSlevaSDph?: number;
+  ovtSlevaSDph?: number;
   poznamkyVyroba?: string;
   poznamkyMontaz?: string;
   kObjednani?: string;
@@ -247,11 +247,11 @@ export async function generateAdmfImageBuffer(raw: Record<string, unknown>): Pro
     ["Produkty bez DPH", `${totalProdukty} Kč`],
     ["Montáž bez DPH", `${montazBezDph} Kč`],
   ];
-  if ((formData.ovtSlevaCastka ?? 0) > 0) {
-    kalkBody.push(["OVT sleva (bez DPH)", `−${formData.ovtSlevaCastka} Kč`]);
+  if ((formData.ovtSlevaSDph ?? 0) > 0) {
+    kalkBody.push(["OVT sleva (s DPH)", `−${formData.ovtSlevaSDph} Kč`]);
   }
-  if (formData.mngSleva && (formData.mngSlevaCastka ?? 0) > 0) {
-    kalkBody.push(["MNG sleva (bez DPH)", `−${formData.mngSlevaCastka} Kč`]);
+  if (formData.mngSleva && (formData.mngSlevaSDph ?? 0) > 0) {
+    kalkBody.push(["MNG sleva (s DPH)", `−${formData.mngSlevaSDph} Kč`]);
   }
   kalkBody.push(
     ["Celkem bez DPH", `${totalBezDph} Kč`],

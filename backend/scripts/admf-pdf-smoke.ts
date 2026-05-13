@@ -55,7 +55,7 @@ const sample: Record<string, unknown> = {
     },
   ],
   montazCenaBezDph: 1339,
-  ovtSlevaCastka: 0,
+  ovtSlevaSDph: 0,
   mngSleva: false,
   doplnujiciInformaceObjednavky:
     "Standardní provedení, barva bílá. Délka šňůr 1500 mm. Klient si přeje montáž do otvoru.",

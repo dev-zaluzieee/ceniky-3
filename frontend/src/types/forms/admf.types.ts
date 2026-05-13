@@ -148,13 +148,17 @@ export interface AdmfFormData {
    */
   montazCenaZpusob?: "auto" | "manual";
 
-  /** Slevy (total-level, not per-row) */
+  /**
+   * Order-level slevy (subtracted from celkem after VAT, not per-row).
+   * Stored **s DPH** — the customer-visible amount the rep negotiated.
+   * Raynet's bez-DPH custom fields are derived at export time.
+   */
   /** MNG (manager) discount toggle */
   mngSleva?: boolean;
-  /** MNG discount amount in CZK (from total price) */
-  mngSlevaCastka?: number;
-  /** OVT discount amount in CZK (from total price) */
-  ovtSlevaCastka?: number;
+  /** MNG discount amount in CZK, s DPH */
+  mngSlevaSDph?: number;
+  /** OVT discount amount in CZK, s DPH */
+  ovtSlevaSDph?: number;
 
   /** Další informace */
   typZarizeni?: string;

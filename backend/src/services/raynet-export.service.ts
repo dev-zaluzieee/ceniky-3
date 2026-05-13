@@ -104,14 +104,19 @@ export function buildRaynetPayload(
   // ── Boolean: MNG sleva ──
   cf.MNG_SLEVA_aac47 = formJson.mngSleva === true;
 
-  // ── Monetary: MNG sleva částka ──
-  if (formJson.mngSleva && (formJson.mngSlevaCastka ?? 0) > 0) {
-    cf.MNG_sleva__0836b = formJson.mngSlevaCastka;
+  // ── Monetary: MNG/OVT sleva ──
+  // Form storage is s-DPH (customer-visible). Raynet's custom fields expect
+  // bez-DPH numbers — derive via Math.round(sDph × 100 / (100 + vat)).
+  const vatPercent = Number(vatRate);
+  const slevaSDphToBez = (sDph: number) =>
+    Math.round((sDph * 100) / (100 + (Number.isFinite(vatPercent) ? vatPercent : 12)));
+
+  if (formJson.mngSleva && (Number(formJson.mngSlevaSDph) || 0) > 0) {
+    cf.MNG_sleva__0836b = slevaSDphToBez(Number(formJson.mngSlevaSDph));
   }
 
-  // ── Monetary: OVT sleva částka ──
-  if ((formJson.ovtSlevaCastka ?? 0) > 0) {
-    cf.OVT_sleva__909bc = formJson.ovtSlevaCastka;
+  if ((Number(formJson.ovtSlevaSDph) || 0) > 0) {
+    cf.OVT_sleva__909bc = slevaSDphToBez(Number(formJson.ovtSlevaSDph));
   }
 
   // ── Merge: poznámky → Dalsi_dopl_1e01a ──

@@ -23,9 +23,11 @@ interface FormPricePreviewPanelProps {
 
 interface PanelOverrides {
   vatRatePercent?: number;
-  ovtSlevaBezDph?: number;
+  /** OVT discount override, s DPH. */
+  ovtSlevaSDph?: number;
   mngSlevaActive?: boolean;
-  mngSlevaBezDph?: number;
+  /** MNG discount override, s DPH. */
+  mngSlevaSDph?: number;
   montazOverrideBezDph?: number | null;
   bulkSlevaPercent?: number;
 }
@@ -69,9 +71,9 @@ export default function FormPricePreviewPanel({
     if (!defaults) return null;
     return {
       vatRatePercent: overrides.vatRatePercent ?? defaults.vatRateDefaultPercent,
-      ovtSlevaBezDph: overrides.ovtSlevaBezDph ?? defaults.ovtSlevaDefaultBezDph,
+      ovtSlevaSDph: overrides.ovtSlevaSDph ?? defaults.ovtSlevaDefaultSDph,
       mngSlevaActive: overrides.mngSlevaActive ?? defaults.mngSlevaDefaultActive,
-      mngSlevaBezDph: overrides.mngSlevaBezDph ?? defaults.mngSlevaDefaultBezDph,
+      mngSlevaSDph: overrides.mngSlevaSDph ?? defaults.mngSlevaDefaultSDph,
       // null = let server resolve from tiers; undefined here also passes through (server treats as omit)
       montazOverrideBezDph: overrides.montazOverrideBezDph,
       bulkSlevaPercent: overrides.bulkSlevaPercent ?? defaults.bulkSlevaDefaultPercent,
@@ -240,9 +242,9 @@ function ParametersBlock({
   }
 
   const vat = overrides.vatRatePercent ?? defaults.vatRateDefaultPercent;
-  const ovt = overrides.ovtSlevaBezDph ?? defaults.ovtSlevaDefaultBezDph;
+  const ovt = overrides.ovtSlevaSDph ?? defaults.ovtSlevaDefaultSDph;
   const mngActive = overrides.mngSlevaActive ?? defaults.mngSlevaDefaultActive;
-  const mng = overrides.mngSlevaBezDph ?? defaults.mngSlevaDefaultBezDph;
+  const mng = overrides.mngSlevaSDph ?? defaults.mngSlevaDefaultSDph;
   const bulk = overrides.bulkSlevaPercent ?? defaults.bulkSlevaDefaultPercent;
 
   return (
@@ -265,15 +267,15 @@ function ParametersBlock({
           resolvedMontaz={resolvedMontaz}
         />
         <ParamField
-          label="OVT sleva (bez DPH, Kč)"
+          label="OVT sleva (s DPH, Kč)"
           value={String(ovt)}
-          onChange={(v) => patch({ ovtSlevaBezDph: v === "" ? undefined : Number(v) })}
-          isOverride={overrides.ovtSlevaBezDph !== undefined}
+          onChange={(v) => patch({ ovtSlevaSDph: v === "" ? undefined : Number(v) })}
+          isOverride={overrides.ovtSlevaSDph !== undefined}
           numberStep="1"
         />
         <div>
           <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            MNG sleva (bez DPH, Kč)
+            MNG sleva (s DPH, Kč)
           </label>
           <div className="flex items-center gap-2">
             <input
@@ -286,12 +288,12 @@ function ParametersBlock({
             <input
               type="number"
               value={String(mng)}
-              onChange={(e) => patch({ mngSlevaBezDph: e.target.value === "" ? undefined : Number(e.target.value) })}
+              onChange={(e) => patch({ mngSlevaSDph: e.target.value === "" ? undefined : Number(e.target.value) })}
               min={0}
               step={1}
               disabled={!mngActive}
               className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-700 dark:bg-zinc-800 dark:text-zinc-50 ${
-                overrides.mngSlevaBezDph !== undefined || overrides.mngSlevaActive !== undefined
+                overrides.mngSlevaSDph !== undefined || overrides.mngSlevaActive !== undefined
                   ? "border-blue-300 dark:border-blue-700"
                   : "border-zinc-300 dark:border-zinc-600"
               } ${!mngActive ? "opacity-50" : ""}`}
@@ -496,6 +498,12 @@ function TotalsBlock({
       </section>
     );
   }
+  // Pre-discount: produkty + montáž s DPH, base from which slevy are subtracted.
+  // Derived from the response (totalSDph = preDiscountSDph − slevy → invert).
+  const effectiveMngSDph = result.mngSlevaActive ? result.mngSlevaSDph : 0;
+  const preDiscountSDph = result.totalSDph + result.ovtSlevaSDph + effectiveMngSDph;
+  const preDiscountDph = preDiscountSDph - result.productsBezDph - result.montaz.bezDph;
+
   return (
     <section className="rounded-lg border border-zinc-200 dark:border-zinc-700">
       <div className="border-b border-zinc-200 px-3 py-2 dark:border-zinc-700">
@@ -504,15 +512,16 @@ function TotalsBlock({
       <dl className="divide-y divide-zinc-100 text-sm dark:divide-zinc-800">
         <Row label="Produkty bez DPH" value={result.productsBezDph} fmt={currencyFormatter} />
         <Row label="Montáž bez DPH" value={result.montaz.bezDph} fmt={currencyFormatter} />
-        {result.ovtSlevaBezDph > 0 && (
-          <Row label="OVT sleva" value={-result.ovtSlevaBezDph} fmt={currencyFormatter} negative />
+        <Row label={`DPH (${result.vatRatePercent} %)`} value={preDiscountDph} fmt={currencyFormatter} />
+        <Row label="Mezisoučet s DPH" value={preDiscountSDph} fmt={currencyFormatter} bold />
+        {result.ovtSlevaSDph > 0 && (
+          <Row label="OVT sleva (s DPH)" value={-result.ovtSlevaSDph} fmt={currencyFormatter} negative />
         )}
-        {result.mngSlevaActive && result.mngSlevaBezDph > 0 && (
-          <Row label="MNG sleva" value={-result.mngSlevaBezDph} fmt={currencyFormatter} negative />
+        {result.mngSlevaActive && result.mngSlevaSDph > 0 && (
+          <Row label="MNG sleva (s DPH)" value={-result.mngSlevaSDph} fmt={currencyFormatter} negative />
         )}
-        <Row label="Celkem bez DPH" value={result.totalBezDph} fmt={currencyFormatter} bold />
-        <Row label={`DPH (${result.vatRatePercent} %)`} value={result.vatAmount} fmt={currencyFormatter} />
         <Row label="Celkem s DPH" value={result.totalSDph} fmt={currencyFormatter} bold large />
+        <Row label="z toho bez DPH" value={result.totalBezDph} fmt={currencyFormatter} muted />
       </dl>
     </section>
   );
@@ -525,6 +534,7 @@ function Row({
   bold,
   large,
   negative,
+  muted,
 }: {
   label: string;
   value: number;
@@ -532,16 +542,23 @@ function Row({
   bold?: boolean;
   large?: boolean;
   negative?: boolean;
+  muted?: boolean;
 }) {
+  const labelColor = muted
+    ? "text-zinc-500 dark:text-zinc-400"
+    : "text-zinc-700 dark:text-zinc-200";
+  const valueColor = muted
+    ? "text-zinc-500 dark:text-zinc-400"
+    : negative
+    ? "text-emerald-700 dark:text-emerald-300"
+    : "text-zinc-900 dark:text-zinc-50";
   return (
     <div className="flex items-baseline justify-between gap-3 px-3 py-2">
-      <dt className={`${bold ? "font-semibold" : "font-normal"} ${large ? "text-base" : "text-sm"} text-zinc-700 dark:text-zinc-200`}>
+      <dt className={`${bold ? "font-semibold" : "font-normal"} ${large ? "text-base" : "text-sm"} ${labelColor}`}>
         {label}
       </dt>
       <dd
-        className={`tabular-nums ${bold ? "font-semibold" : "font-medium"} ${large ? "text-lg" : "text-sm"} ${
-          negative ? "text-emerald-700 dark:text-emerald-300" : "text-zinc-900 dark:text-zinc-50"
-        }`}
+        className={`tabular-nums ${bold ? "font-semibold" : "font-medium"} ${large ? "text-lg" : "text-sm"} ${valueColor}`}
       >
         {fmt.format(value)}
       </dd>

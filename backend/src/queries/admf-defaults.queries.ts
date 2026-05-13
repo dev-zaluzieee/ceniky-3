@@ -10,9 +10,9 @@ import type { Pool } from "pg";
 
 export interface AdmfDefaultsRowDb {
   vat_rate_default_percent: string;
-  ovt_sleva_default_bez_dph: number;
+  ovt_sleva_default_s_dph: number;
   mng_sleva_default_active: boolean;
-  mng_sleva_default_bez_dph: number;
+  mng_sleva_default_s_dph: number;
   montaz_fallback_bez_dph: number;
   bulk_sleva_default_percent: number;
   updated_at: Date;
@@ -30,8 +30,8 @@ export interface MontazTierRowDb {
 
 export async function fetchDefaults(pool: Pool): Promise<AdmfDefaultsRowDb | null> {
   const { rows } = await pool.query<AdmfDefaultsRowDb>(
-    `SELECT vat_rate_default_percent, ovt_sleva_default_bez_dph, mng_sleva_default_active,
-            mng_sleva_default_bez_dph, montaz_fallback_bez_dph, bulk_sleva_default_percent,
+    `SELECT vat_rate_default_percent, ovt_sleva_default_s_dph, mng_sleva_default_active,
+            mng_sleva_default_s_dph, montaz_fallback_bez_dph, bulk_sleva_default_percent,
             updated_at, updated_by
        FROM office_admf_defaults
       WHERE id = 1`

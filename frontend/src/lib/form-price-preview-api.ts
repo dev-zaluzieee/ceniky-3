@@ -4,9 +4,9 @@
 
 export interface AdmfDefaults {
   vatRateDefaultPercent: number;
-  ovtSlevaDefaultBezDph: number;
+  ovtSlevaDefaultSDph: number;
   mngSlevaDefaultActive: boolean;
-  mngSlevaDefaultBezDph: number;
+  mngSlevaDefaultSDph: number;
   montazFallbackBezDph: number;
   bulkSlevaDefaultPercent: number;
   montazTiers: Array<{
@@ -22,9 +22,11 @@ export interface AdmfDefaults {
 
 export interface FormPreviewParameters {
   vatRatePercent: number;
-  ovtSlevaBezDph: number;
+  /** Order-level OVT discount, s DPH (the customer-visible amount). */
+  ovtSlevaSDph: number;
   mngSlevaActive: boolean;
-  mngSlevaBezDph: number;
+  /** Order-level MNG discount, s DPH (the customer-visible amount). */
+  mngSlevaSDph: number;
   /** Omit / null to let the server resolve the montáž tier from the products subtotal. */
   montazOverrideBezDph?: number | null;
   /** % applied to every product row's `sleva` (mirrors ADMF "Nastavit slevu všem"). */
@@ -57,9 +59,9 @@ export interface FormPreviewResponseData {
     source: "tier" | "fallback" | "override";
     tierOrdinal?: number;
   };
-  ovtSlevaBezDph: number;
+  ovtSlevaSDph: number;
   mngSlevaActive: boolean;
-  mngSlevaBezDph: number;
+  mngSlevaSDph: number;
   bulkSlevaPercent: number;
   vatRatePercent: number;
   vatAmount: number;

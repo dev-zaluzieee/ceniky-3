@@ -186,15 +186,18 @@ function effectiveMontazCenaBezDph(data: AdmfFormData): number {
   return data.montazCenaBezDph ?? DEFAULT_MONTAZ_CENA_BEZ_DPH;
 }
 
-/** Souhrn částek objednávky (OVT/MNG slevy jako odečty bez DPH). */
+/** Souhrn částek objednávky (OVT/MNG slevy jako odečty s DPH od mezisoučtu). */
 function computeAdmfOrderTotals(data: AdmfFormData): {
   produktyBezDph: number;
   montazBezDph: number;
-  ovtSlevaBezDph: number;
-  mngSlevaBezDph: number;
-  celkemBezDph: number;
-  dphCastka: number;
+  /** DPH částka z mezisoučtu (produkty + montáž), tj. před odečtením slev. */
+  preDiscountDphCastka: number;
+  /** (produkty + montáž) × VAT, zaokrouhleno. Báze pro odečet slev. */
+  preDiscountSDph: number;
+  ovtSlevaSDph: number;
+  mngSlevaSDph: number;
   celkemSDph: number;
+  celkemBezDph: number;
 } {
   const produktyBezDph = data.productRows.reduce(
     // `cenaPoSleve` je line total (extract i recalcCenaPoSleve do ní zahrnují ks),
@@ -203,24 +206,25 @@ function computeAdmfOrderTotals(data: AdmfFormData): {
     0
   );
   const montazBezDph = effectiveMontazCenaBezDph(data);
-  const ovtSlevaBezDph = Math.max(0, data.ovtSlevaCastka ?? 0);
-  const mngSlevaBezDph =
-    data.mngSleva && (data.mngSlevaCastka ?? 0) > 0 ? Math.max(0, data.mngSlevaCastka ?? 0) : 0;
-  const celkemBezDph = Math.max(
-    0,
-    produktyBezDph + montazBezDph - ovtSlevaBezDph - mngSlevaBezDph
-  );
+  const ovtSlevaSDph = Math.max(0, data.ovtSlevaSDph ?? 0);
+  const mngSlevaSDph =
+    data.mngSleva && (data.mngSlevaSDph ?? 0) > 0 ? Math.max(0, data.mngSlevaSDph ?? 0) : 0;
   const vatRate = (data.vatRate ?? 12) as number;
-  const celkemSDph = Math.round(celkemBezDph * (1 + vatRate / 100));
-  const dphCastka = celkemSDph - celkemBezDph;
+  // Slevy jsou s DPH → odečítají se v s-DPH prostoru. bez-DPH celkem je
+  // derivace pro účetnictví (Raynet má vlastní bez-DPH pole, viz raynet-export).
+  const preDiscountSDph = Math.round((produktyBezDph + montazBezDph) * (1 + vatRate / 100));
+  const preDiscountDphCastka = preDiscountSDph - (produktyBezDph + montazBezDph);
+  const celkemSDph = Math.max(0, preDiscountSDph - ovtSlevaSDph - mngSlevaSDph);
+  const celkemBezDph = Math.round((celkemSDph * 100) / (100 + vatRate));
   return {
     produktyBezDph,
     montazBezDph,
-    ovtSlevaBezDph,
-    mngSlevaBezDph,
-    celkemBezDph,
-    dphCastka,
+    preDiscountDphCastka,
+    preDiscountSDph,
+    ovtSlevaSDph,
+    mngSlevaSDph,
     celkemSDph,
+    celkemBezDph,
   };
 }
 
@@ -667,10 +671,11 @@ export default function AdmfFormClient({
   const {
     produktyBezDph: totalProduktyBezDph,
     montazBezDph,
-    ovtSlevaBezDph,
-    mngSlevaBezDph,
+    preDiscountDphCastka,
+    preDiscountSDph,
+    ovtSlevaSDph,
+    mngSlevaSDph,
     celkemBezDph: totalBezDph,
-    dphCastka: orderDphCastka,
     celkemSDph: totalSDph,
   } = computeAdmfOrderTotals(formData);
 
@@ -1832,11 +1837,11 @@ export default function AdmfFormClient({
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={labelCls}>OVT sleva (bez DPH, Kč)</label>
+                  <label className={labelCls}>OVT sleva (s DPH, Kč)</label>
                   <div className="relative">
                     <IntegerInput
-                      value={formData.ovtSlevaCastka ?? 0}
-                      onCommit={(n) => updateField("ovtSlevaCastka", n)}
+                      value={formData.ovtSlevaSDph ?? 0}
+                      onCommit={(n) => updateField("ovtSlevaSDph", n)}
                       emptyBlurValue={0}
                       zeroAsEmpty
                       min={0}
@@ -1861,11 +1866,11 @@ export default function AdmfFormClient({
               </div>
               {formData.mngSleva && (
                 <div className="max-w-xs">
-                  <label className={labelCls}>MNG sleva částka (bez DPH, Kč)</label>
+                  <label className={labelCls}>MNG sleva částka (s DPH, Kč)</label>
                   <div className="relative">
                     <IntegerInput
-                      value={formData.mngSlevaCastka ?? 0}
-                      onCommit={(n) => updateField("mngSlevaCastka", n)}
+                      value={formData.mngSlevaSDph ?? 0}
+                      onCommit={(n) => updateField("mngSlevaSDph", n)}
                       emptyBlurValue={0}
                       zeroAsEmpty
                       min={0}
@@ -2035,29 +2040,33 @@ export default function AdmfFormClient({
                     <span className="text-zinc-400">Montáž bez DPH</span>
                     <span className="font-medium tabular-nums text-zinc-100">{montazBezDph} Kč</span>
                   </div>
-                  {ovtSlevaBezDph > 0 && (
-                    <div className="flex justify-between gap-4">
-                      <span className="text-zinc-400">OVT sleva (bez DPH)</span>
-                      <span className="font-medium tabular-nums text-rose-300">−{ovtSlevaBezDph} Kč</span>
-                    </div>
-                  )}
-                  {mngSlevaBezDph > 0 && (
-                    <div className="flex justify-between gap-4">
-                      <span className="text-zinc-400">MNG sleva (bez DPH)</span>
-                      <span className="font-medium tabular-nums text-rose-300">−{mngSlevaBezDph} Kč</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between gap-4 border-t border-zinc-600/70 pt-2">
-                    <span className="font-medium text-zinc-300">Celkem bez DPH</span>
-                    <span className="font-semibold tabular-nums text-zinc-50">{totalBezDph} Kč</span>
-                  </div>
                   <div className="flex justify-between gap-4">
-                    <span className="text-zinc-400">DPH ({vatRate}%)</span>
-                    <span className="font-medium tabular-nums text-zinc-100">{orderDphCastka} Kč</span>
+                    <span className="text-zinc-400">DPH ({vatRate} %)</span>
+                    <span className="font-medium tabular-nums text-zinc-100">{preDiscountDphCastka} Kč</span>
                   </div>
+                  <div className="flex justify-between gap-4 border-t border-zinc-600/70 pt-2">
+                    <span className="font-medium text-zinc-300">Mezisoučet s DPH</span>
+                    <span className="font-semibold tabular-nums text-zinc-50">{preDiscountSDph} Kč</span>
+                  </div>
+                  {ovtSlevaSDph > 0 && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-zinc-400">OVT sleva (s DPH)</span>
+                      <span className="font-medium tabular-nums text-rose-300">−{ovtSlevaSDph} Kč</span>
+                    </div>
+                  )}
+                  {mngSlevaSDph > 0 && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-zinc-400">MNG sleva (s DPH)</span>
+                      <span className="font-medium tabular-nums text-rose-300">−{mngSlevaSDph} Kč</span>
+                    </div>
+                  )}
                   <div className="flex justify-between gap-4 border-t border-zinc-600/70 pt-2">
                     <span className="font-semibold text-zinc-100">Celkem s DPH</span>
                     <span className="text-base font-bold tabular-nums text-zinc-50">{totalSDph} Kč</span>
+                  </div>
+                  <div className="flex justify-between gap-4 text-xs text-zinc-500">
+                    <span>z toho bez DPH</span>
+                    <span className="tabular-nums">{totalBezDph} Kč</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

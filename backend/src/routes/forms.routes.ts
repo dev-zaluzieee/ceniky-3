@@ -389,9 +389,9 @@ router.get("/admf-defaults", authenticateToken, async (_req: AuthenticatedReques
  *   formJson: { schema, product_schemas?, data: { rooms } }
  *   parameters: {
  *     vatRatePercent: number,
- *     ovtSlevaBezDph: number,
+ *     ovtSlevaSDph: number,           // OVT discount, s DPH (customer-visible amount)
  *     mngSlevaActive: boolean,
- *     mngSlevaBezDph: number,
+ *     mngSlevaSDph: number,           // MNG discount, s DPH
  *     montazOverrideBezDph?: number   // omit = resolve from tiers
  *   }
  */
@@ -401,9 +401,9 @@ router.post("/price-preview-form", authenticateToken, async (req: AuthenticatedR
       formJson?: Record<string, unknown>;
       parameters?: {
         vatRatePercent?: number;
-        ovtSlevaBezDph?: number;
+        ovtSlevaSDph?: number;
         mngSlevaActive?: boolean;
-        mngSlevaBezDph?: number;
+        mngSlevaSDph?: number;
         montazOverrideBezDph?: number | null;
         /** % applied to every product row's `sleva` (mirrors ADMF's "Nastavit slevu všem"). */
         bulkSlevaPercent?: number;
@@ -427,9 +427,9 @@ router.post("/price-preview-form", authenticateToken, async (req: AuthenticatedR
     const vatRatePercent = Number.isFinite(params.vatRatePercent)
       ? Number(params.vatRatePercent)
       : defaults.vatRateDefaultPercent;
-    const ovtSlevaBezDph = Math.max(0, Math.round(Number(params.ovtSlevaBezDph) || 0));
+    const ovtSlevaSDph = Math.max(0, Math.round(Number(params.ovtSlevaSDph) || 0));
     const mngSlevaActive = !!params.mngSlevaActive;
-    const mngSlevaBezDph = Math.max(0, Math.round(Number(params.mngSlevaBezDph) || 0));
+    const mngSlevaSDph = Math.max(0, Math.round(Number(params.mngSlevaSDph) || 0));
     const bulkSlevaPercent = (() => {
       const n = Number(params.bulkSlevaPercent);
       if (!Number.isFinite(n)) return defaults.bulkSlevaDefaultPercent;
@@ -476,9 +476,9 @@ router.post("/price-preview-form", authenticateToken, async (req: AuthenticatedR
       vatRate: vatRatePercent,
       montazCenaZpusob: "manual",
       montazCenaBezDph: montazBezDph,
-      ovtSlevaCastka: ovtSlevaBezDph,
+      ovtSlevaSDph,
       mngSleva: mngSlevaActive,
-      mngSlevaCastka: mngSlevaBezDph,
+      mngSlevaSDph,
     };
     const totalBezDph = computeAdmfCelkemBezDph(syntheticForm);
     const totalSDph = computeAdmfCelkemSDph(syntheticForm);
@@ -490,9 +490,9 @@ router.post("/price-preview-form", authenticateToken, async (req: AuthenticatedR
         unpriced: preview.unpriced,
         productsBezDph,
         montaz: { bezDph: montazBezDph, source: montazSource, tierOrdinal: montazTierOrdinal },
-        ovtSlevaBezDph,
+        ovtSlevaSDph,
         mngSlevaActive,
-        mngSlevaBezDph: mngSlevaActive ? mngSlevaBezDph : 0,
+        mngSlevaSDph: mngSlevaActive ? mngSlevaSDph : 0,
         bulkSlevaPercent,
         vatRatePercent,
         vatAmount: totalSDph - totalBezDph,

@@ -38,22 +38,49 @@ export function sumProductRowsBezDph(formJson: Record<string, unknown>): number 
 }
 
 /**
- * Celková částka bez DPH po přičtení montáže a odečtení OVT/MNG slev (slevy jsou bez DPH).
- * Minimálně 0 Kč.
+ * OVT/MNG slevy z form_json (s DPH, jak je rep s zákazníkem dohodl).
+ * Pro účetní bez-DPH derivace viz `slevySDphToBezDph` níže.
  */
-export function computeAdmfCelkemBezDph(formJson: Record<string, unknown>): number {
-  const produkty = sumProductRowsBezDph(formJson);
-  const montaz = effectiveMontazBezDph(formJson);
-  const ovt = Math.max(0, Number(formJson.ovtSlevaCastka) || 0);
-  const mng =
-    formJson.mngSleva === true && (Number(formJson.mngSlevaCastka) || 0) > 0
-      ? Math.max(0, Number(formJson.mngSlevaCastka) || 0)
-      : 0;
-  return Math.max(0, produkty + montaz - ovt - mng);
+function ovtSlevaSDphFromForm(formJson: Record<string, unknown>): number {
+  return Math.max(0, Number(formJson.ovtSlevaSDph) || 0);
+}
+function mngSlevaSDphFromForm(formJson: Record<string, unknown>): number {
+  if (formJson.mngSleva !== true) return 0;
+  return Math.max(0, Number(formJson.mngSlevaSDph) || 0);
 }
 
+/**
+ * Celkem s DPH = round((produkty_bezDph + montaz_bezDph) × VAT) − slevy_s_DPH.
+ * Slevy jsou uložené v s-DPH prostoru (mental model: rep typed "3000 Kč off"
+ * a zákazník přesně tolik vidí odečteno z celkové ceny).
+ */
 export function computeAdmfCelkemSDph(formJson: Record<string, unknown>): number {
   const vatRate = parseAdmfVatRatePercent(formJson.vatRate);
-  const bez = computeAdmfCelkemBezDph(formJson);
-  return Math.round(bez * (1 + vatRate / 100));
+  const produktyBez = sumProductRowsBezDph(formJson);
+  const montazBez = effectiveMontazBezDph(formJson);
+  const preDiscountSDph = Math.round((produktyBez + montazBez) * (1 + vatRate / 100));
+  const ovtSDph = ovtSlevaSDphFromForm(formJson);
+  const mngSDph = mngSlevaSDphFromForm(formJson);
+  return Math.max(0, preDiscountSDph - ovtSDph - mngSDph);
+}
+
+/**
+ * Celkem bez DPH — derivace z celkem s DPH zpět do bez-DPH prostoru.
+ * Používá se pro účetnictví; přesný haléřový rozpad může lehce driftovat od
+ * (suma bez DPH řádků) × (1+VAT) o ±1 Kč kvůli zaokrouhlení slev — to je
+ * akceptované (s-DPH je teď zdrojem pravdy).
+ */
+export function computeAdmfCelkemBezDph(formJson: Record<string, unknown>): number {
+  const vatRate = parseAdmfVatRatePercent(formJson.vatRate);
+  const celkemSDph = computeAdmfCelkemSDph(formJson);
+  return Math.round((celkemSDph * 100) / (100 + vatRate));
+}
+
+/**
+ * Pro Raynet a další bez-DPH consumery: zpětně převedená sleva.
+ * `Math.round` aby se předešlo systematickému zaokrouhlovacímu posunu.
+ */
+export function slevaSDphToBezDph(slevaSDph: number, vatRatePercent: number): number {
+  if (!Number.isFinite(slevaSDph) || slevaSDph <= 0) return 0;
+  return Math.round((slevaSDph * 100) / (100 + vatRatePercent));
 }

@@ -115,10 +115,10 @@ interface AdmfFormData {
   // Products + montáž
   productRows?: ProductRow[];
   montazCenaBezDph?: number;
-  // Discounts
-  ovtSlevaCastka?: number;
+  // Discounts (s DPH — the customer-visible amounts)
+  ovtSlevaSDph?: number;
   mngSleva?: boolean;
-  mngSlevaCastka?: number;
+  mngSlevaSDph?: number;
   // Doplňující informace
   doplnujiciInformaceObjednavky?: string;
   doplnujiciInformaceMontaz?: string;
@@ -555,13 +555,35 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
   }
   y += rowH;
 
+  // Order-level slevy (OVT, MNG) — render between Montáž and Celkem so the
+  // customer can reconcile: product rows + montáž − slevy = celkem. Stored
+  // s-DPH (the customer-visible amount), so no withVat() conversion here.
+  const ovtSlevaSDph = Math.max(0, Math.round(d.ovtSlevaSDph ?? 0));
+  const mngSlevaSDph = d.mngSleva ? Math.max(0, Math.round(d.mngSlevaSDph ?? 0)) : 0;
+  const drawSlevaRow = (label: string, sDph: number) => {
+    cols.forEach((c, ci) => rect(ctx, xOf(ci), y, c.w, rowH));
+    drawText(ctx, label, xOf(0) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, { size: FONT_SIZE_BODY });
+    const valueText = `-${sDph}`;
+    drawText(ctx, valueText, xOf(4) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
+      size: FONT_SIZE_BODY,
+      maxWidth: cols[4].w - 8,
+      align: "right",
+    });
+    drawText(ctx, valueText, xOf(6) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
+      size: FONT_SIZE_BODY,
+      maxWidth: cols[6].w - 8,
+      align: "right",
+    });
+    y += rowH;
+  };
+  if (ovtSlevaSDph > 0) drawSlevaRow("Sleva (objednávka)", ovtSlevaSDph);
+  if (mngSlevaSDph > 0) drawSlevaRow("Sleva (firma)", mngSlevaSDph);
+
   // Celkem row — merge the last two columns (sleva + cena po slevě) into one
   // wide cell. Per request, shows only s DPH.
   const sumProducts = (d.productRows ?? []).reduce((s, r) => s + (r.cenaPoSleve ?? 0), 0);
-  const ovtSleva = Math.max(0, Math.round(d.ovtSlevaCastka ?? 0));
-  const mngSleva = d.mngSleva ? Math.max(0, Math.round(d.mngSlevaCastka ?? 0)) : 0;
-  const celkemBezDph = Math.max(0, Math.round(sumProducts + montaz - ovtSleva - mngSleva));
-  const celkemSDph = withVat(celkemBezDph);
+  const preDiscountSDph = withVat(sumProducts + montaz);
+  const celkemSDph = Math.max(0, preDiscountSDph - ovtSlevaSDph - mngSlevaSDph);
   const celkemH = rowH;
   // Draw cells 0-4 as usual
   for (let ci = 0; ci < 5; ci++) {
@@ -842,16 +864,14 @@ export async function generateAdmfPdfBuffer(raw: Record<string, unknown>): Promi
   y = drawDoplnujiciAndToggles(ctx, y, data);
   y = drawKObjednani(ctx, y, data);
 
-  // Compute celkem s DPH once for sharing across CENA/DOPLATEK
+  // Compute celkem s DPH once for sharing across CENA/DOPLATEK. Slevy are
+  // stored s-DPH so we subtract them after the VAT multiplication.
   const sumProducts = (data.productRows ?? []).reduce((s, r) => s + (r.cenaPoSleve ?? 0), 0);
-  const ovtSleva = Math.max(0, Math.round(data.ovtSlevaCastka ?? 0));
-  const mngSleva = data.mngSleva ? Math.max(0, Math.round(data.mngSlevaCastka ?? 0)) : 0;
-  const celkemBezDph = Math.max(
-    0,
-    Math.round(sumProducts + (data.montazCenaBezDph ?? 0) - ovtSleva - mngSleva)
-  );
+  const ovtSlevaSDph = Math.max(0, Math.round(data.ovtSlevaSDph ?? 0));
+  const mngSlevaSDph = data.mngSleva ? Math.max(0, Math.round(data.mngSlevaSDph ?? 0)) : 0;
   const vat = data.vatRate ?? 12;
-  const celkemSDph = Math.round(celkemBezDph * (1 + vat / 100));
+  const preDiscountSDph = Math.round((sumProducts + (data.montazCenaBezDph ?? 0)) * (1 + vat / 100));
+  const celkemSDph = Math.max(0, preDiscountSDph - ovtSlevaSDph - mngSlevaSDph);
 
   y = drawCenaRow(ctx, y, data, celkemSDph);
   y = drawZalohaRow(ctx, y, data);

@@ -426,9 +426,9 @@ export default function CustomFormClient({
               const search = new URLSearchParams();
               search.set("formIds", String(formId));
               search.set("vat", String(params.vatRatePercent));
-              search.set("ovtSleva", String(params.ovtSlevaBezDph));
+              search.set("ovtSleva", String(params.ovtSlevaSDph));
               search.set("mngSlevaActive", params.mngSlevaActive ? "1" : "0");
-              search.set("mngSleva", String(params.mngSlevaBezDph));
+              search.set("mngSleva", String(params.mngSlevaSDph));
               if (params.montazOverrideBezDph != null) {
                 search.set("montaz", String(params.montazOverrideBezDph));
               }
