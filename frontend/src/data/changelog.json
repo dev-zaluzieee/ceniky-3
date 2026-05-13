@@ -1,9 +1,33 @@
 [
   {
+    "date": "2026-05-13",
+    "changes": [
+      "ADMF: OVT a MNG slevy se nyní zobrazují jako samostatné řádky v PDF objednávce (mezi Montáží a Celkem) — zákazník vidí, proč součet řádků dává Celkem",
+      "ADMF: opraveno zaokrouhlování — viditelné řádky v PDF se vždy přesně sečtou s Celkem (dříve mohl být rozdíl 1–2 Kč)",
+      "ADMF: OVT a MNG sleva se nyní zadávají v Kč s DPH (dříve bez DPH) — zákazník vidí přesně tu částku, na které jste se domluvili",
+      "ADMF: souhrn kalkulace zálohy a doplatku přeskupen — Produkty bez DPH → Montáž bez DPH → DPH → Mezisoučet s DPH → slevy → Celkem s DPH",
+      "ADMF: produkt v řádku už neobsahuje „ – šířka×výška\" (rozměry zůstávají v samostatných sloupcích)",
+      "Výrobní formulář: záhlaví sjednoceno napříč všemi produkty (Montáž do, Jiné, Stav, demontáž KS, Hloubka zas. lišty, Montáž ve výšce, Montáž ve dvou)"
+    ]
+  },
+  {
+    "date": "2026-05-12",
+    "changes": [
+      "Admin: výchozí hodnoty pro každou vlastnost produktu — předvyplní se při založení nového výrobního formuláře z katalogu"
+    ]
+  },
+  {
+    "date": "2026-05-11",
+    "changes": [
+      "ADMF: PDF objednávky kompletně přepracováno — vlastní layout dle papírové předlohy (logo, údaje prodávajícího, hlavička kupujícího, K OBJEDNÁNÍ, CENA / ZÁLOHA / DOPLATEK, právní text, podpisová sekce)",
+      "Raynet: do události se přikládá nové ADMF PDF místo původního obrázku"
+    ]
+  },
+  {
     "date": "2026-04-23",
     "changes": [
       "Poznámky z Raynetu: možnost úpravy poznámek přímo v zakázce s uložením zpět do Raynetu (zachování HTML formátování)",
-      "Zakázka: odkaz Otevrit v Raynetu v sekci Zakladni informace",
+      "Zakázka: odkaz Otevřít v Raynetu v sekci Základní informace",
       "Výrobní formulář: možnost pojmenovat formulář (Název formuláře)",
       "Výrobní formulář: admin může označit pole jako povinná nezávisle na ceně",
       "Výrobní formulář: obnoveny předvolby místností (Obývák, Kuchyň, Pracovna…) a duplikace místností",
