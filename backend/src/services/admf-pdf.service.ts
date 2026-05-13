@@ -472,11 +472,9 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
   const cols = [
     { key: "produkt", label: "produkt", w: 0, align: "left" as const },
     { key: "ks", label: "ks", w: 35, align: "center" as const },
-    { key: "ram", label: "rám", w: 80, align: "left" as const },
-    { key: "lamela", label: "lamela/látka", w: 88, align: "left" as const },
-    { key: "cena", label: "cena", w: 60, align: "right" as const },
-    { key: "sleva", label: "sleva", w: 45, align: "right" as const },
-    { key: "cenapo", label: "cena po slevě", w: 85, align: "right" as const },
+    { key: "cena", label: "cena", w: 70, align: "right" as const },
+    { key: "sleva", label: "sleva", w: 55, align: "right" as const },
+    { key: "cenapo", label: "cena po slevě", w: 95, align: "right" as const },
   ];
   // Compute first column to fill remaining width
   const fixedSum = cols.slice(1).reduce((s, c) => s + c.w, 0);
@@ -507,8 +505,6 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
       const cells = [
         row.produkt ?? "",
         String(row.ks ?? ""),
-        row.priceAffectingFields?.[0]?.value ?? "",
-        row.priceAffectingFields?.[1]?.value ?? "",
         row.cena != null ? String(withVat(row.cena)) : "",
         row.sleva != null ? `${Math.round(row.sleva)} %` : "%",
         row.cenaPoSleve != null ? String(withVat(row.cenaPoSleve)) : "",
@@ -520,7 +516,7 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
             maxWidth: cols[ci].w - 8,
             align: cols[ci].align === "left" ? undefined : cols[ci].align,
           });
-        } else if (ci === 5) {
+        } else if (ci === 3) {
           // Empty sleva column: still render the trailing "%"
           drawText(ctx, "%", xOf(ci) + cols[ci].w - 12, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
             size: FONT_SIZE_BODY,
@@ -530,7 +526,7 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
       });
     } else {
       // Empty placeholder row: always render the "%" in sleva column
-      drawText(ctx, "%", xOf(5) + cols[5].w - 12, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
+      drawText(ctx, "%", xOf(3) + cols[3].w - 12, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
         size: FONT_SIZE_BODY,
         color: MUTED,
       });
@@ -544,14 +540,14 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
   const montaz = d.montazCenaBezDph ?? 0;
   if (montaz > 0) {
     const montazSDph = String(withVat(montaz));
+    drawText(ctx, montazSDph, xOf(2) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
+      size: FONT_SIZE_BODY,
+      maxWidth: cols[2].w - 8,
+      align: "right",
+    });
     drawText(ctx, montazSDph, xOf(4) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
       size: FONT_SIZE_BODY,
       maxWidth: cols[4].w - 8,
-      align: "right",
-    });
-    drawText(ctx, montazSDph, xOf(6) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
-      size: FONT_SIZE_BODY,
-      maxWidth: cols[6].w - 8,
       align: "right",
     });
   }
@@ -566,14 +562,14 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
     cols.forEach((c, ci) => rect(ctx, xOf(ci), y, c.w, rowH));
     drawText(ctx, label, xOf(0) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, { size: FONT_SIZE_BODY });
     const valueText = `-${sDph}`;
+    drawText(ctx, valueText, xOf(2) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
+      size: FONT_SIZE_BODY,
+      maxWidth: cols[2].w - 8,
+      align: "right",
+    });
     drawText(ctx, valueText, xOf(4) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
       size: FONT_SIZE_BODY,
       maxWidth: cols[4].w - 8,
-      align: "right",
-    });
-    drawText(ctx, valueText, xOf(6) + 4, y + (rowH - FONT_SIZE_BODY) / 2 + 1, {
-      size: FONT_SIZE_BODY,
-      maxWidth: cols[6].w - 8,
       align: "right",
     });
     y += rowH;
@@ -591,13 +587,13 @@ function drawProductTable(ctx: Ctx, yTop: number, d: AdmfFormData): number {
   const montazSDph = withVat(montaz);
   const celkemSDph = Math.max(0, sumProductsSDph + montazSDph - ovtSlevaSDph - mngSlevaSDph);
   const celkemH = rowH;
-  // Draw cells 0-4 as usual
-  for (let ci = 0; ci < 5; ci++) {
+  // Draw cells 0-2 as usual (produkt, ks, cena)
+  for (let ci = 0; ci < 3; ci++) {
     rect(ctx, xOf(ci), y, cols[ci].w, celkemH, { fill: BAND_BG });
   }
   // Single wide cell spanning sleva + cena po slevě columns
-  const mergedX = xOf(5);
-  const mergedW = cols[5].w + cols[6].w;
+  const mergedX = xOf(3);
+  const mergedW = cols[3].w + cols[4].w;
   rect(ctx, mergedX, y, mergedW, celkemH, { fill: BAND_BG });
   drawText(ctx, "celkem:", mergedX + 8, y + (celkemH - FONT_SIZE_BODY) / 2 + 1, {
     size: FONT_SIZE_BODY,
