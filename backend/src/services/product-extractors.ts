@@ -264,7 +264,7 @@ export async function resolveCustomRowPricingCore(args: {
   const width = getDimension(flatRow, WIDTH_KEYS);
   const height = getDimension(flatRow, HEIGHT_KEYS);
   const dimStr = [width, height].filter(Boolean).join("×") || "—";
-  const produkt = `${productName} - ${dimStr}`;
+  const produkt = productName;
 
   const ksRaw = flatRow.ks ?? flatRow.kus ?? flatRow.count ?? flatRow.quantity;
   const ks = (() => {
