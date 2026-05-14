@@ -39,17 +39,26 @@ export function isDimensionPropertyCode(code: string): boolean {
  * Required field codes for UI + validation: catalog `price_affecting_enums` plus
  * admin-flagged `required_properties`, plus `ks` and any width/height columns
  * present in form_body (pricing grid + extractors need them).
+ *
+ * Codes from `requiredProperties` are intersected with the row's form_body
+ * codes — a "required" zahlavi / zapati property is meaningless at the row
+ * level (those fields don't exist in `row.values`), so including them here
+ * would block save on every row of every form. Validator is robust against
+ * payloads where the upstream generator leaked non-form_body required codes.
  */
 export function buildEffectiveRequiredFieldCodes(
   formBodyPropertyCodes: readonly string[],
   priceAffectingEnums: readonly string[] | undefined,
   requiredProperties?: readonly string[] | undefined
 ): Set<string> {
+  const formBodySet = new Set<string>(formBodyPropertyCodes);
   const set = new Set<string>(priceAffectingEnums ?? []);
   if (requiredProperties) {
-    for (const code of requiredProperties) set.add(code);
+    for (const code of requiredProperties) {
+      if (formBodySet.has(code)) set.add(code);
+    }
   }
-  if (formBodyPropertyCodes.includes(KS_PROPERTY_CODE)) {
+  if (formBodySet.has(KS_PROPERTY_CODE)) {
     set.add(KS_PROPERTY_CODE);
   }
   for (const code of formBodyPropertyCodes) {
