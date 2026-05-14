@@ -27,16 +27,30 @@ const serwist = new Serwist({
         ["POST", "PUT", "PATCH", "DELETE"].includes(request.method),
       handler: new NetworkOnly(),
     },
-    // Safe GET API routes — stale-while-revalidate for fast reads
+    // Form schemas — NetworkFirst with short timeout. StaleWhileRevalidate is
+    // wrong here: a stale schema makes the validator demand missing fields or
+    // skip required ones (the "first-open shows old data" bug). Schema must
+    // be authoritative; cache is only a fallback when network is unavailable.
+    // cacheName versioned (v2) so existing devices invalidate the legacy
+    // "api-data" entries that mixed schema with list data.
+    {
+      matcher: ({ url, request }) =>
+        request.method === "GET" && url.pathname.startsWith("/api/forms"),
+      handler: new NetworkFirst({
+        cacheName: "api-forms-v2",
+        networkTimeoutSeconds: 5,
+      }),
+    },
+    // List/data feeds — stale-while-revalidate is fine: a one-render-old
+    // orders list is acceptable, schema correctness is not affected.
     {
       matcher: ({ url, request }) =>
         request.method === "GET" &&
-        (url.pathname.startsWith("/api/forms") ||
-          url.pathname.startsWith("/api/orders") ||
+        (url.pathname.startsWith("/api/orders") ||
           url.pathname.startsWith("/api/customers") ||
           url.pathname.startsWith("/api/calculation")),
       handler: new StaleWhileRevalidate({
-        cacheName: "api-data",
+        cacheName: "api-data-v2",
       }),
     },
     // App navigation — network first with offline fallback
@@ -63,3 +77,22 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// One-shot cleanup of the legacy "api-data" cache (replaced by api-forms-v2
+// and api-data-v2). Without this, devices that had the previous SW installed
+// keep the old cache entries around until the browser evicts them on its own,
+// occupying disk and potentially being served again if a future bug brings
+// back a matching cacheName.
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      const legacyCacheNames = ["api-data"];
+      const existing = await caches.keys();
+      await Promise.all(
+        existing
+          .filter((name) => legacyCacheNames.includes(name))
+          .map((name) => caches.delete(name))
+      );
+    })()
+  );
+});
