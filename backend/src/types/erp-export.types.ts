@@ -82,7 +82,7 @@ export interface ErpProductPayload {
   vyrobce?: string;
 }
 
-/** Comment for POST /orders/{id}/comments */
+/** Comment for POST /orders/{id}/comments — vendor field name is `message`. */
 export interface ErpCommentPayload {
-  body: string;
+  message: string;
 }

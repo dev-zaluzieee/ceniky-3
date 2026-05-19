@@ -166,7 +166,7 @@ export function buildErpPayloads(
   if (montazText) commentParts.push(`Montáž: ${montazText}`);
 
   const commentPayload: ErpCommentPayload | null =
-    commentParts.length > 1 ? { body: commentParts.join("\n") } : null;
+    commentParts.length > 1 ? { message: commentParts.join("\n") } : null;
 
   return { orderPayload, productsPayload: { products }, commentPayload, warnings };
 }
@@ -297,7 +297,7 @@ export async function exportFormToErp(
       request_payload: {
         order_update: orderPayload,
         products: productsPayload.products,
-        comment: commentPayload?.body ?? null,
+        comment: commentPayload?.message ?? null,
       } as unknown as Record<string, unknown>,
       warnings,
     });

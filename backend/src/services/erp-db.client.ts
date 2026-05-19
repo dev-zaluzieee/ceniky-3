@@ -39,6 +39,11 @@ class ErpDatabaseClient {
       connectionString: url,
       ssl,
     });
+    // `pg.Pool` emits `error` when an idle client's TCP connection drops.
+    // Without a listener, Node's unhandled-error rule crashes the process.
+    this.pool.on("error", (err: Error) => {
+      console.error("[erp-db pool] idle client error:", err.message);
+    });
   }
 
   /**
